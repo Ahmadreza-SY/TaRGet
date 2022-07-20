@@ -1,18 +1,30 @@
 package edu.ahrsy.jparser;
 
-import org.apache.commons.cli.*;
+import com.beust.jcommander.JCommander;
+import com.opencsv.bean.StatefulBeanToCsv;
+import com.opencsv.bean.StatefulBeanToCsvBuilder;
+import com.opencsv.exceptions.CsvDataTypeMismatchException;
+import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
+import edu.ahrsy.jparser.cli.Command;
+import edu.ahrsy.jparser.cli.CommandTestClasses;
+import edu.ahrsy.jparser.entity.TestClass;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.filter.TypeFilter;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class JParser {
+  private static final String TEST_CLASSES_CMD = "testClasses";
   private static SpoonAPI spoon;
 
   private static void saveFile(Path filePath, String content) {
@@ -48,49 +60,52 @@ public class JParser {
     return spoon.getModel().getRootPackage().getElements(isRealTestingClass);
   }
 
-  private static CommandLineArgs parseArgs(String[] args) {
-    Options options = new Options();
+  private static void initializeSpoon(Command cmd) {
+    spoon = new Launcher();
+    spoon.addInputResource(cmd.srcPath);
+    if (cmd.complianceLevel != null)
+      spoon.getEnvironment().setComplianceLevel(cmd.complianceLevel);
+    spoon.buildModel();
+  }
 
-    Option srcPath = new Option("p", "src-path", true, "Root path of the software system");
-    srcPath.setRequired(true);
-    options.addOption(srcPath);
-
-    Option complianceLevel = new Option("cl", "compliance-level", true, "Java version compliance level");
-    complianceLevel.setRequired(false);
-    complianceLevel.setType(Number.class);
-    options.addOption(complianceLevel);
-
-    CommandLineParser parser = new DefaultParser();
-    try {
-      CommandLine cmd = parser.parse(options, args);
-      CommandLineArgs cmdArgs = new CommandLineArgs();
-      cmdArgs.setSrcPath(cmd.getOptionValue(srcPath));
-      if (cmd.hasOption(complianceLevel))
-        cmdArgs.setComplianceLevel(((Number) cmd.getParsedOptionValue(complianceLevel)).intValue());
-
-      return cmdArgs;
-    } catch (ParseException e) {
-      System.out.println(e.getMessage());
-      System.exit(1);
+  public static void cTestClasses(CommandTestClasses args) {
+    initializeSpoon(args);
+    var srcURI = new File(args.srcPath).toURI();
+    var ctTestClasses = getAllTestClasses();
+    var testClasses = ctTestClasses
+            .stream()
+            .map(ctClass -> {
+              var absFile = ctClass.getPosition().getCompilationUnit().getFile();
+              return new TestClass(ctClass.getQualifiedName(), srcURI.relativize(absFile.toURI()).getPath());
+            })
+            .collect(Collectors.toList());
+    try (Writer writer = new FileWriter(args.outputFile)) {
+      StatefulBeanToCsv<TestClass> beanToCsv = new StatefulBeanToCsvBuilder<TestClass>(writer).build();
+      beanToCsv.write(testClasses);
+    } catch (IOException | CsvRequiredFieldEmptyException | CsvDataTypeMismatchException e) {
+      throw new RuntimeException(e);
     }
-
-    return new CommandLineArgs();
   }
 
   public static void main(String[] args) {
-    CommandLineArgs cmdArgs = parseArgs(args);
-    spoon = new Launcher();
-    spoon.addInputResource(cmdArgs.getSrcPath());
-    if (cmdArgs.getComplianceLevel() != null)
-      spoon.getEnvironment().setComplianceLevel(cmdArgs.getComplianceLevel());
-    spoon.buildModel();
+    CommandTestClasses cTestClasses = new CommandTestClasses();
+    JCommander jc = JCommander.newBuilder()
+            .addCommand(TEST_CLASSES_CMD, cTestClasses)
+            .build();
+    jc.parse(args);
 
-    CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
+    switch (jc.getParsedCommand()) {
+      case TEST_CLASSES_CMD:
+        cTestClasses(cTestClasses);
+        break;
+    }
+
+    /*CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
     for (var testClass : getAllTestClasses()) {
       for (var method : testClass.getMethodsAnnotatedWith(juTestRef)) {
         CallGraph callGraph = new CallGraph();
         callGraph.createCallGraph(method);
       }
-    }
+    }*/
   }
 }

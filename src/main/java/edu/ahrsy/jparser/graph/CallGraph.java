@@ -1,4 +1,4 @@
-package edu.ahrsy.jparser;
+package edu.ahrsy.jparser.graph;
 
 import spoon.reflect.code.CtAbstractInvocation;
 import spoon.reflect.declaration.CtConstructor;

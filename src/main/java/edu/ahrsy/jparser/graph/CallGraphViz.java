@@ -1,4 +1,4 @@
-package edu.ahrsy.jparser;
+package edu.ahrsy.jparser.graph;
 
 import guru.nidi.graphviz.attribute.Color;
 import guru.nidi.graphviz.engine.Format;
