@@ -1,13 +1,11 @@
 package edu.ahrsy.jparser;
 
 import com.beust.jcommander.JCommander;
-import com.opencsv.bean.StatefulBeanToCsv;
-import com.opencsv.bean.StatefulBeanToCsvBuilder;
-import com.opencsv.exceptions.CsvDataTypeMismatchException;
-import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
 import edu.ahrsy.jparser.cli.Command;
 import edu.ahrsy.jparser.cli.CommandTestClasses;
+import edu.ahrsy.jparser.cli.CommandTestMethods;
 import edu.ahrsy.jparser.entity.TestClass;
+import edu.ahrsy.jparser.utils.FileUtils;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.reflect.declaration.CtClass;
@@ -15,26 +13,14 @@ import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.Writer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class JParser {
   private static final String TEST_CLASSES_CMD = "testClasses";
+  private static final String TEST_METHODS_CMD = "testMethods";
   private static SpoonAPI spoon;
-
-  private static void saveFile(Path filePath, String content) {
-    try {
-      Files.createDirectories(filePath.getParent());
-      Files.write(filePath, content.getBytes());
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-  }
 
   private static List<CtClass<?>> getAllTestClasses() {
     CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
@@ -79,33 +65,34 @@ public class JParser {
               return new TestClass(ctClass.getQualifiedName(), srcURI.relativize(absFile.toURI()).getPath());
             })
             .collect(Collectors.toList());
-    try (Writer writer = new FileWriter(args.outputFile)) {
-      StatefulBeanToCsv<TestClass> beanToCsv = new StatefulBeanToCsvBuilder<TestClass>(writer).build();
-      beanToCsv.write(testClasses);
-    } catch (IOException | CsvRequiredFieldEmptyException | CsvDataTypeMismatchException e) {
-      throw new RuntimeException(e);
+    FileUtils.toCsv(testClasses, args.outputFile);
+  }
+
+  public static void cTestMethods(CommandTestMethods args) {
+    initializeSpoon(args);
+    CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
+    for (var type : spoon.getModel().getAllTypes()) {
+      for (var method : type.getMethodsAnnotatedWith(juTestRef))
+        FileUtils.saveFile(Path.of(args.outputPath, method.getSignature()), method.prettyprint());
     }
   }
 
   public static void main(String[] args) {
-    CommandTestClasses cTestClasses = new CommandTestClasses();
+    CommandTestClasses testClassesArgs = new CommandTestClasses();
+    CommandTestMethods testMethodsArgs = new CommandTestMethods();
     JCommander jc = JCommander.newBuilder()
-            .addCommand(TEST_CLASSES_CMD, cTestClasses)
+            .addCommand(TEST_CLASSES_CMD, testClassesArgs)
+            .addCommand(TEST_METHODS_CMD, testMethodsArgs)
             .build();
     jc.parse(args);
 
     switch (jc.getParsedCommand()) {
       case TEST_CLASSES_CMD:
-        cTestClasses(cTestClasses);
+        cTestClasses(testClassesArgs);
+        break;
+      case TEST_METHODS_CMD:
+        cTestMethods(testMethodsArgs);
         break;
     }
-
-    /*CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
-    for (var testClass : getAllTestClasses()) {
-      for (var method : testClass.getMethodsAnnotatedWith(juTestRef)) {
-        CallGraph callGraph = new CallGraph();
-        callGraph.createCallGraph(method);
-      }
-    }*/
   }
 }
