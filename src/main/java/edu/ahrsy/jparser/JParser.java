@@ -1,63 +1,29 @@
 package edu.ahrsy.jparser;
 
 import com.beust.jcommander.JCommander;
-import edu.ahrsy.jparser.cli.Command;
+import edu.ahrsy.jparser.cli.CommandCallGraphs;
 import edu.ahrsy.jparser.cli.CommandTestClasses;
 import edu.ahrsy.jparser.cli.CommandTestMethods;
 import edu.ahrsy.jparser.entity.TestClass;
+import edu.ahrsy.jparser.entity.TestRepair;
+import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.utils.FileUtils;
-import spoon.Launcher;
-import spoon.SpoonAPI;
-import spoon.reflect.declaration.CtClass;
-import spoon.reflect.reference.CtTypeReference;
-import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 
 public class JParser {
   private static final String TEST_CLASSES_CMD = "testClasses";
   private static final String TEST_METHODS_CMD = "testMethods";
-  private static SpoonAPI spoon;
+  private static final String CALL_GRAPHS_CMD = "callGraphs";
 
-  private static List<CtClass<?>> getAllTestClasses() {
-    CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
-    TypeFilter<CtClass<?>> isRealTestingClass =
-            new TypeFilter<>(CtClass.class) {
-              @Override
-              public boolean matches(CtClass<?> ctClass) {
-                // First step is to reuse standard filtering
-                if (!super.matches(ctClass)) {
-                  return false;
-                }
-                CtTypeReference<?> current = ctClass.getReference();
-                // Walk up the chain of inheritance and find whether there is a method annotated as test
-                do {
-                  if (current.getDeclaration() != null &&
-                          !current.getDeclaration().getMethodsAnnotatedWith(juTestRef).isEmpty()) {
-                    return true;
-                  }
-                } while ((current = current.getSuperclass()) != null);
-                return false;
-              }
-            };
-    return spoon.getModel().getRootPackage().getElements(isRealTestingClass);
-  }
-
-  private static void initializeSpoon(Command cmd) {
-    spoon = new Launcher();
-    spoon.addInputResource(cmd.srcPath);
-    if (cmd.complianceLevel != null)
-      spoon.getEnvironment().setComplianceLevel(cmd.complianceLevel);
-    spoon.buildModel();
-  }
 
   public static void cTestClasses(CommandTestClasses args) {
-    initializeSpoon(args);
+    Spoon.initializeSpoon(args);
     var srcURI = new File(args.srcPath).toURI();
-    var ctTestClasses = getAllTestClasses();
+    var ctTestClasses = Spoon.getAllTestClasses();
     var testClasses = ctTestClasses
             .stream()
             .map(ctClass -> {
@@ -69,20 +35,37 @@ public class JParser {
   }
 
   public static void cTestMethods(CommandTestMethods args) {
-    initializeSpoon(args);
-    CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
-    for (var type : spoon.getModel().getAllTypes()) {
-      for (var method : type.getMethodsAnnotatedWith(juTestRef))
-        FileUtils.saveFile(Path.of(args.outputPath, method.getSignature()), method.prettyprint());
+    Spoon.initializeSpoon(args);
+    for (var method : Spoon.getTestMethods())
+      FileUtils.saveFile(Path.of(args.outputPath, method.getSignature()), method.prettyprint());
+  }
+
+  public static void cCallGraphs(CommandCallGraphs args) {
+    Spoon.initializeSpoon(args);
+    var allRepairs = FileUtils.readCsv(
+            Path.of(args.outputPath, "test_repair_info.csv").toString(),
+            TestRepair.class
+    );
+    var releaseRepairs = allRepairs.stream().filter(r -> r.baseTag.equals(args.releaseTag))
+            .collect(Collectors.toList());
+    var repairedMethods = releaseRepairs.stream().map(TestRepair::getMethodSignature).collect(Collectors.toCollection(
+            HashSet::new));
+    var methods = Spoon.getMethodsByName(repairedMethods);
+    for (var method : methods) {
+      var callGraph = new CallGraph(method);
+      callGraph.createCallGraph();
+      callGraph.save(Path.of(args.outputPath, "releases", args.releaseTag, "call_graphs").toString(), args.srcPath);
     }
   }
 
   public static void main(String[] args) {
     CommandTestClasses testClassesArgs = new CommandTestClasses();
     CommandTestMethods testMethodsArgs = new CommandTestMethods();
+    CommandCallGraphs callGraphsArgs = new CommandCallGraphs();
     JCommander jc = JCommander.newBuilder()
             .addCommand(TEST_CLASSES_CMD, testClassesArgs)
             .addCommand(TEST_METHODS_CMD, testMethodsArgs)
+            .addCommand(CALL_GRAPHS_CMD, callGraphsArgs)
             .build();
     jc.parse(args);
 
@@ -93,6 +76,8 @@ public class JParser {
       case TEST_METHODS_CMD:
         cTestMethods(testMethodsArgs);
         break;
+      case CALL_GRAPHS_CMD:
+        cCallGraphs(callGraphsArgs);
     }
   }
 }
