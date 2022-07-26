@@ -230,6 +230,5 @@ def main():
     create_repaired_tc_call_graphs()
 
 
-# TODO create a super project which includes jparser and this file
 if __name__ == "__main__":
     main()
