@@ -5,23 +5,43 @@ import edu.ahrsy.jparser.graph.CallGraph;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.stream.Collectors;
 
 public class Mapper {
   public static CallGraphDTO toDto(CallGraph callGraph, String srcPath) {
-    var cgNodes = new HashSet<CGNode>();
-    var graph = new HashMap<String, HashSet<String>>();
-    for (var entry : callGraph.graph.entrySet()) {
-      cgNodes.add(entry.getKey());
-      cgNodes.addAll(entry.getValue());
-      graph.put(entry.getKey().name,
-              entry.getValue().stream().map(n -> n.name).collect(Collectors.toCollection(HashSet::new)));
+    var idGenerator = new IdGenerator();
+    var nodes = new LinkedList<CGNodeDTO>();
+    var graph = new HashMap<Integer, HashSet<Integer>>();
+
+    // BFS graph traversal to keep ids in a specific order
+    Queue<CGNode> queue = new LinkedList<>();
+    var visited = new HashSet<CGNode>();
+    queue.add(callGraph.root);
+    visited.add(callGraph.root);
+    while (!queue.isEmpty()) {
+      var node = queue.remove();
+      var nodeDto = new CGNodeDTO(idGenerator.getId(node.name), node.name, node.getRelativePath(srcPath));
+      nodes.add(nodeDto);
+      for (var chNode : callGraph.graph.getOrDefault(node, new HashSet<>())) {
+        if (!visited.contains(chNode)) {
+          queue.add(chNode);
+          visited.add(chNode);
+        }
+      }
     }
 
-    return new CallGraphDTO(
+    for (var entry : callGraph.graph.entrySet())
+      graph.put(idGenerator.getId(entry.getKey().name),
+              entry.getValue()
+                      .stream()
+                      .map(n -> idGenerator.getId(n.name))
+                      .collect(Collectors.toCollection(HashSet::new)));
+
+    var rootDto = new CGNodeDTO(idGenerator.getId(callGraph.root.name),
             callGraph.root.name,
-            cgNodes.stream().map(n -> new CGNodeDTO(n.name, n.getRelativePath(srcPath))).collect(Collectors.toList()),
-            graph
-    );
+            callGraph.root.getRelativePath(srcPath));
+    return new CallGraphDTO(rootDto, nodes, graph);
   }
 }

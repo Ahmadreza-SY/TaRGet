@@ -5,6 +5,7 @@ import edu.ahrsy.jparser.graph.dto.Mapper;
 import edu.ahrsy.jparser.utils.FileUtils;
 import spoon.reflect.code.CtAbstractInvocation;
 import spoon.reflect.declaration.CtExecutable;
+import spoon.reflect.declaration.CtType;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -45,9 +46,16 @@ public class CallGraph {
     }
   }
 
-  public void save(String outputPath, String srcPath) {
-    Gson gson = new Gson();
-    String graphJson = gson.toJson(Mapper.toDto(this, srcPath));
-    FileUtils.saveFile(Path.of(outputPath, root.name + ".json"), graphJson);
+  public void save(String outputPath, String releaseTag, String srcPath) {
+    var gson = new Gson();
+    var graphJson = gson.toJson(Mapper.toDto(this, srcPath));
+    var testClassFullName = ((CtType<?>) root.executable.getParent()).getQualifiedName();
+    var graphFile = Path.of(outputPath,
+            "releases",
+            releaseTag,
+            "call_graphs",
+            testClassFullName,
+            root.executable.getSignature() + ".json");
+    FileUtils.saveFile(graphFile, graphJson);
   }
 }

@@ -10,8 +10,8 @@ import java.io.File;
 import java.util.List;
 
 public class CGNode {
-  CtExecutable<?> executable;
   public String name;
+  CtExecutable<?> executable;
 
   public CGNode(CtExecutable<?> executable) {
     this.executable = executable;
@@ -36,6 +36,8 @@ public class CGNode {
   public String getRelativePath(String srcPath) {
     var srcURI = new File(srcPath).toURI();
     var absFile = executable.getPosition().getCompilationUnit().getFile();
+    if (absFile == null)
+      absFile = executable.getParent().getPosition().getCompilationUnit().getFile();
     return srcURI.relativize(absFile.toURI()).getPath();
   }
 

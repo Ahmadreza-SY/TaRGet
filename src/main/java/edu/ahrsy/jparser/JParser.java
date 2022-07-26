@@ -54,7 +54,7 @@ public class JParser {
     for (var method : methods) {
       var callGraph = new CallGraph(method);
       callGraph.createCallGraph();
-      callGraph.save(Path.of(args.outputPath, "releases", args.releaseTag, "call_graphs").toString(), args.srcPath);
+      callGraph.save(args.outputPath, args.releaseTag, args.srcPath);
     }
   }
 

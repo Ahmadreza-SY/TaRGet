@@ -1,13 +1,15 @@
 package edu.ahrsy.jparser.graph.dto;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 
 public class CallGraphDTO {
-  String root;
+  CGNodeDTO root;
   List<CGNodeDTO> nodes;
-  Map<String, HashSet<String>> graph;
+  Map<Integer, HashSet<Integer>> graph;
 
-  public CallGraphDTO(String root, List<CGNodeDTO> nodes, Map<String, HashSet<String>> graph) {
+  public CallGraphDTO(CGNodeDTO root, List<CGNodeDTO> nodes, Map<Integer, HashSet<Integer>> graph) {
     this.root = root;
     this.nodes = nodes;
     this.graph = graph;
