@@ -1,27 +1,19 @@
 package edu.ahrsy.jparser.graph;
 
+import edu.ahrsy.jparser.Spoon;
 import spoon.reflect.code.CtAbstractInvocation;
-import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtExecutable;
-import spoon.reflect.declaration.CtType;
 import spoon.reflect.visitor.filter.AbstractFilter;
 
-import java.io.File;
 import java.util.List;
 
 public class CGNode {
   public String name;
-  CtExecutable<?> executable;
+  public CtExecutable<?> executable;
 
   public CGNode(CtExecutable<?> executable) {
     this.executable = executable;
-    this.name = generateName(executable);
-  }
-
-  private static String generateName(CtExecutable<?> executable) {
-    if (executable instanceof CtConstructor<?>)
-      return executable.getSignature();
-    return String.format("%s.%s", ((CtType<?>) executable.getParent()).getQualifiedName(), executable.getSignature());
+    this.name = Spoon.getUniqueName(executable);
   }
 
   public List<CtAbstractInvocation<?>> getInvocations() {
@@ -31,14 +23,6 @@ public class CGNode {
         return super.matches(element);
       }
     });
-  }
-
-  public String getRelativePath(String srcPath) {
-    var srcURI = new File(srcPath).toURI();
-    var absFile = executable.getPosition().getCompilationUnit().getFile();
-    if (absFile == null)
-      absFile = executable.getParent().getPosition().getCompilationUnit().getFile();
-    return srcURI.relativize(absFile.toURI()).getPath();
   }
 
   @Override
