@@ -8,11 +8,12 @@ import jparser
 from tqdm import trange, tqdm
 import tarfile
 import shutil
+import json
 
 # Global variables
 repo = "dbeaver/dbeaver"
 output_path = "./data-v2"
-jparser_path = "jparser.jar"
+jparser_path = "assets/jparser.jar"
 
 
 class Release:
@@ -212,12 +213,12 @@ def analyze_release_and_repairs():
         Path(output_path) / "releases" / "test_release_info.csv", index=False
     )
     pd.concat(rep_info_l).to_csv(
-        Path(output_path) / "test_repair_info.csv", index=False
+        Path(output_path) / "repairs" / "test_repair_info.csv", index=False
     )
 
 
 def create_repaired_tc_call_graphs():
-    repair_info = pd.read_csv(Path(output_path) / "test_repair_info.csv")
+    repair_info = pd.read_csv(Path(output_path) / "repairs" / "test_repair_info.csv")
     base_tags = repair_info["base_tag"].unique()
     for base_tag in tqdm(
         base_tags, ncols=100, position=0, leave=True, desc="Creating call graphs"
@@ -225,10 +226,163 @@ def create_repaired_tc_call_graphs():
         jparser.create_call_graphs(Path(output_path), base_tag)
 
 
+def get_call_graph(_class, method, tag):
+    call_graph_path = (
+        Path(output_path) / "releases" / tag / "call_graphs" / _class / f"{method}.json"
+    )
+    call_graph = {}
+    with open(call_graph_path) as f:
+        call_graph = json.loads(f.read())
+
+    return call_graph
+
+
+def get_test_file_coverage(_class, method, tag):
+    all_tests = pd.read_csv(Path(output_path) / "releases" / tag / "tests.csv")
+    all_test_files = all_tests["PATH"].values.tolist()
+
+    call_graph = get_call_graph(_class, method, tag)
+
+    return set(
+        [n["path"] for n in call_graph["nodes"] if n["path"] not in all_test_files]
+    )
+
+
+def get_release_changed_files(base_tag, head_tag):
+    release_patches_path = (
+        Path(output_path) / "repairs" / f"{base_tag}...{head_tag}" / "patches.pickle"
+    )
+    patches = pickle.load(open(str(release_patches_path), "rb"))
+    return set([patch.path for patch in patches["patches"].modified_files])
+
+
+def create_repaired_tc_change_coverage():
+    repair_info = pd.read_csv(Path(output_path) / "repairs" / "test_repair_info.csv")
+
+    change_coverage = []
+    for _, r in tqdm(
+        repair_info.iterrows(),
+        total=len(repair_info),
+        ncols=100,
+        position=0,
+        leave=True,
+        desc="Creating test change coverage",
+    ):
+        _class, method, base_tag, head_tag = (
+            r["class"],
+            r["method"],
+            r["base_tag"],
+            r["head_tag"],
+        )
+        tc_coverage = get_test_file_coverage(_class, method, base_tag)
+        changed_files = get_release_changed_files(base_tag, head_tag)
+        tc_change_coverage = list(tc_coverage.intersection(changed_files))
+        cov_per = len(tc_change_coverage) / len(tc_coverage)
+        chn_per = len(tc_change_coverage) / len(changed_files)
+        change_coverage.append(
+            {
+                "test": f"{_class}.{method}",
+                "baseTag": base_tag,
+                "headTag": head_tag,
+                "covered_changed_files": tc_change_coverage,
+                "coverage_percentage": f"{cov_per:.2f}",
+                "change_percentage": f"{chn_per:.3f}",
+            }
+        )
+
+    cov_output_file = Path(output_path) / "repairs" / "test_change_coverage.json"
+    with open(cov_output_file, "w") as f:
+        f.write(json.dumps(change_coverage))
+
+    jparser.detect_changed_methods(output_path)
+
+
+def get_test_method_coverage(_class, method, tag):
+    call_graph = get_call_graph(_class, method, tag)
+    return set([n["name"] for n in call_graph["nodes"]])
+
+
+def create_dataset():
+    repair_info = pd.read_csv(Path(output_path) / "repairs" / "test_repair_info.csv")
+    full_changed_methods = json.loads(
+        (
+            Path(output_path) / "repairs" / "test_coverage_changed_methods.json"
+        ).read_text()
+    )
+    changed_methods = {r["baseTag"]: r["methodChanges"] for r in full_changed_methods}
+
+    dataset = []
+    test_paths = {}
+    for _, r in tqdm(
+        repair_info.iterrows(),
+        total=len(repair_info),
+        ncols=100,
+        position=0,
+        leave=True,
+        desc="Creating dataset",
+    ):
+        _class, method, base_tag, head_tag = (
+            r["class"],
+            r["method"],
+            r["base_tag"],
+            r["head_tag"],
+        )
+        name = f"{_class}.{method}"
+        if base_tag not in test_paths:
+            tests = pd.read_csv(Path(output_path) / "releases" / base_tag / "tests.csv")
+            test_paths[base_tag] = dict(
+                zip(tests["NAME"].values.tolist(), tests["PATH"].values.tolist())
+            )
+        path = test_paths[base_tag][_class]
+        before_repair = (
+            Path(output_path)
+            / "releases"
+            / base_tag
+            / "changed_tests"
+            / _class
+            / "methods"
+            / method
+        ).read_text()
+        after_repair = (
+            Path(output_path)
+            / "releases"
+            / head_tag
+            / "changed_tests"
+            / _class
+            / "methods"
+            / method
+        ).read_text()
+        method_coverage = get_test_method_coverage(_class, method, base_tag)
+        covered_changes = [
+            change
+            for change in changed_methods.get(base_tag, [])
+            if change["name"] in method_coverage
+        ]
+
+        dataset.append(
+            {
+                "name": name,
+                "path": path,
+                "base_release_tag": base_tag,
+                "head_release_tag": head_tag,
+                "before_repair": before_repair,
+                "after_repair": after_repair,
+                "covered_changes": covered_changes,
+            }
+        )
+
+    (Path(output_path) / "dataset.json").write_text(
+        json.dumps(dataset), encoding="utf-8"
+    )
+
+
 def main():
     # analyze_release_and_repairs()
-    create_repaired_tc_call_graphs()
+    # create_repaired_tc_call_graphs()
+    # create_repaired_tc_change_coverage()
+    create_dataset()
 
 
+# TODO parameterize input arguments, create global configuration, and refactor code (separate data_collection from main.py)
 if __name__ == "__main__":
     main()
