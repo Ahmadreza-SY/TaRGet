@@ -1,18 +1,16 @@
 package edu.ahrsy.jparser.graph.dto;
 
+import edu.ahrsy.jparser.Spoon;
 import edu.ahrsy.jparser.graph.CGNode;
 import edu.ahrsy.jparser.graph.CallGraph;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Mapper {
   public static CallGraphDTO toDto(CallGraph callGraph, String srcPath) {
     var idGenerator = new IdGenerator();
-    var nodes = new LinkedList<CGNodeDTO>();
+    var nodes = new ArrayList<CGNodeDTO>();
     var graph = new HashMap<Integer, HashSet<Integer>>();
 
     // BFS graph traversal to keep ids in a specific order
@@ -22,7 +20,9 @@ public class Mapper {
     visited.add(callGraph.root);
     while (!queue.isEmpty()) {
       var node = queue.remove();
-      var nodeDto = new CGNodeDTO(idGenerator.getId(node.name), node.name, node.getRelativePath(srcPath));
+      var nodeDto = new CGNodeDTO(idGenerator.getId(node.name),
+              node.name,
+              Spoon.getRelativePath(node.executable, srcPath));
       nodes.add(nodeDto);
       for (var chNode : callGraph.graph.getOrDefault(node, new HashSet<>())) {
         if (!visited.contains(chNode)) {
@@ -41,7 +41,7 @@ public class Mapper {
 
     var rootDto = new CGNodeDTO(idGenerator.getId(callGraph.root.name),
             callGraph.root.name,
-            callGraph.root.getRelativePath(srcPath));
+            Spoon.getRelativePath(callGraph.root.executable, srcPath));
     return new CallGraphDTO(rootDto, nodes, graph);
   }
 }

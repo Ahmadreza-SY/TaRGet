@@ -1,8 +1,7 @@
 package edu.ahrsy.jparser.graph;
 
-import com.google.gson.Gson;
 import edu.ahrsy.jparser.graph.dto.Mapper;
-import edu.ahrsy.jparser.utils.FileUtils;
+import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.reflect.code.CtAbstractInvocation;
 import spoon.reflect.declaration.CtExecutable;
 import spoon.reflect.declaration.CtType;
@@ -47,7 +46,7 @@ public class CallGraph {
   }
 
   public void save(String outputPath, String releaseTag, String srcPath) {
-    var gson = new Gson();
+    var gson = IOUtils.createGsonInstance();
     var graphJson = gson.toJson(Mapper.toDto(this, srcPath));
     var testClassFullName = ((CtType<?>) root.executable.getParent()).getQualifiedName();
     var graphFile = Path.of(outputPath,
@@ -56,6 +55,6 @@ public class CallGraph {
             "call_graphs",
             testClassFullName,
             root.executable.getSignature() + ".json");
-    FileUtils.saveFile(graphFile, graphJson);
+    IOUtils.saveFile(graphFile, graphJson);
   }
 }

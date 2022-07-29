@@ -1,5 +1,7 @@
 package edu.ahrsy.jparser.utils;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.opencsv.bean.CsvToBeanBuilder;
 import com.opencsv.bean.StatefulBeanToCsv;
 import com.opencsv.bean.StatefulBeanToCsvBuilder;
@@ -11,7 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-public class FileUtils {
+public class IOUtils {
   public static void saveFile(Path filePath, String content) {
     try {
       Files.createDirectories(filePath.getParent());
@@ -39,5 +41,17 @@ public class FileUtils {
     } catch (FileNotFoundException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  public static String readFile(Path path) {
+    try {
+      return Files.readString(path);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public static Gson createGsonInstance() {
+    return new GsonBuilder().disableHtmlEscaping().create();
   }
 }
