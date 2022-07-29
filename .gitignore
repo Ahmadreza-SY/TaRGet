@@ -2,3 +2,4 @@ api_cache
 data
 data-v2
 .vscode
+__pycache__
