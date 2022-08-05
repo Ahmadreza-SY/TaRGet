@@ -1,5 +1,4 @@
 api_cache
-data
-data-v2
+data*
 .vscode
 __pycache__

@@ -7,8 +7,10 @@ import com.opencsv.bean.StatefulBeanToCsv;
 import com.opencsv.bean.StatefulBeanToCsvBuilder;
 import com.opencsv.exceptions.CsvDataTypeMismatchException;
 import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
+import sun.misc.Unsafe;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,10 +36,7 @@ public class IOUtils {
 
   public static <T> List<T> readCsv(String inputFile, Class<T> type) {
     try {
-      return new CsvToBeanBuilder<T>(new FileReader(inputFile))
-              .withType(type)
-              .build()
-              .parse();
+      return new CsvToBeanBuilder<T>(new FileReader(inputFile)).withType(type).build().parse();
     } catch (FileNotFoundException e) {
       throw new RuntimeException(e);
     }
@@ -53,5 +52,18 @@ public class IOUtils {
 
   public static Gson createGsonInstance() {
     return new GsonBuilder().disableHtmlEscaping().create();
+  }
+
+  public static void disableReflectionWarning() {
+    try {
+      Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+      theUnsafe.setAccessible(true);
+      Unsafe u = (Unsafe) theUnsafe.get(null);
+
+      Class<?> cls = Class.forName("jdk.internal.module.IllegalAccessLogger");
+      Field logger = cls.getDeclaredField("logger");
+      u.putObjectVolatile(cls, u.staticFieldOffset(logger), null);
+    } catch (Exception ignored) {
+    }
   }
 }
