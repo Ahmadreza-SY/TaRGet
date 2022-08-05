@@ -18,8 +18,7 @@ class Service:
         releases.sort(key=lambda r: r.date, reverse=True)
         rel_info_l = []
         rep_info_l = []
-        # TODO temp range (first 10 release pairs)
-        for i in trange(10, ncols=100, position=0, leave=True):
+        for i in trange(len(releases) - 1, ncols=100, position=0, leave=True):
             head = releases[i]
             base = releases[i + 1]
             print()
