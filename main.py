@@ -9,11 +9,8 @@ from tqdm import trange, tqdm
 import tarfile
 import shutil
 import json
-
-# Global variables
-repo = "dbeaver/dbeaver"
-output_path = "./data-v2"
-jparser_path = "assets/jparser.jar"
+import argparse
+from config import Config
 
 
 class Release:
@@ -37,7 +34,7 @@ class ReleasePair:
 
 
 def download_source_code(release):
-    release_path = Path(output_path) / "releases" / release.tag
+    release_path = Path(Config.get("output_path")) / "releases" / release.tag
     release_path.mkdir(parents=True, exist_ok=True)
     code_path = release_path / "code"
     if code_path.exists():
@@ -61,7 +58,7 @@ def fetch_patches(release_pair):
     release_test_path_set = set(
         base_tests["PATH"].values.tolist() + head_tests["PATH"].values.tolist()
     )
-    diff = ghapi.get_diff(release_pair, repo)
+    diff = ghapi.get_diff(release_pair, Config.get("repo"))
     patches = PatchSet(diff)
     test_patches = [
         patch for patch in patches.modified_files if patch.path in release_test_path_set
@@ -77,11 +74,11 @@ def get_package_name(java_file_content):
 
 
 def get_test_out_path(tag, _class):
-    return Path(output_path) / "releases" / tag / "changed_tests" / _class
+    return Path(Config.get("output_path")) / "releases" / tag / "changed_tests" / _class
 
 
 def fetch_and_save_test_code(test_path, tag):
-    file_content = ghapi.get_test_file(tag, test_path, repo)
+    file_content = ghapi.get_test_file(tag, test_path, Config.get("repo"))
     package_name = get_package_name(file_content)
     full_name = f"{package_name}.{Path(test_path.stem)}"
     test_out_path = get_test_out_path(tag, full_name)
@@ -170,7 +167,7 @@ def extract_release_repairs(release_pair):
 
     if len(test_repair_info) > 0:
         repairs_path = (
-            Path(output_path)
+            Path(Config.get("output_path"))
             / "repairs"
             / f"{release_pair.base.tag}...{release_pair.head.tag}"
         )
@@ -188,7 +185,7 @@ def analyze_release_and_repairs():
         Release(
             r["name"], r["tag_name"], pd.to_datetime(r["created_at"]), r["tarball_url"]
         )
-        for r in ghapi.get_all_releases(repo)
+        for r in ghapi.get_all_releases(Config.get("repo"))
     ]
     releases.sort(key=lambda r: r.date, reverse=True)
     rel_info_l = []
@@ -210,25 +207,34 @@ def analyze_release_and_repairs():
         rep_info_l.append(rep_info)
 
     pd.concat(rel_info_l).to_csv(
-        Path(output_path) / "releases" / "test_release_info.csv", index=False
+        Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
+        index=False,
     )
     pd.concat(rep_info_l).to_csv(
-        Path(output_path) / "repairs" / "test_repair_info.csv", index=False
+        Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv",
+        index=False,
     )
 
 
 def create_repaired_tc_call_graphs():
-    repair_info = pd.read_csv(Path(output_path) / "repairs" / "test_repair_info.csv")
+    repair_info = pd.read_csv(
+        Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv"
+    )
     base_tags = repair_info["base_tag"].unique()
     for base_tag in tqdm(
         base_tags, ncols=100, position=0, leave=True, desc="Creating call graphs"
     ):
-        jparser.create_call_graphs(Path(output_path), base_tag)
+        jparser.create_call_graphs(Path(Config.get("output_path")), base_tag)
 
 
 def get_call_graph(_class, method, tag):
     call_graph_path = (
-        Path(output_path) / "releases" / tag / "call_graphs" / _class / f"{method}.json"
+        Path(Config.get("output_path"))
+        / "releases"
+        / tag
+        / "call_graphs"
+        / _class
+        / f"{method}.json"
     )
     call_graph = {}
     with open(call_graph_path) as f:
@@ -238,7 +244,9 @@ def get_call_graph(_class, method, tag):
 
 
 def get_test_file_coverage(_class, method, tag):
-    all_tests = pd.read_csv(Path(output_path) / "releases" / tag / "tests.csv")
+    all_tests = pd.read_csv(
+        Path(Config.get("output_path")) / "releases" / tag / "tests.csv"
+    )
     all_test_files = all_tests["PATH"].values.tolist()
 
     call_graph = get_call_graph(_class, method, tag)
@@ -250,14 +258,19 @@ def get_test_file_coverage(_class, method, tag):
 
 def get_release_changed_files(base_tag, head_tag):
     release_patches_path = (
-        Path(output_path) / "repairs" / f"{base_tag}...{head_tag}" / "patches.pickle"
+        Path(Config.get("output_path"))
+        / "repairs"
+        / f"{base_tag}...{head_tag}"
+        / "patches.pickle"
     )
     patches = pickle.load(open(str(release_patches_path), "rb"))
     return set([patch.path for patch in patches["patches"].modified_files])
 
 
 def create_repaired_tc_change_coverage():
-    repair_info = pd.read_csv(Path(output_path) / "repairs" / "test_repair_info.csv")
+    repair_info = pd.read_csv(
+        Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv"
+    )
 
     change_coverage = []
     for _, r in tqdm(
@@ -290,11 +303,13 @@ def create_repaired_tc_change_coverage():
             }
         )
 
-    cov_output_file = Path(output_path) / "repairs" / "test_change_coverage.json"
+    cov_output_file = (
+        Path(Config.get("output_path")) / "repairs" / "test_change_coverage.json"
+    )
     with open(cov_output_file, "w") as f:
         f.write(json.dumps(change_coverage))
 
-    jparser.detect_changed_methods(output_path)
+    jparser.detect_changed_methods(Config.get("output_path"))
 
 
 def get_test_method_coverage(_class, method, tag):
@@ -303,10 +318,14 @@ def get_test_method_coverage(_class, method, tag):
 
 
 def create_dataset():
-    repair_info = pd.read_csv(Path(output_path) / "repairs" / "test_repair_info.csv")
+    repair_info = pd.read_csv(
+        Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv"
+    )
     full_changed_methods = json.loads(
         (
-            Path(output_path) / "repairs" / "test_coverage_changed_methods.json"
+            Path(Config.get("output_path"))
+            / "repairs"
+            / "test_coverage_changed_methods.json"
         ).read_text()
     )
     changed_methods = {r["baseTag"]: r["methodChanges"] for r in full_changed_methods}
@@ -329,13 +348,15 @@ def create_dataset():
         )
         name = f"{_class}.{method}"
         if base_tag not in test_paths:
-            tests = pd.read_csv(Path(output_path) / "releases" / base_tag / "tests.csv")
+            tests = pd.read_csv(
+                Path(Config.get("output_path")) / "releases" / base_tag / "tests.csv"
+            )
             test_paths[base_tag] = dict(
                 zip(tests["NAME"].values.tolist(), tests["PATH"].values.tolist())
             )
         path = test_paths[base_tag][_class]
         before_repair = (
-            Path(output_path)
+            Path(Config.get("output_path"))
             / "releases"
             / base_tag
             / "changed_tests"
@@ -344,7 +365,7 @@ def create_dataset():
             / method
         ).read_text()
         after_repair = (
-            Path(output_path)
+            Path(Config.get("output_path"))
             / "releases"
             / head_tag
             / "changed_tests"
@@ -371,16 +392,68 @@ def create_dataset():
             }
         )
 
-    (Path(output_path) / "dataset.json").write_text(
+    (Path(Config.get("output_path")) / "dataset.json").write_text(
         json.dumps(dataset), encoding="utf-8"
     )
 
 
-def main():
-    # analyze_release_and_repairs()
-    # create_repaired_tc_call_graphs()
-    # create_repaired_tc_change_coverage()
+def analyze_github_releases(args):
+    Config.set("gh_api_token", args.api_token)
+    analyze_release_and_repairs()
+
+
+def create_test_repair_dataset(args):
+    create_repaired_tc_call_graphs()
+    create_repaired_tc_change_coverage()
     create_dataset()
+
+
+def add_common_arguments(parser):
+    parser.add_argument(
+        "-r",
+        "--repository",
+        help="The login and name of the repo seperated by / (e.g., dbeaver/dbeaver)",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "-o",
+        "--output-path",
+        help="The directory to save resulting information and data",
+        type=str,
+        required=True,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+
+    gh_releases_parser = subparsers.add_parser(
+        "gh_releases",
+        help="Analyzes all releases in the given GitHub repository and finds test case repairs.",
+    )
+    gh_releases_parser.set_defaults(func=analyze_github_releases)
+    add_common_arguments(gh_releases_parser)
+    gh_releases_parser.add_argument(
+        "-t",
+        "--api-token",
+        help="A GitHub API token for fetching releases, diff, and source code",
+        type=str,
+        required=True,
+    )
+
+    dataset_parser = subparsers.add_parser(
+        "dataset",
+        help="Creates a test case repair dataset that includes test code before and after repair plus SUT changes covered by tests cases across all releases",
+    )
+    dataset_parser.set_defaults(func=create_test_repair_dataset)
+    add_common_arguments(dataset_parser)
+
+    args = parser.parse_args()
+    Config.set("repo", args.repository)
+    Config.set("output_path", args.output_path)
+    args.func(args)
 
 
 # TODO parameterize input arguments, create global configuration, and refactor code (separate data_collection from main.py)

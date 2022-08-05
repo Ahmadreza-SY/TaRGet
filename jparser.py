@@ -1,7 +1,7 @@
-from main import jparser_path
 import subprocess
 import pandas as pd
 import sys
+from config import Config
 
 
 def run_command(cmd):
@@ -15,7 +15,7 @@ def find_test_classes(source_code_path):
     tests_output_file = source_code_path.parent / "tests.csv"
     if not tests_output_file.exists():
         print(f"Finding test classes for {source_code_path.parent.name}")
-        cmd = f"java -jar {jparser_path} testClasses -s {source_code_path} -cl 10 -o {tests_output_file}"
+        cmd = f"java -jar {Config.get('jparser_path')} testClasses -s {source_code_path} -cl 10 -o {tests_output_file}"
         run_command(cmd)
 
     tests = pd.read_csv(tests_output_file)
@@ -27,18 +27,16 @@ def extract_test_methods(test_file):
     if methods_path.exists() and any(methods_path.iterdir()):
         return
 
-    cmd = (
-        f"java -jar {jparser_path} testMethods -s {test_file} -cl 10 -o {methods_path}"
-    )
+    cmd = f"java -jar {Config.get('jparser_path')} testMethods -s {test_file} -cl 10 -o {methods_path}"
     run_command(cmd)
 
 
 def create_call_graphs(output_path, release_tag):
     release_code_path = output_path / "releases" / release_tag / "code"
-    cmd = f"java -jar {jparser_path} callGraphs -s {release_code_path} -cl 10 -o {output_path} -t {release_tag}"
+    cmd = f"java -jar {Config.get('jparser_path')} callGraphs -s {release_code_path} -cl 10 -o {output_path} -t {release_tag}"
     run_command(cmd)
 
 
 def detect_changed_methods(output_path):
-    cmd = f"java -jar {jparser_path} methodChanges -o {output_path}"
+    cmd = f"java -jar {Config.get('jparser_path')} methodChanges -o {output_path}"
     run_command(cmd)

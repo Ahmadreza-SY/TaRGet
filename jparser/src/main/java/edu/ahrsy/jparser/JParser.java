@@ -98,6 +98,7 @@ public class JParser {
   }
 
   public static void main(String[] args) {
+    IOUtils.disableReflectionWarning();
     CommandTestClasses testClassesArgs = new CommandTestClasses();
     CommandTestMethods testMethodsArgs = new CommandTestMethods();
     CommandCallGraphs callGraphsArgs = new CommandCallGraphs();
