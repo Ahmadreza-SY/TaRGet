@@ -59,7 +59,10 @@ def create_repaired_tc_change_coverage():
         tc_coverage = get_test_file_coverage(_class, method, base_tag)
         changed_files = get_release_changed_files(base_tag, head_tag)
         tc_change_coverage = list(tc_coverage.intersection(changed_files))
-        cov_per = len(tc_change_coverage) / len(tc_coverage)
+        if len(tc_coverage) == 0:
+            cov_per = 0.0
+        else:
+            cov_per = len(tc_change_coverage) / len(tc_coverage)
         chn_per = len(tc_change_coverage) / len(changed_files)
         change_coverage.append(
             {
