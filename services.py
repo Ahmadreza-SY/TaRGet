@@ -25,6 +25,8 @@ class Service:
             print(f"Analyzing release {base.tag}...{head.tag}")
             release_pair = ReleasePair(base, head)
             rel_info, rep_info = release_pair.extract_release_repairs()
+            if rel_info.empty or rep_info.empty:
+                continue
             rel_info_l.append(rel_info)
             rep_info_l.append(rep_info)
 

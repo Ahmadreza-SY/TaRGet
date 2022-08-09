@@ -71,7 +71,9 @@ class ReleasePair:
         return f"{self.base.tag}...{self.head.tag}"
 
     def extract_release_repairs(self):
-        self.fetch_patches()
+        test_patches = self.fetch_patches()
+        if test_patches is None:
+            return pd.DataFrame(), pd.DataFrame()
 
         test_release_info = self.create_test_release_info()
         test_repair_info = self.create_test_repair_info(test_release_info)
@@ -86,12 +88,15 @@ class ReleasePair:
         base_tests = jparser.find_test_classes(base_code_path)
         head_code_path = self.head.download_source_code()
         head_tests = jparser.find_test_classes(head_code_path)
+        if base_tests.empty or head_tests.empty:
+            return None
         release_test_path_set = set(base_tests["PATH"].values.tolist() + head_tests["PATH"].values.tolist())
         diff = ghapi.get_diff(self, Config.get("repo"))
         patches = PatchSet(diff)
         test_patches = [patch for patch in patches.modified_files if patch.path in release_test_path_set]
         self.patches = patches
         self.test_patches = test_patches
+        return test_patches
 
     def save_patches(self):
         repairs_path = Path(Config.get("output_path")) / "repairs" / f"{self.base.tag}...{self.head.tag}"
