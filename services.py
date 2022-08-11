@@ -14,6 +14,7 @@ class Service:
         releases = [
             Release(r["name"], r["tag_name"], pd.to_datetime(r["created_at"]), r["tarball_url"])
             for r in ghapi.get_all_releases(Config.get("repo"))
+            if not r["prerelease"]
         ]
         releases.sort(key=lambda r: r.date, reverse=True)
         rel_info_l = []
