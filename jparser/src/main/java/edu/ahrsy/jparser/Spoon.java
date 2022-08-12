@@ -8,7 +8,6 @@ import edu.ahrsy.jparser.entity.MethodChange;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.reflect.declaration.*;
-import spoon.reflect.reference.CtExecutableReference;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.filter.TypeFilter;
 
@@ -43,6 +42,33 @@ public class Spoon {
     return String.format("%s.%s", ((CtType<?>) executable.getParent()).getQualifiedName(), executable.getSignature());
   }
 
+  public static List<MethodChange> getMethodChanges(
+          List<CtExecutable<?>> baseExecutables, List<CtExecutable<?>> headExecutables, String headSrcPath
+  ) {
+    var baseMethodsMap = baseExecutables.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
+    var methodChanges = new ArrayList<MethodChange>();
+    for (var hMethod : headExecutables) {
+      var hMethodName = Spoon.getUniqueName(hMethod);
+      if (!baseMethodsMap.containsKey(hMethodName)) continue;
+
+      var bMethodCode = baseMethodsMap.get(hMethodName).prettyprint();
+      var hMethodCode = hMethod.prettyprint();
+      if (bMethodCode.equals(hMethodCode)) continue;
+
+      var methodFilePath = Spoon.getRelativePath(hMethod, headSrcPath);
+      var methodChange = new MethodChange(methodFilePath, hMethodName);
+      List<String> original = Arrays.asList(bMethodCode.split("\n"));
+      List<String> revised = Arrays.asList(hMethodCode.split("\n"));
+      Patch<String> patch = DiffUtils.diff(original, revised);
+      for (AbstractDelta<String> delta : patch.getDeltas()) {
+        methodChange.addHunk(Hunk.from(delta));
+      }
+      methodChanges.add(methodChange);
+    }
+
+    return methodChanges;
+  }
+
   public List<CtClass<?>> getAllTestClasses() {
     CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
     TypeFilter<CtClass<?>> isRealTestingClass = new TypeFilter<>(CtClass.class) {
@@ -75,71 +101,30 @@ public class Spoon {
     return testMethods;
   }
 
-  public List<CtMethod<?>> getMethodsByName(Set<String> names) {
-    TypeFilter<CtMethod<?>> methodNameFilter = new TypeFilter<>(CtMethod.class) {
+  public List<CtExecutable<?>> getExecutablesByName(Set<String> names) {
+    TypeFilter<CtExecutable<?>> executableNameFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
-      public boolean matches(CtMethod<?> ctMethod) {
-        if (!super.matches(ctMethod)) {
+      public boolean matches(CtExecutable<?> ctExecutable) {
+        if (!super.matches(ctExecutable)) {
           return false;
         }
-        var signature = String.format("%s.%s", ctMethod.getDeclaringType().getQualifiedName(), ctMethod.getSignature());
-        return names.contains(signature);
+        return names.contains(getUniqueName(ctExecutable));
       }
     };
-    return spoon.getModel().getRootPackage().getElements(methodNameFilter);
+    return spoon.getModel().getRootPackage().getElements(executableNameFilter);
   }
 
-  public List<CtMethod<?>> getMethodsByFile(Set<String> files, String srcPath) {
-    TypeFilter<CtMethod<?>> methodFileFilter = new TypeFilter<>(CtMethod.class) {
+  public List<CtExecutable<?>> getExecutablesByFile(Set<String> files, String srcPath) {
+    TypeFilter<CtExecutable<?>> executableFileFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
-      public boolean matches(CtMethod<?> ctMethod) {
-        if (!super.matches(ctMethod)) {
+      public boolean matches(CtExecutable<?> ctExecutable) {
+        if (!super.matches(ctExecutable)) {
           return false;
         }
-        var methodFilePath = getRelativePath(ctMethod, srcPath);
-        return files.contains(methodFilePath);
+        var executableFilePath = getRelativePath(ctExecutable, srcPath);
+        return files.contains(executableFilePath);
       }
     };
-    return spoon.getModel().getRootPackage().getElements(methodFileFilter);
-  }
-
-  public List<CtMethod<?>> getMethodsByReference(List<CtExecutableReference<?>> refs) {
-    TypeFilter<CtMethod<?>> methodRefFilter = new TypeFilter<>(CtMethod.class) {
-      @Override
-      public boolean matches(CtMethod<?> ctMethod) {
-        if (!super.matches(ctMethod)) {
-          return false;
-        }
-        return refs.contains(ctMethod.getReference());
-      }
-    };
-    return spoon.getModel().getRootPackage().getElements(methodRefFilter);
-  }
-
-  public static List<MethodChange> getMethodChanges(
-          List<CtMethod<?>> baseMethods, List<CtMethod<?>> headMethods, String headSrcPath
-  ) {
-    var baseMethodsMap = baseMethods.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
-    var methodChanges = new ArrayList<MethodChange>();
-    for (var hMethod : headMethods) {
-      var hMethodName = Spoon.getUniqueName(hMethod);
-      if (!baseMethodsMap.containsKey(hMethodName)) continue;
-
-      var bMethodCode = baseMethodsMap.get(hMethodName).prettyprint();
-      var hMethodCode = hMethod.prettyprint();
-      if (bMethodCode.equals(hMethodCode)) continue;
-
-      var methodFilePath = Spoon.getRelativePath(hMethod, headSrcPath);
-      var methodChange = new MethodChange(methodFilePath, hMethodName);
-      List<String> original = Arrays.asList(bMethodCode.split("\n"));
-      List<String> revised = Arrays.asList(hMethodCode.split("\n"));
-      Patch<String> patch = DiffUtils.diff(original, revised);
-      for (AbstractDelta<String> delta : patch.getDeltas()) {
-        methodChange.addHunk(Hunk.from(delta));
-      }
-      methodChanges.add(methodChange);
-    }
-
-    return methodChanges;
+    return spoon.getModel().getRootPackage().getElements(executableFileFilter);
   }
 }

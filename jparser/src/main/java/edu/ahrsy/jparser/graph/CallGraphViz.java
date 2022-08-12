@@ -7,20 +7,18 @@ import guru.nidi.graphviz.model.MutableGraph;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Map;
 
 import static guru.nidi.graphviz.model.Factory.mutGraph;
 import static guru.nidi.graphviz.model.Factory.mutNode;
 
 public class CallGraphViz {
-  private static void visualizeGraph(Map<String, HashSet<String>> callGraph, String root) {
+  public static void visualizeGraph(CallGraph callGraph) {
     MutableGraph graphV = mutGraph("example").setDirected(true);
-    for (var entry : callGraph.entrySet()) {
-      if (entry.getKey().equals(root))
-        graphV.add(mutNode(entry.getKey()).add(Color.RED));
+    for (var entry : callGraph.graph.entrySet()) {
+      if (entry.getKey().name.equals(callGraph.root.name))
+        graphV.add(mutNode(entry.getKey().name).add(Color.RED));
       for (var callee : entry.getValue())
-        graphV.add(mutNode(entry.getKey()).addLink(mutNode(callee)));
+        graphV.add(mutNode(entry.getKey().name).addLink(mutNode(callee.name)));
     }
     try {
       Graphviz.fromGraph(graphV).render(Format.SVG).toFile(new File("example.svg"));

@@ -13,7 +13,6 @@ import edu.ahrsy.jparser.entity.TestRepair;
 import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBar;
-import spoon.reflect.declaration.CtExecutable;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -54,7 +53,7 @@ public class JParser {
     var repairedMethods = releaseRepairs.stream()
             .map(TestRepair::getMethodSignature)
             .collect(Collectors.toCollection(HashSet::new));
-    var methods = spoon.getMethodsByName(repairedMethods);
+    var methods = spoon.getExecutablesByName(repairedMethods);
     for (var method : methods) {
       var callGraph = new CallGraph(method);
       callGraph.createCallGraph();
@@ -85,10 +84,10 @@ public class JParser {
       var baseSpoon = new Spoon(baseSrcPath, args.complianceLevel);
       var headSpoon = new Spoon(headSrcPath, args.complianceLevel);
       var changedFiles = entry.getValue();
-      var baseMethods = baseSpoon.getMethodsByFile(changedFiles, baseSrcPath);
-      var headMethods = headSpoon.getMethodsByReference(baseMethods.stream()
-              .map(CtExecutable::getReference)
-              .collect(Collectors.toList()));
+      var baseMethods = baseSpoon.getExecutablesByFile(changedFiles, baseSrcPath);
+      var headMethods = headSpoon.getExecutablesByName(baseMethods.stream()
+              .map(Spoon::getUniqueName)
+              .collect(Collectors.toSet()));
       var methodChanges = Spoon.getMethodChanges(baseMethods, headMethods, headSrcPath);
       allReleasesMethodChanges.add(new ReleaseMethodChanges(tags[0], tags[1], methodChanges));
     }
