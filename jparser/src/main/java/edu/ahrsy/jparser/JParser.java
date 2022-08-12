@@ -40,7 +40,7 @@ public class JParser {
   public static void cTestMethods(CommandTestMethods args) {
     var spoon = new Spoon(args.srcPath, args.complianceLevel);
     for (var method : spoon.getTestMethods())
-      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), method.prettyprint());
+      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrintWithoutComments(method));
   }
 
   public static void cCallGraphs(CommandCallGraphs args) {
