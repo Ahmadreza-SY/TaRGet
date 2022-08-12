@@ -51,8 +51,8 @@ public class Spoon {
       var hMethodName = Spoon.getUniqueName(hMethod);
       if (!baseMethodsMap.containsKey(hMethodName)) continue;
 
-      var bMethodCode = baseMethodsMap.get(hMethodName).prettyprint();
-      var hMethodCode = hMethod.prettyprint();
+      var bMethodCode = prettyPrintWithoutComments(baseMethodsMap.get(hMethodName));
+      var hMethodCode = prettyPrintWithoutComments(hMethod);
       if (bMethodCode.equals(hMethodCode)) continue;
 
       var methodFilePath = Spoon.getRelativePath(hMethod, headSrcPath);
@@ -67,6 +67,13 @@ public class Spoon {
     }
 
     return methodChanges;
+  }
+
+  public static String prettyPrintWithoutComments(CtExecutable<?> executable) {
+    var executableCopy = executable.clone();
+    for (var comment : executable.getComments())
+      executableCopy.removeComment(comment);
+    return executableCopy.prettyprint();
   }
 
   public List<CtClass<?>> getAllTestClasses() {
