@@ -156,7 +156,7 @@ class ReleasePair:
                 test_release_info["class"].values.tolist(),
             )
         )
-        test_repair_info = {"class": [], "method": [], "base_tag": [], "head_tag": []}
+        test_repair_info = {"class": [], "method": [], "path": [], "base_tag": [], "head_tag": []}
         for test_patch in self.test_patches:
             test_path = Path(test_patch.path)
             _class = path_to_class[str(test_path)]
@@ -164,6 +164,7 @@ class ReleasePair:
             for method in changed_methods:
                 test_repair_info["class"].append(_class)
                 test_repair_info["method"].append(method)
+                test_repair_info["path"].append(test_patch.path)
                 test_repair_info["base_tag"].append(self.base.tag)
                 test_repair_info["head_tag"].append(self.head.tag)
         return pd.DataFrame(test_repair_info)

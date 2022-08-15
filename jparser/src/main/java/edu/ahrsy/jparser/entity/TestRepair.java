@@ -7,6 +7,8 @@ public class TestRepair {
   public String _class;
   @CsvBindByName(column = "method")
   public String method;
+  @CsvBindByName(column = "path")
+  public String path;
   @CsvBindByName(column = "base_tag")
   public String baseTag;
   @CsvBindByName(column = "head_tag")
@@ -14,5 +16,9 @@ public class TestRepair {
 
   public String getMethodSignature() {
     return _class + "." + method;
+  }
+
+  public String getPath() {
+    return path;
   }
 }

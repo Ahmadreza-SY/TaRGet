@@ -53,7 +53,10 @@ public class JParser {
     var repairedMethods = releaseRepairs.stream()
             .map(TestRepair::getMethodSignature)
             .collect(Collectors.toCollection(HashSet::new));
-    var methods = spoon.getExecutablesByName(repairedMethods);
+    var repairedMethodPaths = releaseRepairs.stream()
+            .map(TestRepair::getPath)
+            .collect(Collectors.toCollection(HashSet::new));
+    var methods = spoon.getExecutablesByName(repairedMethods, repairedMethodPaths, args.srcPath);
     for (var method : methods) {
       var callGraph = new CallGraph(method);
       callGraph.createCallGraph();
@@ -70,7 +73,7 @@ public class JParser {
 
     var releaseChangedFileMap = new HashMap<String, Set<String>>();
     for (var changeCoverage : testChangeCoverages) {
-      String release = String.format("%s-%s", changeCoverage.baseTag, changeCoverage.headTag);
+      String release = String.format("%s$%s", changeCoverage.baseTag, changeCoverage.headTag);
       if (!releaseChangedFileMap.containsKey(release)) releaseChangedFileMap.put(release, new HashSet<>());
       releaseChangedFileMap.get(release).addAll(changeCoverage.coveredChangedFiles);
     }
@@ -78,7 +81,7 @@ public class JParser {
     var allReleasesMethodChanges = new ArrayList<ReleaseMethodChanges>();
     for (var entry : ProgressBar.wrap(releaseChangedFileMap.entrySet(), "Detecting methods changes")) {
       if (entry.getValue().isEmpty()) continue;
-      var tags = entry.getKey().split("-");
+      var tags = entry.getKey().split("\\$");
       String baseSrcPath = Path.of(args.outputPath, "releases", tags[0], "code").toString();
       String headSrcPath = Path.of(args.outputPath, "releases", tags[1], "code").toString();
       var baseSpoon = new Spoon(baseSrcPath, args.complianceLevel);

@@ -79,6 +79,9 @@ class Service:
                 Path(Config.get("output_path")) / "releases" / head_tag / "changed_tests" / _class / "methods" / method
             ).read_text()
             method_coverage = get_test_method_coverage(_class, method, base_tag)
+            if method_coverage is None:
+                print(f"No call graph found for {name} ! Skipping ...")
+                continue
             covered_changes = [change for change in changed_methods.get(base_tag, []) if change["name"] in method_coverage]
 
             dataset.append(

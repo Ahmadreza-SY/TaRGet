@@ -113,16 +113,21 @@ public class Spoon {
     return testMethods;
   }
 
-  public List<CtExecutable<?>> getExecutablesByName(Set<String> names) {
+  public List<CtExecutable<?>> getExecutablesByName(Set<String> names, Set<String> paths, String srcPath) {
     TypeFilter<CtExecutable<?>> executableNameFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
       public boolean matches(CtExecutable<?> ctExecutable) {
         if (!super.matches(ctExecutable)) return false;
         if (!isMethodOrConstructor(ctExecutable)) return false;
+        if (paths != null && !paths.contains(getRelativePath(ctExecutable, srcPath))) return false;
         return names.contains(getUniqueName(ctExecutable));
       }
     };
     return spoon.getModel().getRootPackage().getElements(executableNameFilter);
+  }
+
+  public List<CtExecutable<?>> getExecutablesByName(Set<String> names) {
+    return getExecutablesByName(names, null, null);
   }
 
   public List<CtExecutable<?>> getExecutablesByFile(Set<String> files, String srcPath) {
