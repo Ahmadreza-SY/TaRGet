@@ -1,5 +1,6 @@
 package edu.ahrsy.jparser.graph;
 
+import edu.ahrsy.jparser.Spoon;
 import edu.ahrsy.jparser.graph.dto.Mapper;
 import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.reflect.code.CtAbstractInvocation;
@@ -30,18 +31,16 @@ public class CallGraph {
     List<CtAbstractInvocation<?>> invocations = node.getInvocations().stream().filter(inv -> {
       CtExecutable<?> invExe = inv.getExecutable().getDeclaration();
       // TODO handle polymorphism (OverridingMethodFilter)
-      return invExe != null && invExe.getBody() != null;
+      return invExe != null && invExe.getBody() != null && Spoon.isMethodOrConstructor(invExe);
     }).collect(Collectors.toList());
-    if (invocations.isEmpty())
-      return;
+    if (invocations.isEmpty()) return;
 
     graph.put(node, new HashSet<>());
     for (var invocation : invocations) {
       CtExecutable<?> invExecutable = invocation.getExecutable().getDeclaration();
       CGNode newNode = new CGNode(invExecutable);
       graph.get(node).add(newNode);
-      if (!graph.containsKey(newNode))
-        createCallGraph(newNode);
+      if (!graph.containsKey(newNode)) createCallGraph(newNode);
     }
   }
 
