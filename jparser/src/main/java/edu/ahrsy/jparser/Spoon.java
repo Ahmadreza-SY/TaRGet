@@ -26,6 +26,7 @@ public class Spoon {
     this.srcPath = srcPath;
     spoon = new Launcher();
     spoon.addInputResource(srcPath);
+    spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     spoon.buildModel();
   }
