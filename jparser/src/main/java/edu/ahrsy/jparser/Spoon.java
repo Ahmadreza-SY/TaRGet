@@ -77,6 +77,10 @@ public class Spoon {
     return executableCopy.prettyprint();
   }
 
+  public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
+    return (executable instanceof CtMethod) || (executable instanceof CtConstructor);
+  }
+
   public List<CtClass<?>> getAllTestClasses() {
     CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
     TypeFilter<CtClass<?>> isRealTestingClass = new TypeFilter<>(CtClass.class) {
@@ -113,9 +117,8 @@ public class Spoon {
     TypeFilter<CtExecutable<?>> executableNameFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
       public boolean matches(CtExecutable<?> ctExecutable) {
-        if (!super.matches(ctExecutable)) {
-          return false;
-        }
+        if (!super.matches(ctExecutable)) return false;
+        if (!isMethodOrConstructor(ctExecutable)) return false;
         return names.contains(getUniqueName(ctExecutable));
       }
     };
@@ -126,9 +129,8 @@ public class Spoon {
     TypeFilter<CtExecutable<?>> executableFileFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
       public boolean matches(CtExecutable<?> ctExecutable) {
-        if (!super.matches(ctExecutable)) {
-          return false;
-        }
+        if (!super.matches(ctExecutable)) return false;
+        if (!isMethodOrConstructor(ctExecutable)) return false;
         var executableFilePath = getRelativePath(ctExecutable, srcPath);
         return files.contains(executableFilePath);
       }
