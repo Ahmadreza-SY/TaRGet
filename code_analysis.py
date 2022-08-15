@@ -16,6 +16,8 @@ def create_repaired_tc_call_graphs():
 
 def get_call_graph(_class, method, tag):
     call_graph_path = Path(Config.get("output_path")) / "releases" / tag / "call_graphs" / _class / f"{method}.json"
+    if not call_graph_path.exists():
+        return None
     call_graph = {}
     with open(call_graph_path) as f:
         call_graph = json.loads(f.read())
@@ -28,6 +30,8 @@ def get_test_file_coverage(_class, method, tag):
     all_test_files = all_tests["PATH"].values.tolist()
 
     call_graph = get_call_graph(_class, method, tag)
+    if call_graph is None:
+        return None
 
     return set([n["path"] for n in call_graph["nodes"] if n["path"] not in all_test_files])
 
@@ -57,6 +61,8 @@ def create_repaired_tc_change_coverage():
             r["head_tag"],
         )
         tc_coverage = get_test_file_coverage(_class, method, base_tag)
+        if tc_coverage is None:
+            continue
         changed_files = get_release_changed_files(base_tag, head_tag)
         tc_change_coverage = list(tc_coverage.intersection(changed_files))
         if len(tc_coverage) == 0:
@@ -84,4 +90,6 @@ def create_repaired_tc_change_coverage():
 
 def get_test_method_coverage(_class, method, tag):
     call_graph = get_call_graph(_class, method, tag)
+    if call_graph is None:
+        return None
     return set([n["name"] for n in call_graph["nodes"]])
