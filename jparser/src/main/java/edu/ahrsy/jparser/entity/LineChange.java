@@ -5,7 +5,7 @@ public class LineChange {
   ChangeType type;
 
   public LineChange(String line, ChangeType type) {
-    this.line = line;
+    this.line = line.strip();
     this.type = type;
   }
 }

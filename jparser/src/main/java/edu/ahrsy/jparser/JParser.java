@@ -84,14 +84,10 @@ public class JParser {
       var tags = entry.getKey().split("\\$");
       String baseSrcPath = Path.of(args.outputPath, "releases", tags[0], "code").toString();
       String headSrcPath = Path.of(args.outputPath, "releases", tags[1], "code").toString();
-      var baseSpoon = new Spoon(baseSrcPath, args.complianceLevel);
-      var headSpoon = new Spoon(headSrcPath, args.complianceLevel);
+
       var changedFiles = entry.getValue();
-      var baseMethods = baseSpoon.getExecutablesByFile(changedFiles, baseSrcPath);
-      var headMethods = headSpoon.getExecutablesByName(baseMethods.stream()
-              .map(Spoon::getUniqueName)
-              .collect(Collectors.toSet()));
-      var methodChanges = Spoon.getMethodChanges(baseMethods, headMethods, headSrcPath);
+      var methodDiffParser = new MethodDiffParser(baseSrcPath, headSrcPath, args.complianceLevel);
+      var methodChanges = methodDiffParser.detectMethodsChanges(changedFiles);
       allReleasesMethodChanges.add(new ReleaseMethodChanges(tags[0], tags[1], methodChanges));
     }
 

@@ -66,4 +66,16 @@ public class IOUtils {
     } catch (Exception ignored) {
     }
   }
+
+  public static int countLines(File file) {
+    int lines = 0;
+    try {
+      BufferedReader reader = new BufferedReader(new FileReader(file));
+      while (reader.readLine() != null) lines++;
+      reader.close();
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    return lines;
+  }
 }

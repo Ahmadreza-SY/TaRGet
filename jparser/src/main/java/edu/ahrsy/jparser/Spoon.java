@@ -1,22 +1,20 @@
 package edu.ahrsy.jparser;
 
-import com.github.difflib.DiffUtils;
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Patch;
-import edu.ahrsy.jparser.entity.Hunk;
-import edu.ahrsy.jparser.entity.MethodChange;
 import spoon.Launcher;
 import spoon.SpoonAPI;
+import spoon.processing.Processor;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.CtTypeReference;
+import spoon.reflect.visitor.DefaultImportComparator;
+import spoon.reflect.visitor.ForceImportProcessor;
+import spoon.reflect.visitor.ImportCleaner;
+import spoon.reflect.visitor.ImportConflictDetector;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class Spoon {
   private final SpoonAPI spoon;
@@ -28,6 +26,17 @@ public class Spoon {
     spoon.addInputResource(srcPath);
     spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
+    spoon.getEnvironment().setCommentEnabled(false);
+    spoon.getFactory().getEnvironment().setPrettyPrinterCreator(() -> {
+      var printer = new CustomJavaPrettyPrinter(spoon.getFactory().getEnvironment());
+      List<Processor<CtElement>> preprocessors = List.of(new ForceImportProcessor(),
+              new ImportCleaner().setCanAddImports(false),
+              new ImportConflictDetector(),
+              new ImportCleaner().setImportComparator(new DefaultImportComparator()));
+      printer.setIgnoreImplicit(false);
+      printer.setPreprocessors(preprocessors);
+      return printer;
+    });
     spoon.buildModel();
   }
 
@@ -43,38 +52,15 @@ public class Spoon {
     return String.format("%s.%s", ((CtType<?>) executable.getParent()).getQualifiedName(), executable.getSignature());
   }
 
-  public static List<MethodChange> getMethodChanges(
-          List<CtExecutable<?>> baseExecutables, List<CtExecutable<?>> headExecutables, String headSrcPath
-  ) {
-    var baseMethodsMap = baseExecutables.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
-    var methodChanges = new ArrayList<MethodChange>();
-    for (var hMethod : headExecutables) {
-      var hMethodName = Spoon.getUniqueName(hMethod);
-      if (!baseMethodsMap.containsKey(hMethodName)) continue;
-
-      var bMethodCode = prettyPrintWithoutComments(baseMethodsMap.get(hMethodName));
-      var hMethodCode = prettyPrintWithoutComments(hMethod);
-      if (bMethodCode.equals(hMethodCode)) continue;
-
-      var methodFilePath = Spoon.getRelativePath(hMethod, headSrcPath);
-      var methodChange = new MethodChange(methodFilePath, hMethodName);
-      List<String> original = Arrays.asList(bMethodCode.split("\n"));
-      List<String> revised = Arrays.asList(hMethodCode.split("\n"));
-      Patch<String> patch = DiffUtils.diff(original, revised);
-      for (AbstractDelta<String> delta : patch.getDeltas()) {
-        methodChange.addHunk(Hunk.from(delta));
-      }
-      methodChanges.add(methodChange);
-    }
-
-    return methodChanges;
+  public static String getSimpleName(CtExecutable<?> executable) {
+    SimpleSignaturePrinter pr = new SimpleSignaturePrinter();
+    pr.scan(executable);
+    return pr.getSignature();
   }
 
+
   public static String prettyPrintWithoutComments(CtExecutable<?> executable) {
-    var executableCopy = executable.clone();
-    for (var comment : executable.getComments())
-      executableCopy.removeComment(comment);
-    return executableCopy.prettyprint();
+    return executable.toString();
   }
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
@@ -126,11 +112,7 @@ public class Spoon {
     return spoon.getModel().getRootPackage().getElements(executableNameFilter);
   }
 
-  public List<CtExecutable<?>> getExecutablesByName(Set<String> names) {
-    return getExecutablesByName(names, null, null);
-  }
-
-  public List<CtExecutable<?>> getExecutablesByFile(Set<String> files, String srcPath) {
+  public List<CtExecutable<?>> getExecutablesByFile(Set<String> files) {
     TypeFilter<CtExecutable<?>> executableFileFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
       public boolean matches(CtExecutable<?> ctExecutable) {
