@@ -1,6 +1,6 @@
 package edu.ahrsy.jparser.graph;
 
-import edu.ahrsy.jparser.Spoon;
+import edu.ahrsy.jparser.spoon.Spoon;
 import spoon.reflect.code.CtAbstractInvocation;
 import spoon.reflect.declaration.CtExecutable;
 import spoon.reflect.visitor.filter.AbstractFilter;

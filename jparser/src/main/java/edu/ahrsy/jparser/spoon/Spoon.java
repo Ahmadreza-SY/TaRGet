@@ -1,4 +1,4 @@
-package edu.ahrsy.jparser;
+package edu.ahrsy.jparser.spoon;
 
 import spoon.Launcher;
 import spoon.SpoonAPI;

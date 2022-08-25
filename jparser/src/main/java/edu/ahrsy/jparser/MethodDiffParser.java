@@ -1,6 +1,7 @@
 package edu.ahrsy.jparser;
 
 import edu.ahrsy.jparser.entity.MethodChange;
+import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import org.apache.commons.text.similarity.JaroWinklerDistance;
 import spoon.reflect.declaration.CtExecutable;

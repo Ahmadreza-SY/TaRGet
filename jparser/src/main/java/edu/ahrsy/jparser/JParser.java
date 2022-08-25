@@ -11,6 +11,7 @@ import edu.ahrsy.jparser.entity.TestChangeCoverage;
 import edu.ahrsy.jparser.entity.TestClass;
 import edu.ahrsy.jparser.entity.TestRepair;
 import edu.ahrsy.jparser.graph.CallGraph;
+import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBar;
 
