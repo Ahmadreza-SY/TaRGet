@@ -1,7 +1,7 @@
 package edu.ahrsy.jparser.graph;
 
-import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.graph.dto.Mapper;
+import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.reflect.code.CtAbstractInvocation;
 import spoon.reflect.declaration.CtExecutable;
@@ -15,12 +15,14 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class CallGraph {
+  public final Spoon spoon;
   public Map<CGNode, HashSet<CGNode>> graph;
   public CGNode root;
 
-  public CallGraph(CtExecutable<?> root) {
+  public CallGraph(CtExecutable<?> root, Spoon spoon) {
     this.graph = new HashMap<>();
     this.root = new CGNode(root);
+    this.spoon = spoon;
   }
 
   public void createCallGraph() {
@@ -55,5 +57,11 @@ public class CallGraph {
             testClassFullName,
             root.executable.getSignature() + ".json");
     IOUtils.saveFile(graphFile, graphJson);
+  }
+
+  public void addSubGraph(CtExecutable<?> executable) {
+    var subGraphRoot = new CGNode(executable);
+    graph.get(root).add(subGraphRoot);
+    createCallGraph(subGraphRoot);
   }
 }
