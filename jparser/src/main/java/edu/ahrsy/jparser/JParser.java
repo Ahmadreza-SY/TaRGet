@@ -14,6 +14,7 @@ import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBar;
+import spoon.reflect.declaration.CtMethod;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -59,8 +60,11 @@ public class JParser {
             .collect(Collectors.toCollection(HashSet::new));
     var methods = spoon.getExecutablesByName(repairedMethods, repairedMethodPaths, args.srcPath);
     for (var method : methods) {
-      var callGraph = new CallGraph(method);
+      var callGraph = new CallGraph(method, spoon);
       callGraph.createCallGraph();
+      var relatedMethods = spoon.getTestPreAndPostMethods((CtMethod<?>) method);
+      for (var relatedMethod : relatedMethods)
+        callGraph.addSubGraph(relatedMethod);
       callGraph.save(args.outputPath, args.releaseTag, args.srcPath);
     }
   }

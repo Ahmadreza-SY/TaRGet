@@ -13,6 +13,7 @@ import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -65,6 +66,15 @@ public class Spoon {
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
     return (executable instanceof CtMethod) || (executable instanceof CtConstructor);
+  }
+
+  public Set<CtMethod<?>> getTestPreAndPostMethods(CtMethod<?> testMethod) {
+    List<CtTypeReference<?>> refs = Arrays.asList(spoon.getFactory().Type().createReference("org.junit.Before"),
+            spoon.getFactory().Type().createReference("org.junit.BeforeClass"),
+            spoon.getFactory().Type().createReference("org.junit.After"),
+            spoon.getFactory().Type().createReference("org.junit.AfterClass"));
+
+    return testMethod.getDeclaringType().getMethodsAnnotatedWith(refs.toArray(new CtTypeReference[0]));
   }
 
   public List<CtClass<?>> getAllTestClasses() {
