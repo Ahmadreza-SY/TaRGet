@@ -1,6 +1,6 @@
 package edu.ahrsy.jparser.graph.dto;
 
-import edu.ahrsy.jparser.Spoon;
+import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.graph.CGNode;
 import edu.ahrsy.jparser.graph.CallGraph;
 

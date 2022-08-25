@@ -1,6 +1,6 @@
 package edu.ahrsy.jparser.graph;
 
-import edu.ahrsy.jparser.Spoon;
+import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.graph.dto.Mapper;
 import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.reflect.code.CtAbstractInvocation;
