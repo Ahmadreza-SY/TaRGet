@@ -2,6 +2,7 @@ package edu.ahrsy.jparser.spoon;
 
 import spoon.Launcher;
 import spoon.SpoonAPI;
+import spoon.SpoonException;
 import spoon.processing.Processor;
 import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
@@ -66,7 +67,14 @@ public class Spoon {
 
 
   public static String prettyPrintWithoutComments(CtExecutable<?> executable) {
-    return executable.toString();
+    try {
+      return executable.toString();
+    } catch (SpoonException e) {
+      System.out.printf("ERROR in prettyPrintWithoutComments: executable = %s%n %s%n",
+              executable.getSignature(),
+              e.getMessage());
+    }
+    return executable.getSignature();
   }
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
