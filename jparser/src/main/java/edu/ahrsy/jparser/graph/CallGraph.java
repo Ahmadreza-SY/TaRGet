@@ -22,6 +22,7 @@ public class CallGraph {
   public CallGraph(CtExecutable<?> root, Spoon spoon) {
     this.graph = new HashMap<>();
     this.root = new CGNode(root);
+    this.graph.put(this.root, new HashSet<>());
     this.spoon = spoon;
   }
 

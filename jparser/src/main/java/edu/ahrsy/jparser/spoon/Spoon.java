@@ -3,6 +3,7 @@ package edu.ahrsy.jparser.spoon;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.processing.Processor;
+import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.DefaultImportComparator;
@@ -42,6 +43,10 @@ public class Spoon {
   }
 
   public static String getRelativePath(CtExecutable<?> executable, String srcPath) {
+    if (!executable.getPosition().isValidPosition() && !executable.getParent().getPosition().isValidPosition()) {
+      System.out.printf("getRelativePath: No valid position found for %s %n", Spoon.getSimpleName(executable));
+      return new NoSourcePosition().toString();
+    }
     var srcURI = new File(srcPath).toURI();
     var absFile = executable.getPosition().getCompilationUnit().getFile();
     if (absFile == null) absFile = executable.getParent().getPosition().getCompilationUnit().getFile();
@@ -115,8 +120,8 @@ public class Spoon {
       public boolean matches(CtExecutable<?> ctExecutable) {
         if (!super.matches(ctExecutable)) return false;
         if (!isMethodOrConstructor(ctExecutable)) return false;
-        if (paths != null && !paths.contains(getRelativePath(ctExecutable, srcPath))) return false;
-        return names.contains(getUniqueName(ctExecutable));
+        if (!names.contains(getUniqueName(ctExecutable))) return false;
+        return paths == null || paths.contains(getRelativePath(ctExecutable, srcPath));
       }
     };
     return spoon.getModel().getRootPackage().getElements(executableNameFilter);

@@ -66,7 +66,13 @@ public class MethodDiffParser {
     return methodChanges;
   }
 
-  private double computeLineSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
+  private Double computeLineSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
+    if (!source.getPosition().isValidPosition() || !target.getPosition().isValidPosition()) {
+      System.out.printf("Line similarity: No valid position found for %s or %s%n",
+              Spoon.getSimpleName(source),
+              Spoon.getSimpleName(target));
+      return null;
+    }
     var sourceLineCnt = IOUtils.countLines(source.getPosition().getCompilationUnit().getFile());
     var targetLineCnt = IOUtils.countLines(target.getPosition().getCompilationUnit().getFile());
     double maxLineCnt = Integer.max(sourceLineCnt, targetLineCnt);
@@ -92,10 +98,11 @@ public class MethodDiffParser {
   }
 
   private double computeOverallSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
-    var max = SIG_SIM_MUL + BODY_SIM_MUL + LINE_SIM_MUL;
+    var lineSimilarity = computeLineSimilarity(source, target);
+    var max = SIG_SIM_MUL + BODY_SIM_MUL + (lineSimilarity == null ? 0.0 : LINE_SIM_MUL);
     return (computeSignatureSimilarity(source, target) * SIG_SIM_MUL +
             computeBodySimilarity(source, target) * BODY_SIM_MUL +
-            computeLineSimilarity(source, target) * LINE_SIM_MUL) / max;
+            (lineSimilarity == null ? 0.0 : lineSimilarity) * LINE_SIM_MUL) / max;
   }
 
   private List<MethodChange> detectMissingMethodsChanges(
