@@ -41,6 +41,13 @@ class Service:
         )
 
     @staticmethod
+    def get_test_code(tag, _class, method):
+        base_path = Path(Config.get("output_path")) / "releases" / tag / "changed_tests" / _class / "methods"
+        code = (base_path / method).read_text()
+        body_code = (base_path / (method + "_BODY")).read_text()
+        return code, body_code
+
+    @staticmethod
     def create_dataset():
         create_repaired_tc_call_graphs()
         create_repaired_tc_change_coverage()
@@ -50,6 +57,11 @@ class Service:
             (Path(Config.get("output_path")) / "repairs" / "test_coverage_changed_methods.json").read_text()
         )
         changed_methods = {r["baseTag"]: r["methodChanges"] for r in full_changed_methods}
+
+        test_repair_changes = json.loads(
+            (Path(Config.get("output_path")) / "repairs" / "test_repair_changes.json").read_text()
+        )
+        repair_changes_map = {f"{ch['baseTag']}-{ch['headTag']}-{ch['name']}": ch["hunks"] for ch in test_repair_changes}
 
         dataset = []
         test_paths = {}
@@ -72,17 +84,14 @@ class Service:
                 tests = pd.read_csv(Path(Config.get("output_path")) / "releases" / base_tag / "tests.csv")
                 test_paths[base_tag] = dict(zip(tests["NAME"].values.tolist(), tests["PATH"].values.tolist()))
             path = test_paths[base_tag][_class]
-            before_repair = (
-                Path(Config.get("output_path")) / "releases" / base_tag / "changed_tests" / _class / "methods" / method
-            ).read_text()
-            after_repair = (
-                Path(Config.get("output_path")) / "releases" / head_tag / "changed_tests" / _class / "methods" / method
-            ).read_text()
+            before_repair, before_repair_body = Service.get_test_code(base_tag, _class, method)
+            after_repair, after_repair_body = Service.get_test_code(head_tag, _class, method)
             method_coverage = get_test_method_coverage(_class, method, base_tag)
             if method_coverage is None:
                 print(f"No call graph found for {name} ! Skipping ...")
                 continue
             covered_changes = [change for change in changed_methods.get(base_tag, []) if change["name"] in method_coverage]
+            repair_changes = repair_changes_map[f"{base_tag}-{head_tag}-{name}"]
 
             dataset.append(
                 {
@@ -91,8 +100,11 @@ class Service:
                     "base_release_tag": base_tag,
                     "head_release_tag": head_tag,
                     "before_repair": before_repair,
+                    "before_repair_body": before_repair_body,
                     "after_repair": after_repair,
+                    "after_repair_body": after_repair_body,
                     "covered_changes": covered_changes,
+                    "repair_changes": repair_changes,
                 }
             )
 

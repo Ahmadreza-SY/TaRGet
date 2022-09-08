@@ -4,6 +4,7 @@ import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.SpoonException;
 import spoon.processing.Processor;
+import spoon.reflect.code.CtBlock;
 import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.CtTypeReference;
@@ -75,6 +76,10 @@ public class Spoon {
               e.getMessage());
     }
     return executable.getSignature();
+  }
+
+  public static String prettyPrintWithoutComments(CtBlock<?> block) {
+    return block.toString();
   }
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {

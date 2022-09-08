@@ -6,10 +6,7 @@ import edu.ahrsy.jparser.cli.CommandCallGraphs;
 import edu.ahrsy.jparser.cli.CommandMethodChanges;
 import edu.ahrsy.jparser.cli.CommandTestClasses;
 import edu.ahrsy.jparser.cli.CommandTestMethods;
-import edu.ahrsy.jparser.entity.ReleaseMethodChanges;
-import edu.ahrsy.jparser.entity.TestChangeCoverage;
-import edu.ahrsy.jparser.entity.TestClass;
-import edu.ahrsy.jparser.entity.TestRepair;
+import edu.ahrsy.jparser.entity.*;
 import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
@@ -41,8 +38,11 @@ public class JParser {
 
   public static void cTestMethods(CommandTestMethods args) {
     var spoon = new Spoon(args.srcPath, args.complianceLevel);
-    for (var method : spoon.getTestMethods())
+    for (var method : spoon.getTestMethods()) {
       IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrintWithoutComments(method));
+      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature() + "_BODY"),
+              Spoon.prettyPrintWithoutComments(method.getBody()));
+    }
   }
 
   public static void cCallGraphs(CommandCallGraphs args) {
@@ -69,7 +69,41 @@ public class JParser {
     }
   }
 
+  private static void extractTestMethodChanges(String outputPath) {
+    var repairs = IOUtils.readCsv(Path.of(outputPath, "repairs", "test_repair_info.csv").toString(), TestRepair.class);
+    var testChanges = new ArrayList<TestChange>();
+    for (var repair : repairs) {
+      var beforeRepair = IOUtils.readFile(Path.of(outputPath,
+              "releases",
+              repair.baseTag,
+              "changed_tests",
+              repair._class,
+              "methods",
+              repair.method + "_BODY"));
+      var afterRepair = IOUtils.readFile(Path.of(outputPath,
+              "releases",
+              repair.headTag,
+              "changed_tests",
+              repair._class,
+              "methods",
+              repair.method + "_BODY"));
+
+      var methodChange = new MethodChange(repair.path, repair.method);
+      methodChange.extractHunks(beforeRepair, afterRepair);
+      testChanges.add(new TestChange(repair._class + "." + repair.method,
+              repair.baseTag,
+              repair.headTag,
+              methodChange.getHunks()));
+    }
+
+    var gson = IOUtils.createGsonInstance();
+    var outputJson = gson.toJson(testChanges);
+    IOUtils.saveFile(Path.of(outputPath, "repairs", "test_repair_changes.json"), outputJson);
+  }
+
   public static void cMethodChanges(CommandMethodChanges args) {
+    extractTestMethodChanges(args.outputPath);
+
     String changeCoverageJson = IOUtils.readFile(Path.of(args.outputPath, "repairs", "test_change_coverage.json"));
     var gson = IOUtils.createGsonInstance();
     List<TestChangeCoverage> testChangeCoverages = gson.fromJson(changeCoverageJson,

@@ -32,4 +32,8 @@ public class MethodChange {
   public String getName() {
     return name;
   }
+
+  public List<Hunk> getHunks() {
+    return hunks;
+  }
 }
