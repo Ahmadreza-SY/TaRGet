@@ -42,9 +42,9 @@ class Service:
 
     @staticmethod
     def get_test_code(tag, _class, method):
-        base_path = Path(Config.get("output_path")) / "releases" / tag / "changed_tests" / _class / "methods"
-        code = (base_path / method).read_text()
-        body_code = (base_path / (method + "_BODY")).read_text()
+        base_path = Path(Config.get("output_path")) / "releases" / tag / "changed_tests" / _class
+        code = (base_path / "methods" / method).read_text()
+        body_code = (base_path / "methodBodies" / method).read_text()
         return code, body_code
 
     @staticmethod

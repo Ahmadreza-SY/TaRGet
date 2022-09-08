@@ -40,7 +40,7 @@ public class JParser {
     var spoon = new Spoon(args.srcPath, args.complianceLevel);
     for (var method : spoon.getTestMethods()) {
       IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrintWithoutComments(method));
-      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature() + "_BODY"),
+      IOUtils.saveFile(Path.of(args.outputPath).getParent().resolve("methodBodies").resolve(method.getSignature()),
               Spoon.prettyPrintWithoutComments(method.getBody()));
     }
   }
@@ -78,15 +78,15 @@ public class JParser {
               repair.baseTag,
               "changed_tests",
               repair._class,
-              "methods",
-              repair.method + "_BODY"));
+              "methodBodies",
+              repair.method));
       var afterRepair = IOUtils.readFile(Path.of(outputPath,
               "releases",
               repair.headTag,
               "changed_tests",
               repair._class,
-              "methods",
-              repair.method + "_BODY"));
+              "methodBodies",
+              repair.method));
 
       var methodChange = new MethodChange(repair.path, repair.method);
       methodChange.extractHunks(beforeRepair, afterRepair);
