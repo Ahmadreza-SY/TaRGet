@@ -39,9 +39,9 @@ public class JParser {
   public static void cTestMethods(CommandTestMethods args) {
     var spoon = new Spoon(args.srcPath, args.complianceLevel);
     for (var method : spoon.getTestMethods()) {
-      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrintWithoutComments(method));
+      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrint(method));
       IOUtils.saveFile(Path.of(args.outputPath).getParent().resolve("methodBodies").resolve(method.getSignature()),
-              Spoon.prettyPrintWithoutComments(method.getBody()));
+              spoon.prettyPrint(method.getBody()));
     }
   }
 

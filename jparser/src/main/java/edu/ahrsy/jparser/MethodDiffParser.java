@@ -54,8 +54,8 @@ public class MethodDiffParser {
       var hMethodName = Spoon.getUniqueName(hMethod);
       if (!baseMethodsMap.containsKey(hMethodName)) continue;
 
-      var bMethodCode = Spoon.prettyPrintWithoutComments(baseMethodsMap.get(hMethodName));
-      var hMethodCode = Spoon.prettyPrintWithoutComments(hMethod);
+      var bMethodCode = Spoon.prettyPrint(baseMethodsMap.get(hMethodName));
+      var hMethodCode = Spoon.prettyPrint(hMethod);
       if (bMethodCode.equals(hMethodCode)) continue;
 
       var methodFilePath = Spoon.getRelativePath(hMethod, headSpoon.srcPath);
@@ -124,7 +124,7 @@ public class MethodDiffParser {
       for (var missingMethod : missingMethods) {
         var methodFilePath = Spoon.getRelativePath(missingMethod, baseSpoon.srcPath);
         var methodChange = new MethodChange(methodFilePath, Spoon.getUniqueName(missingMethod));
-        methodChange.extractHunks(Spoon.prettyPrintWithoutComments(missingMethod), "");
+        methodChange.extractHunks(Spoon.prettyPrint(missingMethod), "");
         methodChanges.add(methodChange);
       }
       return methodChanges;
@@ -151,12 +151,11 @@ public class MethodDiffParser {
       var methodChange = new MethodChange(missingMethodFile, Spoon.getUniqueName(missingMethod));
       // If the most similar method has higher similarity than the threshold, it's matched
       if (maxSimilarity > SIM_THRESHOLD) {
-        methodChange.extractHunks(Spoon.prettyPrintWithoutComments(missingMethod),
-                Spoon.prettyPrintWithoutComments(mostSimilarMethod));
+        methodChange.extractHunks(Spoon.prettyPrint(missingMethod), Spoon.prettyPrint(mostSimilarMethod));
       }
       // Otherwise, the missing method is deleted
       else {
-        methodChange.extractHunks(Spoon.prettyPrintWithoutComments(missingMethod), "");
+        methodChange.extractHunks(Spoon.prettyPrint(missingMethod), "");
       }
       methodChanges.add(methodChange);
     }
