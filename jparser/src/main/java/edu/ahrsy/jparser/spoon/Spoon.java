@@ -67,7 +67,7 @@ public class Spoon {
   }
 
 
-  public static String prettyPrintWithoutComments(CtExecutable<?> executable) {
+  public static String prettyPrint(CtExecutable<?> executable) {
     try {
       return executable.toString();
     } catch (SpoonException e) {
@@ -78,12 +78,14 @@ public class Spoon {
     return executable.getSignature();
   }
 
-  public static String prettyPrintWithoutComments(CtBlock<?> block) {
-    return block.toString();
-  }
-
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
     return (executable instanceof CtMethod) || (executable instanceof CtConstructor);
+  }
+
+  public String prettyPrint(CtBlock<?> block) {
+    CustomBlockJavaPrettyPrinter printer = new CustomBlockJavaPrettyPrinter(spoon.getFactory().getEnvironment());
+    printer.setIgnoreImplicit(false);
+    return printer.printElement(block);
   }
 
   public Set<CtMethod<?>> getTestPreAndPostMethods(CtMethod<?> testMethod) {
