@@ -2,3 +2,4 @@ api_cache
 data*
 .vscode
 __pycache__
+results
