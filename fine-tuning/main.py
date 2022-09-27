@@ -1,4 +1,3 @@
-import pandas as pd
 from pathlib import Path
 from transformers import (
     PLBartForConditionalGeneration,
@@ -6,15 +5,11 @@ from transformers import (
     get_linear_schedule_with_warmup,
     get_polynomial_decay_schedule_with_warmup,
 )
-import pandas as pd
-import numpy as np
-from torch.utils.data import TensorDataset, RandomSampler, DataLoader, SequentialSampler
+from torch.utils.data import RandomSampler, DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from DES import DistributedEvalSampler
 from torch.optim import AdamW
 import torch
-from itertools import cycle
-from transformers.models.plbart.modeling_plbart import shift_tokens_right
 from torch.nn import CrossEntropyLoss
 import argparse
 import torch.multiprocessing as mp
@@ -24,6 +19,8 @@ import torch.distributed as dist
 import logging
 import os
 from bleu import score
+from utils import write_lines
+from data import ProgramRepairDataEncoder
 
 # TODO: Fix Tokenization
 
@@ -34,9 +31,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MAIN")
 
-model_name_or_path = "uclanlp/plbart-base"
 model_class = PLBartForConditionalGeneration
-model_tokenizer_class = PLBartTokenizer
 
 
 def main():
@@ -65,77 +60,13 @@ def main():
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
     args.world_size = args.gpus * args.nodes
+    args.model_name_or_path = "uclanlp/plbart-base"
+    args.model_tokenizer_class = PLBartTokenizer
+    args.data_encoder_class = ProgramRepairDataEncoder
+
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
     logger.info("All jobs done!")
-
-
-def read_lines(file):
-    with open(file) as f:
-        return [line.rstrip() for line in f]
-
-
-def write_lines(file, lines):
-    with open(file, "w") as f:
-        f.write("\n".join(lines))
-        f.write("\n")
-
-
-def load_dataset(args):
-    logger = logging.getLogger(args.pname)
-
-    def tokenize(dataset, return_tensors):
-        padding = False
-        if return_tensors is not None:
-            padding = "max_length"
-        tokenizer = model_tokenizer_class.from_pretrained(model_name_or_path)
-        model_inputs = tokenizer(
-            dataset["input"].values.tolist(), return_tensors=return_tensors, padding=padding, max_length=args.max_seq
-        )
-        model_labels = tokenizer(
-            text_target=dataset["after_repair"].values.tolist(),
-            return_tensors=return_tensors,
-            padding=padding,
-            max_length=args.max_seq,
-        )
-        model_inputs["labels"] = model_labels["input_ids"]
-        model_inputs["labels_attention_mask"] = model_labels["attention_mask"]
-        return model_inputs, tokenizer
-
-    def create_tensor_ds(dataset):
-        model_inputs, _ = tokenize(dataset, None)
-        validsize_ind = set()
-        input_lengths = []
-        for i, _ in enumerate(model_inputs["input_ids"]):
-            input_lengths.append(len(model_inputs["input_ids"][i]))
-            if len(model_inputs["input_ids"][i]) <= args.max_seq and len(model_inputs["labels"][i]) <= args.max_seq:
-                validsize_ind.add(i)
-
-        logger.info(f"The maximum length of inputs is {max(input_lengths)} and the mean is {round(np.mean(input_lengths))}")
-        logger.info(
-            f"{round(100 * len(validsize_ind) / len(dataset), 1)} % ({len(validsize_ind)}/{len(dataset)}) samples had valid length (less that {args.max_seq})."
-        )
-        inputs, tokenizer = tokenize(dataset.iloc[list(validsize_ind)].reset_index(drop=True), "pt")
-        return TensorDataset(
-            inputs["input_ids"], inputs["attention_mask"], inputs["labels"], inputs["labels_attention_mask"]
-        )
-
-    def create_ds(part):
-        ds_path = Path(args.dataset_dir)
-        buggy = read_lines(str(ds_path / f"{part}.buggy-fixed.buggy"))
-        fixed = read_lines(str(ds_path / f"{part}.buggy-fixed.fixed"))
-        ds = pd.DataFrame({"input": buggy, "after_repair": fixed})
-        if args.sub_sample:
-            return create_tensor_ds(ds.sample(frac=0.15, random_state=args.random_seed).reset_index(drop=True))
-        return create_tensor_ds(ds)
-
-    logger.info("Loading train ...")
-    train_dataset = create_ds("train")
-    logger.info("Loading valid ...")
-    valid_dataset = create_ds("valid")
-    logger.info("Loading test ...")
-    test_dataset = create_ds("test")
-    return train_dataset, valid_dataset, test_dataset
 
 
 def create_loader(dataset, args, eval_mode=False):
@@ -188,12 +119,13 @@ def train(gpu, args):
         logger.info("All processes joined!")
 
     # Data loading
-    train_dataset, valid_dataset, test_dataset = load_dataset(args)
+    data_encoder = args.data_encoder_class(args)
+    train_dataset, valid_dataset, test_dataset = data_encoder.load_dataset()
     train_loader = create_loader(train_dataset, args)
     train_steps = round(args.epochs * (len(train_dataset) / (args.batch_size * args.world_size)))
-    step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
+    # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
 
-    model = model_class.from_pretrained(model_name_or_path)
+    model = model_class.from_pretrained(args.model_name_or_path)
     torch.cuda.set_device(gpu)
     model = model.to(gpu)
     logger.info(f"Using device " + torch.cuda.get_device_name(gpu))
@@ -319,7 +251,7 @@ def eval(model, dataset, args, output_dir):
 
     start = datetime.now()
 
-    tokenizer = model_tokenizer_class.from_pretrained(model_name_or_path)
+    tokenizer = args.model_tokenizer_class.from_pretrained(args.model_name_or_path)
     model.eval()
     model_module = model.module if hasattr(model, "module") else model
     loader = create_loader(dataset, args, True)
@@ -327,8 +259,8 @@ def eval(model, dataset, args, output_dir):
     global_preds = [None for _ in range(args.world_size)]
     global_targets = [None for _ in range(args.world_size)]
 
-    eval_steps = round(len(dataset) / (args.eval_batch_size * args.world_size))
-    eval_step_interval = 1 if eval_steps < 2 else eval_steps // 2
+    # eval_steps = round(len(dataset) / (args.eval_batch_size * args.world_size))
+    # eval_step_interval = 1 if eval_steps < 2 else eval_steps // 2
     local_preds = []
     local_targets = []
     for step, data in enumerate(loader, 1):
