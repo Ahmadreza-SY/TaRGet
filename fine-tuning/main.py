@@ -20,7 +20,7 @@ import logging
 import os
 from bleu import score
 from utils import write_lines
-from data import ProgramRepairDataEncoder
+from data import ProgramRepairDataEncoder, TestRepairDataEncoder
 
 # TODO: Fix Tokenization
 
@@ -62,7 +62,8 @@ def main():
     args.world_size = args.gpus * args.nodes
     args.model_name_or_path = "uclanlp/plbart-base"
     args.model_tokenizer_class = PLBartTokenizer
-    args.data_encoder_class = ProgramRepairDataEncoder
+    args.data_encoder_class = TestRepairDataEncoder
+    # args.data_encoder_class = ProgramRepairDataEncoder
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
