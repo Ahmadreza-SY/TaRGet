@@ -51,11 +51,13 @@ def main():
     parser.add_argument("-c", "--checkpoint_interval", default=3, type=int)
     parser.add_argument("-lr", "--learning_rate", default=5e-05, type=float)
     parser.add_argument("-ls", "--label_smoothing", default=0.1, type=float)
+    parser.add_argument("-ts", "--train_size", default=0.8, type=float)
     parser.add_argument("-bs", "--beam_size", default=5, type=int)
     parser.add_argument("-s", "--random_seed", default=1234, type=int)
     parser.add_argument("-es", "--early_stop", default=10, type=int)
     parser.add_argument("-ss", "--sub_sample", dest="sub_sample", action="store_true")
     parser.set_defaults(sub_sample=False)
+    parser.add_argument("-sr", "--sample_ratio", default=0.15, type=float)
 
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
