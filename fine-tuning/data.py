@@ -99,6 +99,49 @@ class TestRepairDataEncoder(BaseDataEncoder):
                     )
         return changed_lines
 
+    def split_by_release(self, ds):
+        projects = ds["project"].unique().tolist()
+        train_ds_list, valid_ds_list, test_ds_list = [], [], []
+        for project in projects:
+            project_ds = ds[ds["project"] == project].iloc[::-1].reset_index(drop=True)
+
+            dup_ind = project_ds[~project_ds["base_release_tag"].duplicated()].index.tolist()[1:]
+            train_size = int(self.args.train_size * len(project_ds))
+            train_dup_ind = [i for i in dup_ind if i <= (train_size - 1)]
+            if len(train_dup_ind) == 0:
+                train_split_i = dup_ind[0]
+            else:
+                train_split_i = train_dup_ind[-1]
+            p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
+            p_valid_ds, p_test_ds = np.split(
+                p_eval_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True),
+                [int(0.5 * len(p_eval_ds))],
+            )
+
+            train_ds_list.append(p_train_ds)
+            valid_ds_list.append(p_valid_ds)
+            test_ds_list.append(p_test_ds)
+
+        train_ds = pd.concat(train_ds_list)
+        valid_ds = pd.concat(valid_ds_list)
+        test_ds = pd.concat(test_ds_list)
+
+        if self.args.rank == 0:
+            self.logger.info(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / len(ds), 1)} %)")
+            self.logger.info(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / len(ds), 1)} %)")
+            self.logger.info(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / len(ds), 1)} %)")
+
+        if self.args.sub_sample:
+            ratio = self.args.sample_ratio
+            self.logger.info(f"Subsampling with ration {ratio}")
+            return (
+                train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
+                valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
+                test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
+            )
+
+        return train_ds, valid_ds, test_ds
+
     def load_dataset(self):
         self.logger.info("Loading test repair datasets ...")
 
@@ -106,6 +149,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
         ds_list = []
         for project_ds_path in ds_path.glob("*/dataset.json"):
             project_ds = pd.read_json(project_ds_path)
+            project_ds["project"] = project_ds_path.parent.name
             project_ds = project_ds[project_ds["covered_changes"].map(len) > 0].reset_index(drop=True)
             if len(project_ds) == 0:
                 continue
@@ -125,9 +169,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
         validsize_ind = self.get_validsize_indices(ds)
         ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
 
-        train_ds, valid_ds, test_ds = np.split(
-            ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True),
-            [int(0.8 * len(ds)), int(0.9 * len(ds))],
-        )
+        train_ds, valid_ds, test_ds = self.split_by_release(ds)
 
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
