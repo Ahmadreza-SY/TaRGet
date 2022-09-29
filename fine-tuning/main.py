@@ -21,6 +21,7 @@ import os
 from bleu import score
 from utils import write_lines
 from data import ProgramRepairDataEncoder, TestRepairDataEncoder
+import json
 
 # TODO: Fix Tokenization
 
@@ -141,10 +142,7 @@ def train(gpu, args):
     ]
     warmup_steps = int(train_steps * 0.1)
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=1e-06, betas=(0.9, 0.98))
-    # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=train_steps)
-    scheduler = get_polynomial_decay_schedule_with_warmup(
-        optimizer, num_warmup_steps=warmup_steps, num_training_steps=train_steps
-    )
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=train_steps)
 
     # Wrap the model
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
@@ -157,7 +155,12 @@ def train(gpu, args):
     start = datetime.now()
     global_step = 0
     elapsed_time = timedelta()
-    args.best_checkpoint = (0.0, 1)
+    args.best_checkpoint = (-1.0, 1)
+    args.stats = {}
+    args.stats["train_set_size"] = len(train_dataset)
+    args.stats["valid_set_size"] = len(valid_dataset)
+    args.stats["test_set_size"] = len(test_dataset)
+    args.stats["training_stats"] = {"epochs": []}
     for epoch in range(1, args.epochs + 1):
         model.train()
         epoch_start = datetime.now()
@@ -168,7 +171,6 @@ def train(gpu, args):
 
             source_ids, source_mask, target_ids, target_mask = tuple(item.to(gpu) for item in data)
 
-            # outputs: (logits, decoder_outputs, encoder_outputs)
             outputs = model_module(
                 input_ids=source_ids, attention_mask=source_mask, labels=target_ids, output_attentions=False
             )
@@ -187,32 +189,26 @@ def train(gpu, args):
             batch_loss = loss.item()
             epoch_loss += batch_loss
 
-            # if global_step % step_interval == 0 and args.rank == 0:
-            #     logger.info(
-            #         "    Step [{}/{}], Epoch [{}/{}], Loss {}".format(
-            #             global_step,
-            #             train_steps,
-            #             epoch,
-            #             args.epochs,
-            #             round(batch_loss, 3),
-            #         )
-            #     )
-
         # End of epoch
-        elapsed_time += datetime.now() - epoch_start
+        train_time = datetime.now() - epoch_start
+        elapsed_time += train_time
+        epoch_stats = {}
         if args.rank == 0:
+            avg_loss = round(epoch_loss / local_step, 3)
+            epoch_stats["epoch"] = epoch
+            epoch_stats["loss"] = avg_loss
+            epoch_stats["train_duration"] = str(train_time)
             logger.info(
                 "    Step [{}/{}], Epoch [{}/{}], Train loss {}, Elapsed time {}".format(
                     global_step,
                     train_steps,
                     epoch,
                     args.epochs,
-                    round(epoch_loss / local_step, 3),
+                    avg_loss,
                     str(elapsed_time),
                 )
             )
 
-        # if epoch < args.epochs and epoch % args.checkpoint_interval == 0:
         valid_output_dir = args.output_dir / f"checkpoint-last"
         valid_start = datetime.now()
         if args.rank == 0:
@@ -227,25 +223,40 @@ def train(gpu, args):
             args.best_checkpoint = (sel_score, epoch)
             if args.rank == 0:
                 logger.info(f"Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em}")
+                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em}
                 save_model(model, optimizer, scheduler, args.output_dir / f"checkpoint-best")
-        elapsed_time += datetime.now() - valid_start
+
+        valid_time = datetime.now() - valid_start
+        epoch_stats["bleu"] = bleu_score
+        epoch_stats["em"] = em
+        epoch_stats["valid_duration"] = str(valid_time)
+        args.stats["training_stats"]["epochs"].append(epoch_stats)
+        elapsed_time += valid_time
 
         if (epoch - args.best_checkpoint[1]) >= args.early_stop:
             if args.rank == 0:
                 logger.info(
                     f"Early stopping since valid {args.scoring} has not improved since best epoch {args.best_checkpoint[1]} for the last {args.early_stop} epochs"
                 )
+                args.stats["training_stats"]["last_epoch"] = epoch
             break
 
     if args.rank == 0:
-        logger.info("Training completed in: " + str(datetime.now() - start))
+        training_time = datetime.now() - start
+        logger.info("Training completed in: " + str(training_time))
+        args.stats["training_stats"]["training_time"] = str(training_time)
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint ({args.best_checkpoint})")
     model = model_class.from_pretrained(args.output_dir / f"checkpoint-best")
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
-    eval(model, test_dataset, args, args.output_dir)
+    bleu_score, em = eval(model, test_dataset, args, args.output_dir)
+    args.stats["test_results"] = {"bleu": bleu_score, "em": em}
+
+    if args.rank == 0:
+        with open(str(args.output_dir / "stats.json"), "w") as f:
+            f.write(json.dumps(args.stats, indent=2, sort_keys=False))
 
 
 def eval(model, dataset, args, output_dir):
@@ -262,8 +273,6 @@ def eval(model, dataset, args, output_dir):
     global_preds = [None for _ in range(args.world_size)]
     global_targets = [None for _ in range(args.world_size)]
 
-    # eval_steps = round(len(dataset) / (args.eval_batch_size * args.world_size))
-    # eval_step_interval = 1 if eval_steps < 2 else eval_steps // 2
     local_preds = []
     local_targets = []
     for step, data in enumerate(loader, 1):
@@ -279,9 +288,6 @@ def eval(model, dataset, args, output_dir):
         )
         local_preds.extend(list(pred_ids.cpu()))
         local_targets.extend(target_ids)
-
-        # if step % eval_step_interval == 0 and args.rank == 0:
-        #     logger.info("    Step [{}/{}]".format(step, eval_steps))
 
     dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
