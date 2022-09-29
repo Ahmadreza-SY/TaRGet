@@ -169,7 +169,7 @@ def train(gpu, args):
         for step, data in enumerate(train_loader, 1):
             optimizer.zero_grad(set_to_none=True)
 
-            source_ids, source_mask, target_ids, target_mask = tuple(item.to(gpu) for item in data)
+            source_ids, source_mask, target_ids = tuple(item.to(gpu) for item in data[:-1])
 
             outputs = model_module(
                 input_ids=source_ids, attention_mask=source_mask, labels=target_ids, output_attentions=False
@@ -272,11 +272,13 @@ def eval(model, dataset, args, output_dir):
 
     global_preds = [None for _ in range(args.world_size)]
     global_targets = [None for _ in range(args.world_size)]
+    global_ids = [None for _ in range(args.world_size)]
 
     local_preds = []
     local_targets = []
+    local_ids = []
     for step, data in enumerate(loader, 1):
-        source_ids, source_mask, target_ids, target_mask = tuple(item for item in data)
+        source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
         source_ids, source_mask = source_ids.to(args.gpu), source_mask.to(args.gpu)
         pred_ids = model_module.generate(
             input_ids=source_ids,
@@ -288,21 +290,27 @@ def eval(model, dataset, args, output_dir):
         )
         local_preds.extend(list(pred_ids.cpu()))
         local_targets.extend(target_ids)
+        local_ids.extend(data_ids)
 
     dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
+    dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
     if args.rank == 0:
         all_targets = [target for sub in global_targets for target in sub]
         all_preds = [pred for sub in global_preds for pred in sub]
+        all_ids = [pred for sub in global_ids for pred in sub]
         logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
         target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
+        output_dir = output_dir / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
         target_file = output_dir / f"fixed_targets.txt"
         write_lines(target_file, target_codes)
         pred_file = output_dir / f"fixed_preds.txt"
         write_lines(pred_file, pred_codes)
+        ids_file = output_dir / f"ids.txt"
+        write_lines(ids_file, all_ids)
 
         bleu_score, em = score(str(target_file), str(pred_file))
 
