@@ -1,9 +1,21 @@
 import logging
 import pandas as pd
 import numpy as np
-from torch.utils.data import TensorDataset
+from torch.utils.data import Dataset
 from pathlib import Path
 from utils import read_lines
+
+
+class TensorDataset(Dataset):
+    def __init__(self, *tensors):
+        assert all(tensors[0].shape[0] == tensor.shape[0] for tensor in tensors), "Size mismatch between tensors"
+        self.tensors = tensors
+
+    def __getitem__(self, index):
+        return tuple(tensor[index] for tensor in self.tensors)
+
+    def __len__(self):
+        return self.tensors[0].shape[0]
 
 
 class BaseDataEncoder:
@@ -28,7 +40,6 @@ class BaseDataEncoder:
             max_length=max_length,
         )
         model_inputs["labels"] = model_labels["input_ids"]
-        model_inputs["labels_attention_mask"] = model_labels["attention_mask"]
         return model_inputs
 
     def get_validsize_indices(self, dataset):
@@ -54,9 +65,7 @@ class BaseDataEncoder:
 
     def create_tensor_ds(self, dataset):
         inputs = self.tokenize(dataset, "pt")
-        return TensorDataset(
-            inputs["input_ids"], inputs["attention_mask"], inputs["labels"], inputs["labels_attention_mask"]
-        )
+        return TensorDataset(inputs["input_ids"], inputs["attention_mask"], inputs["labels"], dataset["ID"].values)
 
     def load_dataset(self):
         pass
@@ -70,6 +79,7 @@ class ProgramRepairDataEncoder(BaseDataEncoder):
         ds = pd.DataFrame({"input": buggy, "output": fixed})
         validsize_ind = self.get_validsize_indices(ds)
         ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
+        ds["ID"] = ds.index.tolist()
         if self.args.sub_sample:
             return self.create_tensor_ds(ds.sample(frac=0.15, random_state=self.args.random_seed).reset_index(drop=True))
         return self.create_tensor_ds(ds)
@@ -113,10 +123,11 @@ class TestRepairDataEncoder(BaseDataEncoder):
             else:
                 train_split_i = train_dup_ind[-1]
             p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
-            p_valid_ds, p_test_ds = np.split(
-                p_eval_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True),
-                [int(0.5 * len(p_eval_ds))],
-            )
+
+            # stratified test and valid split
+            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("ID")]
+            p_valid_ds = pd.concat([t[0] for t in p_eval_list])
+            p_test_ds = pd.concat([t[1] for t in p_eval_list])
 
             train_ds_list.append(p_train_ds)
             valid_ds_list.append(p_valid_ds)
@@ -126,6 +137,11 @@ class TestRepairDataEncoder(BaseDataEncoder):
         valid_ds = pd.concat(valid_ds_list)
         test_ds = pd.concat(test_ds_list)
 
+        # Shuffle splits
+        train_ds = train_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+        valid_ds = valid_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+        test_ds = test_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+
         if self.args.rank == 0:
             self.logger.info(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / len(ds), 1)} %)")
             self.logger.info(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / len(ds), 1)} %)")
@@ -134,6 +150,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
         if self.args.sub_sample:
             ratio = self.args.sample_ratio
             self.logger.info(f"Subsampling with ration {ratio}")
+            # Warning: sub sampling is not stratified by ID
             return (
                 train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
                 valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
@@ -168,6 +185,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
         ds["output"] = ds["after_repair_body"]
         validsize_ind = self.get_validsize_indices(ds)
         ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
+        ds["ID"] = ds["project"]
 
         train_ds, valid_ds, test_ds = self.split_by_release(ds)
 
