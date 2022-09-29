@@ -164,7 +164,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         ds_path = Path(self.args.dataset_dir)
         ds_list = []
-        for project_ds_path in ds_path.glob("*/dataset.json"):
+        for project_ds_path in ds_path.rglob("dataset.json"):
             project_ds = pd.read_json(project_ds_path)
             project_ds["project"] = project_ds_path.parent.name
             project_ds = project_ds[project_ds["covered_changes"].map(len) > 0].reset_index(drop=True)
