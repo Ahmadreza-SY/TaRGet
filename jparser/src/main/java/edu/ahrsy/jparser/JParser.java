@@ -41,7 +41,7 @@ public class JParser {
     for (var method : spoon.getTestMethods()) {
       IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrint(method));
       IOUtils.saveFile(Path.of(args.outputPath).getParent().resolve("methodBodies").resolve(method.getSignature()),
-              spoon.prettyPrint(method.getBody()));
+              method.getBody().toString());
     }
   }
 
