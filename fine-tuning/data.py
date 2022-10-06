@@ -4,6 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from pathlib import Path
 from utils import read_lines
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 class TensorDataset(Dataset):
@@ -95,20 +96,6 @@ class ProgramRepairDataEncoder(BaseDataEncoder):
 
 
 class TestRepairDataEncoder(BaseDataEncoder):
-    def get_changed_lines(self, row, change_type):
-        changed_lines = []
-        for change in row["covered_changes"]:
-            for hunk in change["hunks"]:
-                if "sourceChanges" in hunk:
-                    changed_lines.extend(
-                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == change_type]
-                    )
-                if "targetChanges" in hunk:
-                    changed_lines.extend(
-                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == change_type]
-                    )
-        return changed_lines
-
     def split_by_release(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
@@ -125,7 +112,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
 
             # stratified test and valid split
-            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("ID")]
+            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("project")]
             p_valid_ds = pd.concat([t[0] for t in p_eval_list])
             p_test_ds = pd.concat([t[1] for t in p_eval_list])
 
@@ -159,6 +146,12 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         return train_ds, valid_ds, test_ds
 
+    def create_input_and_output(self, ds):
+        pass
+
+    def preprocess(self, ds):
+        return ds
+
     def load_dataset(self):
         self.logger.info("Loading test repair datasets ...")
 
@@ -167,26 +160,122 @@ class TestRepairDataEncoder(BaseDataEncoder):
         for project_ds_path in ds_path.rglob("dataset.json"):
             project_ds = pd.read_json(project_ds_path)
             project_ds["project"] = project_ds_path.parent.name
+            project_ds["ID"] = [f"{i}:{r['project']}" for i, r in project_ds.iterrows()]
             project_ds = project_ds[project_ds["covered_changes"].map(len) > 0].reset_index(drop=True)
             if len(project_ds) == 0:
                 continue
-            project_ds["covered_add_changes"] = project_ds.apply(lambda r: self.get_changed_lines(r, "ADD"), axis=1)
-            project_ds["covered_del_changes"] = project_ds.apply(lambda r: self.get_changed_lines(r, "DELETE"), axis=1)
-            project_ds = project_ds[project_ds["covered_add_changes"].map(len) > 0].reset_index(drop=True)
+            project_ds = self.preprocess(project_ds)
             ds_list.append(project_ds)
 
         ds = pd.concat(ds_list)
-
-        SEP_TOKEN = "</s>"
-        ds["input"] = ds.apply(
-            lambda r: " ".join([r["before_repair_body"]] + [SEP_TOKEN] + r["covered_add_changes"]),
-            axis=1,
-        )
-        ds["output"] = ds["after_repair_body"]
+        ds = self.create_input_and_output(ds)
         validsize_ind = self.get_validsize_indices(ds)
         ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
-        ds["ID"] = ds["project"]
 
         train_ds, valid_ds, test_ds = self.split_by_release(ds)
+        ds_output_dir = self.args.output_dir / "splits"
+        ds_output_dir.mkdir(exist_ok=True, parents=True)
+        train_ds.to_json(ds_output_dir / "train.json", orient="records")
+        valid_ds.to_json(ds_output_dir / "valid.json", orient="records")
+        test_ds.to_json(ds_output_dir / "test.json", orient="records")
 
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
+
+
+class TRBodyAddDataEncoder(TestRepairDataEncoder):
+    def get_changed_lines(self, row, change_type):
+        changed_lines = []
+        for change in row["covered_changes"]:
+            for hunk in change["hunks"]:
+                if "sourceChanges" in hunk:
+                    changed_lines.extend(
+                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == change_type]
+                    )
+                if "targetChanges" in hunk:
+                    changed_lines.extend(
+                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == change_type]
+                    )
+        return changed_lines
+
+    def preprocess(self, ds):
+        ds["covered_add_changes"] = ds.apply(lambda r: self.get_changed_lines(r, "ADD"), axis=1)
+        ds["covered_del_changes"] = ds.apply(lambda r: self.get_changed_lines(r, "DELETE"), axis=1)
+        ds = ds[ds["covered_add_changes"].map(len) > 0].reset_index(drop=True)
+        return ds
+
+    def create_input_and_output(self, ds):
+        SEP_TOKEN = self.tokenizer.sep_token
+        ds["input"] = ds.apply(
+            lambda r: " ".join([r["before_repair_body"][1:-1]] + [SEP_TOKEN] + r["covered_add_changes"]),
+            axis=1,
+        )
+        ds["output"] = ds["after_repair_body"].str[1:-1]
+        return ds
+
+
+class TRTopLinesDataEncoder(TestRepairDataEncoder):
+    def prioritize_changed_lines(self, row):
+        changes = []
+        unique_lines = set()
+        for change in row["covered_changes"]:
+            depth = change["depth"]
+            for hunk in change["hunks"]:
+                hunk_changes = []
+                if "sourceChanges" in hunk:
+                    hunk_changes.extend(hunk["sourceChanges"])
+                if "targetChanges" in hunk:
+                    hunk_changes.extend(hunk["targetChanges"])
+
+                changes.extend(
+                    [
+                        {"line": line_change["line"], "depth": depth}
+                        for line_change in hunk_changes
+                        if line_change["line"] not in unique_lines
+                    ]
+                )
+                unique_lines.update([line_change["line"] for line_change in hunk_changes])
+
+        vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
+        vectors = vectorizer.fit_transform([row["before_repair"]] + [c["line"] for c in changes])
+        dense = vectors.todense()
+        cosine_sim = (dense * dense[0].T).T.tolist()[0]
+        for i, c in enumerate(changes):
+            c["tfidf_sim"] = cosine_sim[i + 1]
+
+        return sorted(changes, key=lambda c: (c["depth"], -c["tfidf_sim"]))
+
+    def preprocess(self, ds):
+        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_lines(r), axis=1)
+        return ds
+    
+    def create_input_and_output(self, ds):
+        self.logger.info("Prioritizing changed lines and creating inputs ...")
+        SEP_TOKEN = self.tokenizer.sep_token
+        included_change_p = []
+        inputs = []
+        for _, r in ds.iterrows():
+            inp = None
+            pr_changes = len(r["prioritized_changes"])
+            for i in range(pr_changes):
+                selected_changes = [c["line"] for c in r["prioritized_changes"][: (i + 1)]]
+                new_inp = " ".join([r["before_repair_body"][1:-1]] + [SEP_TOKEN] + selected_changes)
+                e_new_inp = self.tokenizer.encode(new_inp)
+                if len(e_new_inp) > self.args.max_seq:
+                    if inp == None:
+                        inputs.append(new_inp)
+                        included_change_p.append(0.0)
+                    else:
+                        inputs.append(inp)
+                        included_change_p.append((i + 1) / pr_changes)
+                    break
+                inp = new_inp
+                if i == pr_changes - 1:
+                    inputs.append(inp)
+                    included_change_p.append(1.0)
+
+        self.logger.info(
+            f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changes are included in the input."
+        )
+        ds["input"] = inputs
+        ds["output"] = ds["after_repair_body"].str[1:-1]
+        return ds
