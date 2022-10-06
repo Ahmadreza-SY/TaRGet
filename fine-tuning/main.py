@@ -20,7 +20,7 @@ import logging
 import os
 from bleu import score
 from utils import write_lines
-from data import ProgramRepairDataEncoder, TestRepairDataEncoder
+from data import ProgramRepairDataEncoder, TRBodyAddDataEncoder, TRTopLinesDataEncoder
 import json
 
 # TODO: Fix Tokenization
@@ -44,6 +44,9 @@ def main():
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
+    parser.add_argument(
+        "-de", "--data_encoder", required=True, type=str, choices=["ProgramRepair", "TRBodyAdd", "TRTopLines"]
+    )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
@@ -65,8 +68,12 @@ def main():
     args.world_size = args.gpus * args.nodes
     args.model_name_or_path = "uclanlp/plbart-base"
     args.model_tokenizer_class = PLBartTokenizer
-    args.data_encoder_class = TestRepairDataEncoder
-    # args.data_encoder_class = ProgramRepairDataEncoder
+    if args.data_encoder == "ProgramRepair":
+        args.data_encoder_class = ProgramRepairDataEncoder
+    elif args.data_encoder == "TRBodyAdd":
+        args.data_encoder_class = TRBodyAddDataEncoder
+    elif args.data_encoder == "TRTopLines":
+        args.data_encoder_class = TRTopLinesDataEncoder
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
