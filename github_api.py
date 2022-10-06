@@ -5,6 +5,7 @@ import requests
 import shutil
 from tqdm.auto import tqdm
 from config import Config
+import time
 
 accept_diff_header = {"Accept": "application/vnd.github.v3.diff"}
 accept_json_header = {"Accept": "application/vnd.github+json"}
@@ -15,20 +16,28 @@ def get_token_header():
 
 
 def get(url, headers=None, params=None):
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        return response
-    except requests.exceptions.HTTPError as err:
-        raise SystemExit(err)
+    retry_count = 5
+    sleep_sec = 10
+    attempts = 0
+    while True:
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.HTTPError as err:
+            if attempts < retry_count:
+                attempts += 1
+                print(f"Error: {err}\nRetrying in {sleep_sec} seconds ...")
+                time.sleep(sleep_sec)
+                continue
+            else:
+                raise SystemExit(err)
 
 
 def get_diff(release_pair, repo):
     diff_pair = f"{release_pair.base.tag}...{release_pair.head.tag}"
     diff_cache_file = (
-        Path(Config.get("gh_cache_path"))
-        / repo.replace("/", "@")
-        / f"{repo.replace('/', '@')}-{diff_pair}.diff"
+        Path(Config.get("gh_cache_path")) / repo.replace("/", "@") / f"{repo.replace('/', '@')}-{diff_pair}.diff"
     )
     if diff_cache_file.exists() and diff_cache_file.stat().st_size > 0:
         print(f"Read diff from cache at {diff_cache_file}")
@@ -69,9 +78,7 @@ def get_test_file(tag, test_path, repo):
 
 def get_all_releases(repo):
     releases_cache_file = (
-        Path(Config.get("gh_cache_path"))
-        / repo.replace("/", "@")
-        / f"{repo.replace('/', '@')}-releases.json"
+        Path(Config.get("gh_cache_path")) / repo.replace("/", "@") / f"{repo.replace('/', '@')}-releases.json"
     )
     if releases_cache_file.exists() and releases_cache_file.stat().st_size > 0:
         print(f"Read releases from cache at {releases_cache_file}")
