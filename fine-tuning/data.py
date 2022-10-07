@@ -164,6 +164,12 @@ class TestRepairDataEncoder(BaseDataEncoder):
             project_ds = project_ds[project_ds["covered_changes"].map(len) > 0].reset_index(drop=True)
             if len(project_ds) == 0:
                 continue
+            project_ds["before_repair_body"] = project_ds["before_repair_body"].apply(
+                lambda b: b[1:-1] if b.startswith("{") else b
+            )
+            project_ds["after_repair_body"] = project_ds["after_repair_body"].apply(
+                lambda b: b[1:-1] if b.startswith("{") else b
+            )
             project_ds = self.preprocess(project_ds)
             ds_list.append(project_ds)
 
@@ -206,10 +212,10 @@ class TRBodyAddDataEncoder(TestRepairDataEncoder):
     def create_input_and_output(self, ds):
         SEP_TOKEN = self.tokenizer.sep_token
         ds["input"] = ds.apply(
-            lambda r: " ".join([r["before_repair_body"][1:-1]] + [SEP_TOKEN] + r["covered_add_changes"]),
+            lambda r: " ".join([r["before_repair_body"]] + [SEP_TOKEN] + r["covered_add_changes"]),
             axis=1,
         )
-        ds["output"] = ds["after_repair_body"].str[1:-1]
+        ds["output"] = ds["after_repair_body"]
         return ds
 
 
@@ -247,35 +253,28 @@ class TRTopLinesDataEncoder(TestRepairDataEncoder):
     def preprocess(self, ds):
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_lines(r), axis=1)
         return ds
-    
+
     def create_input_and_output(self, ds):
         self.logger.info("Prioritizing changed lines and creating inputs ...")
         SEP_TOKEN = self.tokenizer.sep_token
         included_change_p = []
         inputs = []
         for _, r in ds.iterrows():
-            inp = None
             pr_changes = len(r["prioritized_changes"])
+            selected_changes = []
             for i in range(pr_changes):
-                selected_changes = [c["line"] for c in r["prioritized_changes"][: (i + 1)]]
-                new_inp = " ".join([r["before_repair_body"][1:-1]] + [SEP_TOKEN] + selected_changes)
+                new_selected_changes = selected_changes + [r["prioritized_changes"][i]["line"]]
+                new_inp = " ".join([r["before_repair_body"]] + [SEP_TOKEN] + new_selected_changes)
                 e_new_inp = self.tokenizer.encode(new_inp)
-                if len(e_new_inp) > self.args.max_seq:
-                    if inp == None:
-                        inputs.append(new_inp)
-                        included_change_p.append(0.0)
-                    else:
-                        inputs.append(inp)
-                        included_change_p.append((i + 1) / pr_changes)
-                    break
-                inp = new_inp
-                if i == pr_changes - 1:
-                    inputs.append(inp)
-                    included_change_p.append(1.0)
+                if len(e_new_inp) <= self.args.max_seq:
+                    selected_changes = new_selected_changes
+
+            inputs.append(" ".join([r["before_repair_body"]] + [SEP_TOKEN] + selected_changes))
+            included_change_p.append(len(selected_changes) / pr_changes)
 
         self.logger.info(
             f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changes are included in the input."
         )
         ds["input"] = inputs
-        ds["output"] = ds["after_repair_body"].str[1:-1]
+        ds["output"] = ds["after_repair_body"]
         return ds
