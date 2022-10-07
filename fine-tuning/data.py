@@ -175,6 +175,8 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         ds = pd.concat(ds_list)
         ds = self.create_input_and_output(ds)
+        ds["input"] = ds["input"].str.strip()
+        ds["output"] = ds["output"].str.strip()
         validsize_ind = self.get_validsize_indices(ds)
         ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
 
@@ -219,43 +221,41 @@ class TRBodyAddDataEncoder(TestRepairDataEncoder):
         return ds
 
 
-class TRTopLinesDataEncoder(TestRepairDataEncoder):
-    def prioritize_changed_lines(self, row):
-        changes = []
+class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
+    def remove_duplicate_documents(self, changes):
         unique_lines = set()
-        for change in row["covered_changes"]:
-            depth = change["depth"]
-            for hunk in change["hunks"]:
-                hunk_changes = []
-                if "sourceChanges" in hunk:
-                    hunk_changes.extend(hunk["sourceChanges"])
-                if "targetChanges" in hunk:
-                    hunk_changes.extend(hunk["targetChanges"])
+        unique_changes = []
+        for change in changes:
+            if change["doc"] not in unique_lines:
+                unique_changes.append(change)
+            unique_lines.add(change["doc"])
+        return unique_changes
 
-                changes.extend(
-                    [
-                        {"line": line_change["line"], "depth": depth}
-                        for line_change in hunk_changes
-                        if line_change["line"] not in unique_lines
-                    ]
-                )
-                unique_lines.update([line_change["line"] for line_change in hunk_changes])
+    def get_change_documents(self, row):
+        pass
+
+    def get_sort_key(self, changed_doc):
+        return (changed_doc["depth"], -changed_doc["tfidf_sim"])
+
+    def prioritize_changed_documents(self, row):
+        changes = self.get_change_documents(row)
+        changes = self.remove_duplicate_documents(changes)
 
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
-        vectors = vectorizer.fit_transform([row["before_repair"]] + [c["line"] for c in changes])
+        vectors = vectorizer.fit_transform([row["before_repair"]] + [c["doc"] for c in changes])
         dense = vectors.todense()
         cosine_sim = (dense * dense[0].T).T.tolist()[0]
         for i, c in enumerate(changes):
             c["tfidf_sim"] = cosine_sim[i + 1]
 
-        return sorted(changes, key=lambda c: (c["depth"], -c["tfidf_sim"]))
+        return sorted(changes, key=lambda c: self.get_sort_key(c))
 
     def preprocess(self, ds):
-        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_lines(r), axis=1)
+        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
         return ds
 
     def create_input_and_output(self, ds):
-        self.logger.info("Prioritizing changed lines and creating inputs ...")
+        self.logger.info("Prioritizing changed documents and creating inputs ...")
         SEP_TOKEN = self.tokenizer.sep_token
         included_change_p = []
         inputs = []
@@ -263,7 +263,7 @@ class TRTopLinesDataEncoder(TestRepairDataEncoder):
             pr_changes = len(r["prioritized_changes"])
             selected_changes = []
             for i in range(pr_changes):
-                new_selected_changes = selected_changes + [r["prioritized_changes"][i]["line"]]
+                new_selected_changes = selected_changes + [r["prioritized_changes"][i]["doc"]]
                 new_inp = " ".join([r["before_repair_body"]] + [SEP_TOKEN] + new_selected_changes)
                 e_new_inp = self.tokenizer.encode(new_inp)
                 if len(e_new_inp) <= self.args.max_seq:
@@ -273,8 +273,116 @@ class TRTopLinesDataEncoder(TestRepairDataEncoder):
             included_change_p.append(len(selected_changes) / pr_changes)
 
         self.logger.info(
-            f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changes are included in the input."
+            f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changed documents are included in the input."
         )
         ds["input"] = inputs
         ds["output"] = ds["after_repair_body"]
         return ds
+
+
+class TRTopLinesDataEncoder(PrioritizedChangesDataEncoder):
+    def get_change_documents(self, row):
+        changes = []
+        for change in row["covered_changes"]:
+            depth = change["depth"]
+            for hunk in change["hunks"]:
+                hunk_changes = []
+                if "targetChanges" in hunk:
+                    hunk_changes.extend(hunk["targetChanges"])
+                if "sourceChanges" in hunk:
+                    hunk_changes.extend(hunk["sourceChanges"])
+
+                changes.extend(
+                    [
+                        {"doc": line_change["line"], "depth": depth, "change_type": line_change["type"]}
+                        for line_change in hunk_changes
+                    ]
+                )
+
+        return changes
+
+
+class TRTopAddedLinesDataEncoder(PrioritizedChangesDataEncoder):
+    def get_change_documents(self, row):
+        added_changes = []
+        deleted_changes = []
+        for change in row["covered_changes"]:
+            depth = change["depth"]
+            for hunk in change["hunks"]:
+                hunk_changes = []
+                if "targetChanges" in hunk:
+                    hunk_changes.extend(hunk["targetChanges"])
+                if "sourceChanges" in hunk:
+                    hunk_changes.extend(hunk["sourceChanges"])
+
+                added_changes.extend(
+                    [
+                        {"doc": line_change["line"], "depth": depth, "change_type": line_change["type"]}
+                        for line_change in hunk_changes
+                        if line_change["type"] == "ADD"
+                    ]
+                )
+                deleted_changes.extend(
+                    [
+                        {"doc": line_change["line"], "depth": depth, "change_type": line_change["type"]}
+                        for line_change in hunk_changes
+                        if line_change["type"] == "DELETE"
+                    ]
+                )
+
+        if len(added_changes) > 0:
+            return added_changes
+        else:
+            return deleted_changes
+
+
+class TRTopHunksDataEncoder(PrioritizedChangesDataEncoder):
+    def get_change_documents(self, row):
+        changes = []
+        for change in row["covered_changes"]:
+            depth = change["depth"]
+            for hunk in change["hunks"]:
+                doc_lines = []
+                if "targetChanges" in hunk:
+                    doc_lines.extend([line_change["line"] for line_change in hunk["targetChanges"]])
+                if "sourceChanges" in hunk:
+                    doc_lines.extend([line_change["line"] for line_change in hunk["sourceChanges"]])
+
+                changes.append({"doc": " ".join(doc_lines), "depth": depth, "change_type": hunk["type"]})
+
+        return changes
+
+
+class TRTopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):
+    def get_change_documents(self, row):
+        added_changes = []
+        deleted_changes = []
+        for change in row["covered_changes"]:
+            depth = change["depth"]
+            for hunk in change["hunks"]:
+                added_doc_lines = []
+                deleted_doc_lines = []
+                if "targetChanges" in hunk:
+                    added_doc_lines.extend(
+                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == "ADD"]
+                    )
+                    deleted_doc_lines.extend(
+                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == "DELETE"]
+                    )
+                if "sourceChanges" in hunk:
+                    added_doc_lines.extend(
+                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == "ADD"]
+                    )
+                    deleted_doc_lines.extend(
+                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == "DELETE"]
+                    )
+
+                if len(added_doc_lines) > 0:
+                    added_changes.append({"doc": " ".join(added_doc_lines), "depth": depth, "change_type": hunk["type"]})
+                if len(deleted_doc_lines) > 0:
+                    deleted_changes.append({"doc": " ".join(deleted_doc_lines), "depth": depth, "change_type": hunk["type"]})
+
+        if len(added_changes) > 0:
+            return added_changes
+        else:
+            return deleted_changes

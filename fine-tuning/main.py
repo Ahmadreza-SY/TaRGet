@@ -20,7 +20,14 @@ import logging
 import os
 from bleu import score
 from utils import write_lines
-from data import ProgramRepairDataEncoder, TRBodyAddDataEncoder, TRTopLinesDataEncoder
+from data import (
+    ProgramRepairDataEncoder,
+    TRBodyAddDataEncoder,
+    TRTopLinesDataEncoder,
+    TRTopAddedLinesDataEncoder,
+    TRTopHunksDataEncoder,
+    TRTopAddedHunksDataEncoder,
+)
 import json
 
 # TODO: Fix Tokenization
@@ -45,7 +52,11 @@ def main():
     )
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
     parser.add_argument(
-        "-de", "--data_encoder", required=True, type=str, choices=["ProgramRepair", "TRBodyAdd", "TRTopLines"]
+        "-de",
+        "--data_encoder",
+        required=True,
+        type=str,
+        choices=["ProgramRepair", "TRBodyAdd", "TRTopLines", "TRTopAddedLines", "TRTopHunks", "TRTopAddedHunks"],
     )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
@@ -74,6 +85,12 @@ def main():
         args.data_encoder_class = TRBodyAddDataEncoder
     elif args.data_encoder == "TRTopLines":
         args.data_encoder_class = TRTopLinesDataEncoder
+    elif args.data_encoder == "TRTopAddedLines":
+        args.data_encoder_class = TRTopAddedLinesDataEncoder
+    elif args.data_encoder == "TRTopHunks":
+        args.data_encoder_class = TRTopHunksDataEncoder
+    elif args.data_encoder == "TRTopAddedHunks":
+        args.data_encoder_class = TRTopAddedHunksDataEncoder
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
