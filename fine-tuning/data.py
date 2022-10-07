@@ -269,6 +269,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
                 if len(e_new_inp) <= self.args.max_seq:
                     selected_changes = new_selected_changes
 
+            if len(selected_changes) == 0:
+                selected_changes = [r["prioritized_changes"][0]["doc"]]
             inputs.append(" ".join([r["before_repair_body"]] + [SEP_TOKEN] + selected_changes))
             included_change_p.append(len(selected_changes) / pr_changes)
 
