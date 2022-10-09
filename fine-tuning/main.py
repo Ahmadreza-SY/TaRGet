@@ -22,11 +22,12 @@ from bleu import score
 from utils import write_lines
 from data import (
     ProgramRepairDataEncoder,
-    TRBodyAddDataEncoder,
     TRTopLinesDataEncoder,
     TRTopAddedLinesDataEncoder,
     TRTopHunksDataEncoder,
+    TRTopHunksSepDataEncoder,
     TRTopAddedHunksDataEncoder,
+    TRTopAddedHunksSepDataEncoder,
 )
 import json
 
@@ -56,7 +57,7 @@ def main():
         "--data_encoder",
         required=True,
         type=str,
-        choices=["ProgramRepair", "TRBodyAdd", "TRTopLines", "TRTopAddedLines", "TRTopHunks", "TRTopAddedHunks"],
+        choices=["ProgramRepair", "TRTopLines", "TRTopAddedLines", "TRTopHunks", "TRTopHunksSep", "TRTopAddedHunks", "TRTopAddedHunksSep"],
     )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
@@ -81,16 +82,18 @@ def main():
     args.model_tokenizer_class = PLBartTokenizer
     if args.data_encoder == "ProgramRepair":
         args.data_encoder_class = ProgramRepairDataEncoder
-    elif args.data_encoder == "TRBodyAdd":
-        args.data_encoder_class = TRBodyAddDataEncoder
     elif args.data_encoder == "TRTopLines":
         args.data_encoder_class = TRTopLinesDataEncoder
     elif args.data_encoder == "TRTopAddedLines":
         args.data_encoder_class = TRTopAddedLinesDataEncoder
     elif args.data_encoder == "TRTopHunks":
         args.data_encoder_class = TRTopHunksDataEncoder
+    elif args.data_encoder == "TRTopHunksSep":
+        args.data_encoder_class = TRTopHunksSepDataEncoder
     elif args.data_encoder == "TRTopAddedHunks":
         args.data_encoder_class = TRTopAddedHunksDataEncoder
+    elif args.data_encoder == "TRTopAddedHunksSep":
+        args.data_encoder_class = TRTopAddedHunksSepDataEncoder
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
