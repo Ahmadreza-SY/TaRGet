@@ -146,11 +146,11 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         return train_ds, valid_ds, test_ds
 
-    def create_input_and_output(self, ds):
+    def create_inputs_and_outputs(self, ds):
         pass
 
     def preprocess(self, ds):
-        return ds
+        return ds[ds["covered_changes"].map(len) > 0].reset_index(drop=True)
 
     def load_dataset(self):
         self.logger.info("Loading test repair datasets ...")
@@ -161,20 +161,13 @@ class TestRepairDataEncoder(BaseDataEncoder):
             project_ds = pd.read_json(project_ds_path)
             project_ds["project"] = project_ds_path.parent.name
             project_ds["ID"] = [f"{i}:{r['project']}" for i, r in project_ds.iterrows()]
-            project_ds = project_ds[project_ds["covered_changes"].map(len) > 0].reset_index(drop=True)
+            project_ds = self.preprocess(project_ds)
             if len(project_ds) == 0:
                 continue
-            project_ds["before_repair_body"] = project_ds["before_repair_body"].apply(
-                lambda b: b[1:-1] if b.startswith("{") else b
-            )
-            project_ds["after_repair_body"] = project_ds["after_repair_body"].apply(
-                lambda b: b[1:-1] if b.startswith("{") else b
-            )
-            project_ds = self.preprocess(project_ds)
             ds_list.append(project_ds)
 
         ds = pd.concat(ds_list)
-        ds = self.create_input_and_output(ds)
+        ds = self.create_inputs_and_outputs(ds)
         ds["input"] = ds["input"].str.strip()
         ds["output"] = ds["output"].str.strip()
         validsize_ind = self.get_validsize_indices(ds)
@@ -190,38 +183,20 @@ class TestRepairDataEncoder(BaseDataEncoder):
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
 
 
-class TRBodyAddDataEncoder(TestRepairDataEncoder):
-    def get_changed_lines(self, row, change_type):
-        changed_lines = []
-        for change in row["covered_changes"]:
-            for hunk in change["hunks"]:
-                if "sourceChanges" in hunk:
-                    changed_lines.extend(
-                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == change_type]
-                    )
-                if "targetChanges" in hunk:
-                    changed_lines.extend(
-                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == change_type]
-                    )
-        return changed_lines
-
+class TRBodyDataEncoder(TestRepairDataEncoder):
     def preprocess(self, ds):
-        ds["covered_add_changes"] = ds.apply(lambda r: self.get_changed_lines(r, "ADD"), axis=1)
-        ds["covered_del_changes"] = ds.apply(lambda r: self.get_changed_lines(r, "DELETE"), axis=1)
-        ds = ds[ds["covered_add_changes"].map(len) > 0].reset_index(drop=True)
-        return ds
-
-    def create_input_and_output(self, ds):
-        SEP_TOKEN = self.tokenizer.sep_token
-        ds["input"] = ds.apply(
-            lambda r: " ".join([r["before_repair_body"]] + [SEP_TOKEN] + r["covered_add_changes"]),
-            axis=1,
+        ds = super().preprocess(ds)
+        ds["before_repair_body"] = ds["before_repair_body"].apply(
+                lambda b: b[1:-1] if b.startswith("{") else b
         )
-        ds["output"] = ds["after_repair_body"]
+        ds["after_repair_body"] = ds["after_repair_body"].apply(
+            lambda b: b[1:-1] if b.startswith("{") else b
+        )
+        ds = ds[ds['before_repair_body'] != ds['after_repair_body']].reset_index(drop=True)
         return ds
 
 
-class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
+class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
     def remove_duplicate_documents(self, changes):
         unique_lines = set()
         unique_changes = []
@@ -251,12 +226,16 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return sorted(changes, key=lambda c: self.get_sort_key(c))
 
     def preprocess(self, ds):
+        ds = super().preprocess(ds)
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
         return ds
 
-    def create_input_and_output(self, ds):
-        self.logger.info("Prioritizing changed documents and creating inputs ...")
+    def create_input(self, test_code, covered_changes):
         SEP_TOKEN = self.tokenizer.sep_token
+        return " ".join([test_code] + [SEP_TOKEN] + covered_changes)
+    
+    def create_inputs_and_outputs(self, ds):
+        self.logger.info("Prioritizing changed documents and creating inputs ...")
         included_change_p = []
         inputs = []
         for _, r in ds.iterrows():
@@ -264,14 +243,14 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             selected_changes = []
             for i in range(pr_changes):
                 new_selected_changes = selected_changes + [r["prioritized_changes"][i]["doc"]]
-                new_inp = " ".join([r["before_repair_body"]] + [SEP_TOKEN] + new_selected_changes)
+                new_inp = self.create_input(r["before_repair_body"], new_selected_changes)
                 e_new_inp = self.tokenizer.encode(new_inp)
                 if len(e_new_inp) <= self.args.max_seq:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:
                 selected_changes = [r["prioritized_changes"][0]["doc"]]
-            inputs.append(" ".join([r["before_repair_body"]] + [SEP_TOKEN] + selected_changes))
+            inputs.append(self.create_input(r["before_repair_body"], selected_changes))
             included_change_p.append(len(selected_changes) / pr_changes)
 
         self.logger.info(
@@ -354,6 +333,10 @@ class TRTopHunksDataEncoder(PrioritizedChangesDataEncoder):
 
         return changes
 
+class TRTopHunksSepDataEncoder(TRTopHunksDataEncoder):
+    def create_input(self, test_code, covered_changes):
+        SEP_TOKEN = self.tokenizer.sep_token
+        return test_code + SEP_TOKEN + SEP_TOKEN.join(covered_changes)
 
 class TRTopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):
     def get_change_documents(self, row):
@@ -388,3 +371,8 @@ class TRTopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):
             return added_changes
         else:
             return deleted_changes
+
+class TRTopAddedHunksSepDataEncoder(TRTopAddedHunksDataEncoder):
+    def create_input(self, test_code, covered_changes):
+        SEP_TOKEN = self.tokenizer.sep_token
+        return test_code + SEP_TOKEN + SEP_TOKEN.join(covered_changes)
