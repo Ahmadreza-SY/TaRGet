@@ -25,6 +25,10 @@ class BaseDataEncoder:
         self.logger = logging.getLogger(args.pname)
         self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
 
+    def log(self, msg):
+        if self.args.rank == 0:
+            self.logger.info(msg)
+
     def tokenize(self, dataset, return_tensors):
         padding = False
         max_length = None
@@ -55,10 +59,8 @@ class BaseDataEncoder:
             ):
                 validsize_ind.add(i)
 
-        self.logger.info(
-            f"The maximum length of inputs is {max(input_lengths)} and the mean is {round(np.mean(input_lengths))}"
-        )
-        self.logger.info(
+        self.log(f"The maximum length of inputs is {max(input_lengths)} and the mean is {round(np.mean(input_lengths))}")
+        self.log(
             f"{round(100 * len(validsize_ind) / len(dataset), 1)} % ({len(validsize_ind)}/{len(dataset)}) samples had valid length (less that {self.args.max_seq})."
         )
 
@@ -86,11 +88,11 @@ class ProgramRepairDataEncoder(BaseDataEncoder):
         return self.create_tensor_ds(ds)
 
     def load_dataset(self):
-        self.logger.info("Loading train ...")
+        self.log("Loading train ...")
         train_dataset = self.read_split("train")
-        self.logger.info("Loading valid ...")
+        self.log("Loading valid ...")
         valid_dataset = self.read_split("valid")
-        self.logger.info("Loading test ...")
+        self.log("Loading test ...")
         test_dataset = self.read_split("test")
         return train_dataset, valid_dataset, test_dataset
 
@@ -129,14 +131,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
         valid_ds = valid_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
         test_ds = test_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
 
-        if self.args.rank == 0:
-            self.logger.info(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / len(ds), 1)} %)")
-            self.logger.info(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / len(ds), 1)} %)")
-            self.logger.info(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / len(ds), 1)} %)")
-
         if self.args.sub_sample:
             ratio = self.args.sample_ratio
-            self.logger.info(f"Subsampling with ration {ratio}")
+            self.log(f"Subsampling with ration {ratio}")
             # Warning: sub sampling is not stratified by ID
             return (
                 train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
@@ -150,35 +147,54 @@ class TestRepairDataEncoder(BaseDataEncoder):
         pass
 
     def preprocess(self, ds):
-        return ds[ds["covered_changes"].map(len) > 0].reset_index(drop=True)
+        before_len = len(ds)
+        ds = ds[ds["covered_changes"].map(len) > 0].reset_index(drop=True)
+        self.log(f"Removed {before_len - len(ds)} rows due to zero change coverage.")
+        return ds
 
     def load_dataset(self):
-        self.logger.info("Loading test repair datasets ...")
+        self.log("Loading test repair datasets ...")
 
-        ds_path = Path(self.args.dataset_dir)
-        ds_list = []
-        for project_ds_path in ds_path.rglob("dataset.json"):
-            project_ds = pd.read_json(project_ds_path)
-            project_ds["project"] = project_ds_path.parent.name
-            project_ds["ID"] = [f"{i}:{r['project']}" for i, r in project_ds.iterrows()]
-            project_ds = self.preprocess(project_ds)
-            if len(project_ds) == 0:
-                continue
-            ds_list.append(project_ds)
-
-        ds = pd.concat(ds_list)
-        ds = self.create_inputs_and_outputs(ds)
-        ds["input"] = ds["input"].str.strip()
-        ds["output"] = ds["output"].str.strip()
-        validsize_ind = self.get_validsize_indices(ds)
-        ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
-
-        train_ds, valid_ds, test_ds = self.split_by_release(ds)
         ds_output_dir = self.args.output_dir / "splits"
-        ds_output_dir.mkdir(exist_ok=True, parents=True)
-        train_ds.to_json(ds_output_dir / "train.json", orient="records")
-        valid_ds.to_json(ds_output_dir / "valid.json", orient="records")
-        test_ds.to_json(ds_output_dir / "test.json", orient="records")
+        train_file = ds_output_dir / "train.json"
+        valid_file = ds_output_dir / "valid.json"
+        test_file = ds_output_dir / "test.json"
+
+        if train_file.exists() and valid_file.exists() and test_file.exists():
+            self.log("Loading train, valid, and test splits from disk ...")
+            train_ds = pd.read_json(train_file)
+            valid_ds = pd.read_json(valid_file)
+            test_ds = pd.read_json(test_file)
+        else:
+            ds_path = Path(self.args.dataset_dir)
+            ds_list = []
+            for project_ds_path in ds_path.rglob("dataset.json"):
+                project_ds = pd.read_json(project_ds_path)
+                project_ds["project"] = project_ds_path.parent.name
+                project_ds["ID"] = [f"{i}:{r['project']}" for i, r in project_ds.iterrows()]
+                project_ds = self.preprocess(project_ds)
+                if len(project_ds) == 0:
+                    continue
+                ds_list.append(project_ds)
+
+            ds = pd.concat(ds_list)
+            ds = self.create_inputs_and_outputs(ds)
+            ds["input"] = ds["input"].str.strip()
+            ds["output"] = ds["output"].str.strip()
+            validsize_ind = self.get_validsize_indices(ds)
+            ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
+
+            train_ds, valid_ds, test_ds = self.split_by_release(ds)
+
+            ds_output_dir.mkdir(exist_ok=True, parents=True)
+            train_ds.to_json(train_file, orient="records")
+            valid_ds.to_json(valid_file, orient="records")
+            test_ds.to_json(test_file, orient="records")
+
+        ds_len = len(train_ds) + len(valid_ds) + len(test_ds)
+        self.log(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / ds_len, 1)} %)")
+        self.log(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / ds_len, 1)} %)")
+        self.log(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / ds_len, 1)} %)")
 
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
 
@@ -186,13 +202,11 @@ class TestRepairDataEncoder(BaseDataEncoder):
 class TRBodyDataEncoder(TestRepairDataEncoder):
     def preprocess(self, ds):
         ds = super().preprocess(ds)
-        ds["before_repair_body"] = ds["before_repair_body"].apply(
-                lambda b: b[1:-1] if b.startswith("{") else b
-        )
-        ds["after_repair_body"] = ds["after_repair_body"].apply(
-            lambda b: b[1:-1] if b.startswith("{") else b
-        )
-        ds = ds[ds['before_repair_body'] != ds['after_repair_body']].reset_index(drop=True)
+        ds["before_repair_body"] = ds["before_repair_body"].apply(lambda b: b[1:-1] if b.startswith("{") else b)
+        ds["after_repair_body"] = ds["after_repair_body"].apply(lambda b: b[1:-1] if b.startswith("{") else b)
+        before_len = len(ds)
+        ds = ds[ds["before_repair_body"] != ds["after_repair_body"]].reset_index(drop=True)
+        self.log(f"Removed {before_len - len(ds)} rows due to same test body before and after repair.")
         return ds
 
 
@@ -233,9 +247,9 @@ class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
     def create_input(self, test_code, covered_changes):
         SEP_TOKEN = self.tokenizer.sep_token
         return " ".join([test_code] + [SEP_TOKEN] + covered_changes)
-    
+
     def create_inputs_and_outputs(self, ds):
-        self.logger.info("Prioritizing changed documents and creating inputs ...")
+        self.log("Prioritizing changed documents and creating inputs ...")
         included_change_p = []
         inputs = []
         for _, r in ds.iterrows():
@@ -253,7 +267,7 @@ class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
             inputs.append(self.create_input(r["before_repair_body"], selected_changes))
             included_change_p.append(len(selected_changes) / pr_changes)
 
-        self.logger.info(
+        self.log(
             f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changed documents are included in the input."
         )
         ds["input"] = inputs
@@ -333,10 +347,12 @@ class TRTopHunksDataEncoder(PrioritizedChangesDataEncoder):
 
         return changes
 
+
 class TRTopHunksSepDataEncoder(TRTopHunksDataEncoder):
     def create_input(self, test_code, covered_changes):
         SEP_TOKEN = self.tokenizer.sep_token
         return test_code + SEP_TOKEN + SEP_TOKEN.join(covered_changes)
+
 
 class TRTopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):
     def get_change_documents(self, row):
@@ -371,6 +387,7 @@ class TRTopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):
             return added_changes
         else:
             return deleted_changes
+
 
 class TRTopAddedHunksSepDataEncoder(TRTopAddedHunksDataEncoder):
     def create_input(self, test_code, covered_changes):
