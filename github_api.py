@@ -5,6 +5,8 @@ import requests
 import shutil
 from tqdm.auto import tqdm
 from config import Config
+import time
+from datetime import datetime
 
 accept_diff_header = {"Accept": "application/vnd.github.v3.diff"}
 accept_json_header = {"Accept": "application/vnd.github+json"}
@@ -120,3 +122,103 @@ def download_file(url, output_file):
         ) as raw:
             with open(str(output_file), "wb") as f:
                 shutil.copyfileobj(raw, f)
+
+
+def get_release_tree(repo="apache/dubbo", releases=None):
+    tags_cache_file = (
+        Path(Config.get("gh_cache_path"))
+        / repo.replace("/", "@")
+        / f"{repo.replace('/', '@')}-tags.json"
+    )
+    if tags_cache_file.exists() and tags_cache_file.stat().st_size > 0:
+        print(f"Read tags from cache at {tags_cache_file}")
+        with open(str(tags_cache_file)) as f:
+            tags = json.loads(f.read())
+
+    else:
+        page_no = 1
+        tags = []
+        while True:
+            response = get(
+                url=f"{Config.get('gh_api_base_url')}/repos/{repo}/tags",
+                headers={**get_token_header(), **accept_json_header},
+                params={"per_page": 100, "page": page_no},
+            ).json()
+            if len(response) == 0:
+                break
+            tags.extend(response)
+            page_no += 1
+
+    tags_cache_file.parent.mkdir(exist_ok=True, parents=True)
+    with open(str(tags_cache_file), "w") as f:
+        f.write(json.dumps(tags))
+
+    commits_cache_file = (
+            Path(Config.get("gh_cache_path"))
+            / repo.replace("/", "@")
+            / f"{repo.replace('/', '@')}-commits.json"
+    )
+    if commits_cache_file.exists() and commits_cache_file.stat().st_size > 0:
+        print(f"Read commits from cache at {commits_cache_file}")
+        with open(str(commits_cache_file)) as f:
+            commits = json.loads(f.read())
+
+    else:
+        page_no = 1
+        commits = []
+        while True:
+            response = get(
+                url=f"{Config.get('gh_api_base_url')}/repos/{repo}/commits",
+                headers={**get_token_header(), **accept_json_header},
+                params={"per_page": 100, "page": page_no},
+            ).json()
+            if len(response) == 0:
+                break
+            commits.extend(response)
+            page_no += 1
+
+    commits_cache_file.parent.mkdir(exist_ok=True, parents=True)
+    with open(str(commits_cache_file), "w") as f:
+        f.write(json.dumps(commits))
+
+    commits = sorted(commits, key=lambda c: datetime.strptime(c["commit"]["committer"]["date"], '%Y-%m-%dT%H:%M:%SZ'), reverse=True)
+
+    release_tags = [r.tag for r in releases]
+    sha_tags = {t["commit"]["sha"]: t["name"] for t in tags if t["name"] in release_tags}
+    tag_and_parent = dict()
+
+    print("Finding release parents")
+    for s in tqdm(sha_tags.keys()):
+        index_of_tag = next((i for i, elem in enumerate(commits) if elem["sha"] == s), None)
+        if not index_of_tag:    # For some tags, the sha isn't found in the commit list
+            tag_and_parent[sha_tags[s]] = None
+            continue
+
+        parent_shas = [p["sha"] for p in commits[index_of_tag]["parents"]]
+        relevant_commits = commits[index_of_tag:]
+        relevant_history = [c for c in relevant_commits if c["sha"] in parent_shas]
+
+        preceding_tag_sha = None
+        while not preceding_tag_sha and len(relevant_history) > 0:
+            if relevant_history[0]["sha"] in sha_tags.keys():
+                preceding_tag_sha = relevant_history[0]["sha"]
+            else:
+                if len(parent_shas) > 0 and relevant_history[0]["sha"] in parent_shas:
+                    parent_shas.remove(relevant_history[0]["sha"])
+                parent_shas.extend([p["sha"] for p in relevant_history[0]["parents"]])
+                relevant_commits = relevant_commits[next((i for i, elem in enumerate(relevant_commits) if elem["sha"] == parent_shas[0]), 1):]
+                relevant_history = [c for c in relevant_commits if c["sha"] in parent_shas]
+
+        tag_and_parent[sha_tags[s]] = sha_tags[preceding_tag_sha] if preceding_tag_sha else None
+
+
+    for t, p in tag_and_parent.items():
+        print(f"{t}: {p}")
+    return tag_and_parent
+
+
+
+
+
+
+# get_release_tree()
