@@ -17,11 +17,20 @@ class Service:
             if not r["prerelease"]
         ]
         releases.sort(key=lambda r: r.date, reverse=True)
+        release_parents = ghapi.get_release_tree(Config.get("repo"), releases)
+        releases = [(r, release_parents[r.tag] if r.tag in release_parents.keys() else None) for r in releases]
+
         rel_info_l = []
         rep_info_l = []
         for i in trange(len(releases) - 1, ncols=100, position=0, leave=True):
-            head = releases[i]
-            base = releases[i + 1]
+            head = releases[i][0]
+            index_list = [j for j, elem in enumerate(releases) if elem[0].tag == releases[i][1]]
+            base_index = index_list[0] if len(index_list) > 0 else None
+
+            if not base_index:
+                continue    # Not ideal, need a better solution for when the parent release couldn't be found
+
+            base = releases[base_index][0]
             print()
             print(f"Analyzing release {base.tag}...{head.tag}")
             release_pair = ReleasePair(base, head)
