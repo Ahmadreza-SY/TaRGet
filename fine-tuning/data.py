@@ -147,6 +147,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
         pass
 
     def preprocess(self, ds):
+        self.log(f"Preprocessing project {ds.iloc[0]['project']}")
         before_len = len(ds)
         ds = ds[ds["covered_changes"].map(len) > 0].reset_index(drop=True)
         self.log(f"Removed {before_len - len(ds)} rows due to zero change coverage.")
