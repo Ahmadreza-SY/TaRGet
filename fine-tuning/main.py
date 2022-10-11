@@ -57,7 +57,15 @@ def main():
         "--data_encoder",
         required=True,
         type=str,
-        choices=["ProgramRepair", "TRTopLines", "TRTopAddedLines", "TRTopHunks", "TRTopHunksSep", "TRTopAddedHunks", "TRTopAddedHunksSep"],
+        choices=[
+            "ProgramRepair",
+            "TRTopLines",
+            "TRTopAddedLines",
+            "TRTopHunks",
+            "TRTopHunksSep",
+            "TRTopAddedHunks",
+            "TRTopAddedHunksSep",
+        ],
     )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
@@ -74,6 +82,8 @@ def main():
     parser.add_argument("-ss", "--sub_sample", dest="sub_sample", action="store_true")
     parser.set_defaults(sub_sample=False)
     parser.add_argument("-sr", "--sample_ratio", default=0.15, type=float)
+    parser.add_argument("-to", "--test_only", dest="test_only", action="store_true")
+    parser.set_defaults(test_only=False)
 
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
@@ -95,7 +105,7 @@ def main():
     elif args.data_encoder == "TRTopAddedHunksSep":
         args.data_encoder_class = TRTopAddedHunksSepDataEncoder
 
-    mp.spawn(train, nprocs=args.gpus, args=(args,))
+    mp.spawn(run, nprocs=args.gpus, args=(args,))
 
     logger.info("All jobs done!")
 
@@ -132,7 +142,7 @@ def save_model(model, optimizer, scheduler, output_dir):
     )
 
 
-def train(gpu, args):
+def run(gpu, args):
     rank = args.node_rank * args.gpus + gpu
     args.rank = rank
     args.gpu = gpu
@@ -149,11 +159,32 @@ def train(gpu, args):
     if args.rank == 0:
         logger.info("All processes joined!")
 
-    # Data loading
+    load_data(args)
+
+    if not args.test_only:
+        train(gpu, args)
+
+    test(gpu, args)
+
+
+def load_data(args):
     data_encoder = args.data_encoder_class(args)
-    train_dataset, valid_dataset, test_dataset = data_encoder.load_dataset()
-    train_loader = create_loader(train_dataset, args)
-    train_steps = round(args.epochs * (len(train_dataset) / (args.batch_size * args.world_size)))
+    args.train_dataset, args.valid_dataset, args.test_dataset = data_encoder.load_dataset()
+
+    if (args.output_dir / "stats.json").exists():
+        with open(str(args.output_dir / "stats.json")) as f:
+            args.stats = json.load(f)
+
+
+def save_stats(args):
+    if args.rank == 0:
+        with open(str(args.output_dir / "stats.json"), "w") as f:
+            f.write(json.dumps(args.stats, indent=2, sort_keys=False))
+
+
+def train(gpu, args):
+    train_loader = create_loader(args.train_dataset, args)
+    train_steps = round(args.epochs * (len(args.train_dataset) / (args.batch_size * args.world_size)))
     # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
 
     model = model_class.from_pretrained(args.model_name_or_path)
@@ -176,7 +207,7 @@ def train(gpu, args):
 
     if args.rank == 0:
         logger.info("***** Training *****")
-        logger.info(f"    Train data: {len(train_dataset)}")
+        logger.info(f"    Train data: {len(args.train_dataset)}")
         logger.info(f"    Epochs: {args.epochs}")
 
     start = datetime.now()
@@ -184,9 +215,9 @@ def train(gpu, args):
     elapsed_time = timedelta()
     args.best_checkpoint = (-1.0, 1)
     args.stats = {}
-    args.stats["train_set_size"] = len(train_dataset)
-    args.stats["valid_set_size"] = len(valid_dataset)
-    args.stats["test_set_size"] = len(test_dataset)
+    args.stats["train_set_size"] = len(args.train_dataset)
+    args.stats["valid_set_size"] = len(args.valid_dataset)
+    args.stats["test_set_size"] = len(args.test_dataset)
     args.stats["training_stats"] = {"epochs": []}
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -241,7 +272,7 @@ def train(gpu, args):
         if args.rank == 0:
             save_model(model, optimizer, scheduler, valid_output_dir)
 
-        bleu_score, em = eval(model, valid_dataset, args, valid_output_dir)
+        bleu_score, em = eval(model, args.valid_dataset, args, valid_output_dir)
         if args.scoring == "em":
             sel_score = em
         elif args.scoring == "bleu":
@@ -272,18 +303,20 @@ def train(gpu, args):
         training_time = datetime.now() - start
         logger.info("Training completed in: " + str(training_time))
         args.stats["training_stats"]["training_time"] = str(training_time)
+    
+    save_stats(args)
 
+
+def test(gpu, args):
     if args.rank == 0:
-        logger.info(f"Testing with best checkpoint ({args.best_checkpoint})")
+        logger.info(f"Testing with best checkpoint")
     model = model_class.from_pretrained(args.output_dir / f"checkpoint-best")
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
-    bleu_score, em = eval(model, test_dataset, args, args.output_dir)
+    bleu_score, em = eval(model, args.test_dataset, args, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "em": em}
 
-    if args.rank == 0:
-        with open(str(args.output_dir / "stats.json"), "w") as f:
-            f.write(json.dumps(args.stats, indent=2, sort_keys=False))
+    save_stats(args)
 
 
 def eval(model, dataset, args, output_dir):
