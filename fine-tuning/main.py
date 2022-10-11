@@ -84,6 +84,9 @@ def main():
     parser.add_argument("-sr", "--sample_ratio", default=0.15, type=float)
     parser.add_argument("-to", "--test_only", dest="test_only", action="store_true")
     parser.set_defaults(test_only=False)
+    parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
+    parser.set_defaults(eval_full_beam=False)
+    # parser.add_argument("-boi", "--beam_out_index", default=0, type=int)
 
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
@@ -303,7 +306,7 @@ def train(gpu, args):
         training_time = datetime.now() - start
         logger.info("Training completed in: " + str(training_time))
         args.stats["training_stats"]["training_time"] = str(training_time)
-    
+
     save_stats(args)
 
 
@@ -340,14 +343,42 @@ def eval(model, dataset, args, output_dir):
     for step, data in enumerate(loader, 1):
         source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
         source_ids, source_mask = source_ids.to(args.gpu), source_mask.to(args.gpu)
-        pred_ids = model_module.generate(
-            input_ids=source_ids,
-            attention_mask=source_mask,
-            num_beams=args.beam_size,
-            max_length=args.max_seq,
-            use_cache=True,
-            early_stopping=True,
-        )
+        if args.eval_full_beam:
+            outputs = model_module.generate(
+                input_ids=source_ids,
+                attention_mask=source_mask,
+                num_beams=args.beam_size,
+                max_length=args.max_seq,
+                use_cache=True,
+                early_stopping=True,
+                num_return_sequences=args.beam_size,
+                output_scores=True,
+                return_dict_in_generate=True,
+            )
+            # For prediction certainty
+            # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
+            batch_preds = outputs.sequences.view(-1, args.beam_size, args.max_seq).cpu()
+            pred_ids = torch.zeros((target_ids.shape[0], args.max_seq))
+            for i, preds in enumerate(batch_preds):
+                em_ind = -1
+                for j, seq in enumerate(preds):
+                    if torch.equal(seq, target_ids[i]):
+                        em_ind = j
+                        break
+                if em_ind == -1:
+                    pred_ids[i] = preds[0]
+                else:
+                    pred_ids[i] = preds[em_ind]
+        else:
+            pred_ids = model_module.generate(
+                input_ids=source_ids,
+                attention_mask=source_mask,
+                num_beams=args.beam_size,
+                max_length=args.max_seq,
+                use_cache=True,
+                early_stopping=True,
+            )
+
         local_preds.extend(list(pred_ids.cpu()))
         local_targets.extend(target_ids)
         local_ids.extend(data_ids)
