@@ -357,12 +357,15 @@ def eval(model, dataset, args, output_dir):
             )
             # For prediction certainty
             # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
-            batch_preds = outputs.sequences.view(-1, args.beam_size, args.max_seq).cpu()
-            pred_ids = torch.zeros((target_ids.shape[0], args.max_seq))
+            curr_batch_size = target_ids.shape[0]
+            batch_preds = outputs.sequences.view(curr_batch_size, args.beam_size, -1).cpu()
+            pred_ids = torch.zeros((curr_batch_size, batch_preds.shape[2]))
             for i, preds in enumerate(batch_preds):
                 em_ind = -1
                 for j, seq in enumerate(preds):
-                    if torch.equal(seq, target_ids[i]):
+                    seq_code = tokenizer.decode(seq, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    target_code = tokenizer.decode(target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    if seq_code == target_code:
                         em_ind = j
                         break
                 if em_ind == -1:
