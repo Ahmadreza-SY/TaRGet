@@ -1,4 +1,15 @@
+certifi==2022.9.24
+charset-normalizer==2.0.12
+gitdb==4.0.9
+GitPython==3.1.29
+idna==3.4
+numpy==1.23.3
 pandas==1.3.3
+python-dateutil==2.8.2
+pytz==2022.4
+requests==2.26.0
+six==1.16.0
+smmap==5.0.0
 tqdm==4.43.0
 unidiff==0.7.4
-requests==2.26.0
+urllib3==1.26.12
