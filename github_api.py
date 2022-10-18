@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 from config import Config
 import time
 from datetime import datetime
+import git
 
 accept_diff_header = {"Accept": "application/vnd.github.v3.diff"}
 accept_json_header = {"Accept": "application/vnd.github+json"}
@@ -124,101 +125,39 @@ def download_file(url, output_file):
                 shutil.copyfileobj(raw, f)
 
 
-def get_release_tree(repo="apache/dubbo", releases=None):
-    tags_cache_file = (
-        Path(Config.get("gh_cache_path"))
-        / repo.replace("/", "@")
-        / f"{repo.replace('/', '@')}-tags.json"
-    )
-    if tags_cache_file.exists() and tags_cache_file.stat().st_size > 0:
-        print(f"Read tags from cache at {tags_cache_file}")
-        with open(str(tags_cache_file)) as f:
-            tags = json.loads(f.read())
-
-    else:
-        page_no = 1
-        tags = []
-        while True:
-            response = get(
-                url=f"{Config.get('gh_api_base_url')}/repos/{repo}/tags",
-                headers={**get_token_header(), **accept_json_header},
-                params={"per_page": 100, "page": page_no},
-            ).json()
-            if len(response) == 0:
-                break
-            tags.extend(response)
-            page_no += 1
-
-    tags_cache_file.parent.mkdir(exist_ok=True, parents=True)
-    with open(str(tags_cache_file), "w") as f:
-        f.write(json.dumps(tags))
-
-    commits_cache_file = (
-            Path(Config.get("gh_cache_path"))
+def get_release_tree(repo, releases):
+    clone_dir = (
+            Path(Config.get("gh_clones_path"))
             / repo.replace("/", "@")
-            / f"{repo.replace('/', '@')}-commits.json"
     )
-    if commits_cache_file.exists() and commits_cache_file.stat().st_size > 0:
-        print(f"Read commits from cache at {commits_cache_file}")
-        with open(str(commits_cache_file)) as f:
-            commits = json.loads(f.read())
-
+    if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
+        print(f"Cloning {repo} into {clone_dir}")
+        git_repo = git.Repo.clone_from(f"https://github.com/{repo}.git", clone_dir)
     else:
-        page_no = 1
-        commits = []
-        while True:
-            response = get(
-                url=f"{Config.get('gh_api_base_url')}/repos/{repo}/commits",
-                headers={**get_token_header(), **accept_json_header},
-                params={"per_page": 100, "page": page_no},
-            ).json()
-            if len(response) == 0:
-                break
-            commits.extend(response)
-            page_no += 1
-
-    commits_cache_file.parent.mkdir(exist_ok=True, parents=True)
-    with open(str(commits_cache_file), "w") as f:
-        f.write(json.dumps(commits))
-
-    commits = sorted(commits, key=lambda c: datetime.strptime(c["commit"]["committer"]["date"], '%Y-%m-%dT%H:%M:%SZ'), reverse=True)
+        git_repo = git.Repo(clone_dir)
 
     release_tags = [r.tag for r in releases]
-    sha_tags = {t["commit"]["sha"]: t["name"] for t in tags if t["name"] in release_tags}
+    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True) if t.name in release_tags]
     tag_and_parent = dict()
+    sha_tags = {t.commit.hexsha: t.name for t in tags}
 
     print("Finding release parents")
-    for s in tqdm(sha_tags.keys()):
-        index_of_tag = next((i for i, elem in enumerate(commits) if elem["sha"] == s), None)
-        if not index_of_tag:    # For some tags, the sha isn't found in the commit list
-            tag_and_parent[sha_tags[s]] = None
-            continue
+    for t in tqdm(tags):
+        parents = sorted([p for p in t.commit.parents], key=lambda x: x.committed_datetime, reverse=True)
 
-        parent_shas = [p["sha"] for p in commits[index_of_tag]["parents"]]
-        relevant_commits = commits[index_of_tag:]
-        relevant_history = [c for c in relevant_commits if c["sha"] in parent_shas]
+        while len(parents) > 0 and parents[0].hexsha not in sha_tags.keys():
+            curr_parent = parents.pop(0)
+            parents.extend([p for p in curr_parent.parents if p.hexsha not in [q.hexsha for q in parents]])
+            parents = sorted(parents, key=lambda x: x.committed_datetime, reverse=True)
 
-        preceding_tag_sha = None
-        while not preceding_tag_sha and len(relevant_history) > 0:
-            if relevant_history[0]["sha"] in sha_tags.keys():
-                preceding_tag_sha = relevant_history[0]["sha"]
-            else:
-                if len(parent_shas) > 0 and relevant_history[0]["sha"] in parent_shas:
-                    parent_shas.remove(relevant_history[0]["sha"])
-                parent_shas.extend([p["sha"] for p in relevant_history[0]["parents"]])
-                relevant_commits = relevant_commits[next((i for i, elem in enumerate(relevant_commits) if elem["sha"] == parent_shas[0]), 1):]
-                relevant_history = [c for c in relevant_commits if c["sha"] in parent_shas]
+            if any([p.hexsha in sha_tags.keys() for p in parents]):
+                parents = parents[:next((i for i, p in enumerate(parents) if p.hexsha in sha_tags.keys()), 0) + 1]
 
-        tag_and_parent[sha_tags[s]] = sha_tags[preceding_tag_sha] if preceding_tag_sha else None
-
+        tag_and_parent[sha_tags[t.commit.hexsha]] = sha_tags[parents[0].hexsha] if len(parents) > 0 else None
 
     for t, p in tag_and_parent.items():
         print(f"{t}: {p}")
+
     return tag_and_parent
 
-
-
-
-
-
-# get_release_tree()
+# get_release_tree("dbeaver/dbeaver", ["dubbo-3.0.8"])
