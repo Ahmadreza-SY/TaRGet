@@ -28,7 +28,7 @@ class Service:
             base_index = index_list[0] if len(index_list) > 0 else None
 
             if not base_index:
-                continue    # Not ideal, need a better solution for when the parent release couldn't be found
+                continue    # Only the case for a release with no parents
 
             base = releases[base_index][0]
             print()
