@@ -139,25 +139,31 @@ def get_release_tree(repo, releases):
     release_tags = [r.tag for r in releases]
     tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True) if t.name in release_tags]
     tag_and_parent = dict()
-    sha_tags = {t.commit.hexsha: t.name for t in tags}
+    visited_commits = {t.commit: t for t in tags}
+    commit_queue = sorted(visited_commits.keys(), key=lambda x: x.committed_datetime, reverse=True)
 
     print("Finding release parents")
-    for t in tqdm(tags):
-        parents = sorted([p for p in t.commit.parents], key=lambda x: x.committed_datetime, reverse=True)
+    while len(commit_queue) > 0:
+        curr_commit = commit_queue.pop(0)
 
-        while len(parents) > 0 and parents[0].hexsha not in sha_tags.keys():
-            curr_parent = parents.pop(0)
-            parents.extend([p for p in curr_parent.parents if p.hexsha not in [q.hexsha for q in parents]])
-            parents = sorted(parents, key=lambda x: x.committed_datetime, reverse=True)
+        for p in curr_commit.parents:
+            if p not in visited_commits.keys():
+                visited_commits[p] = visited_commits[curr_commit]
+                commit_queue.append(p)
 
-            if any([p.hexsha in sha_tags.keys() for p in parents]):
-                parents = parents[:next((i for i, p in enumerate(parents) if p.hexsha in sha_tags.keys()), 0) + 1]
+            elif visited_commits[p] != visited_commits[curr_commit]:
+                if visited_commits[p].commit.committed_datetime < visited_commits[curr_commit].commit.committed_datetime:
+                    if visited_commits[curr_commit].name not in tag_and_parent.keys():
+                        tag_and_parent[visited_commits[curr_commit].name] = visited_commits[p].name
 
-        tag_and_parent[sha_tags[t.commit.hexsha]] = sha_tags[parents[0].hexsha] if len(parents) > 0 else None
+                else:
+                    visited_commits[p] = visited_commits[curr_commit]
+                    if visited_commits[p].name not in tag_and_parent.keys() and visited_commits[curr_commit] != visited_commits[p]:
+                        tag_and_parent[visited_commits[p].name] = visited_commits[curr_commit].name
+
+        commit_queue = sorted(commit_queue, key=lambda x: x.committed_datetime, reverse=True)
 
     for t, p in tag_and_parent.items():
         print(f"{t}: {p}")
 
     return tag_and_parent
-
-# get_release_tree("dbeaver/dbeaver", ["dubbo-3.0.8"])
