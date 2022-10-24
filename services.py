@@ -6,7 +6,7 @@ import json
 from config import Config
 from release_analysis import Release, ReleasePair
 from code_analysis import create_repaired_tc_call_graphs, create_repaired_tc_change_coverage, get_test_method_coverage
-
+import copy
 
 class Service:
     @staticmethod
@@ -99,7 +99,14 @@ class Service:
             if method_coverage is None:
                 print(f"No call graph found for {name} ! Skipping ...")
                 continue
-            covered_changes = [change for change in changed_methods.get(base_tag, []) if change["name"] in method_coverage]
+
+            covered_changes = []
+            for change in changed_methods.get(base_tag, []):
+                found_coverage_i = [i for i, mc in enumerate(method_coverage) if mc["name"] == change["name"]]
+                if len(found_coverage_i) > 0 and len(change["hunks"]) > 0:
+                    _change = copy.deepcopy(change)
+                    _change["depth"] = method_coverage[found_coverage_i[0]]["depth"]
+                    covered_changes.append(_change)
             repair_changes = repair_changes_map[f"{base_tag}-{head_tag}-{name}"]
 
             dataset.append(

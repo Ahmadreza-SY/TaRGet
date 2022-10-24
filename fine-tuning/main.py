@@ -20,7 +20,15 @@ import logging
 import os
 from bleu import score
 from utils import write_lines
-from data import ProgramRepairDataEncoder, TestRepairDataEncoder
+from data import (
+    ProgramRepairDataEncoder,
+    TRTopLinesDataEncoder,
+    TRTopAddedLinesDataEncoder,
+    TRTopHunksDataEncoder,
+    TRTopHunksSepDataEncoder,
+    TRTopAddedHunksDataEncoder,
+    TRTopAddedHunksSepDataEncoder,
+)
 import json
 
 # TODO: Fix Tokenization
@@ -44,6 +52,21 @@ def main():
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
+    parser.add_argument(
+        "-de",
+        "--data_encoder",
+        required=True,
+        type=str,
+        choices=[
+            "ProgramRepair",
+            "TRTopLines",
+            "TRTopAddedLines",
+            "TRTopHunks",
+            "TRTopHunksSep",
+            "TRTopAddedHunks",
+            "TRTopAddedHunksSep",
+        ],
+    )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
@@ -59,16 +82,33 @@ def main():
     parser.add_argument("-ss", "--sub_sample", dest="sub_sample", action="store_true")
     parser.set_defaults(sub_sample=False)
     parser.add_argument("-sr", "--sample_ratio", default=0.15, type=float)
+    parser.add_argument("-to", "--test_only", dest="test_only", action="store_true")
+    parser.set_defaults(test_only=False)
+    parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
+    parser.set_defaults(eval_full_beam=False)
+    # parser.add_argument("-boi", "--beam_out_index", default=0, type=int)
 
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
     args.world_size = args.gpus * args.nodes
     args.model_name_or_path = "uclanlp/plbart-base"
     args.model_tokenizer_class = PLBartTokenizer
-    args.data_encoder_class = TestRepairDataEncoder
-    # args.data_encoder_class = ProgramRepairDataEncoder
+    if args.data_encoder == "ProgramRepair":
+        args.data_encoder_class = ProgramRepairDataEncoder
+    elif args.data_encoder == "TRTopLines":
+        args.data_encoder_class = TRTopLinesDataEncoder
+    elif args.data_encoder == "TRTopAddedLines":
+        args.data_encoder_class = TRTopAddedLinesDataEncoder
+    elif args.data_encoder == "TRTopHunks":
+        args.data_encoder_class = TRTopHunksDataEncoder
+    elif args.data_encoder == "TRTopHunksSep":
+        args.data_encoder_class = TRTopHunksSepDataEncoder
+    elif args.data_encoder == "TRTopAddedHunks":
+        args.data_encoder_class = TRTopAddedHunksDataEncoder
+    elif args.data_encoder == "TRTopAddedHunksSep":
+        args.data_encoder_class = TRTopAddedHunksSepDataEncoder
 
-    mp.spawn(train, nprocs=args.gpus, args=(args,))
+    mp.spawn(run, nprocs=args.gpus, args=(args,))
 
     logger.info("All jobs done!")
 
@@ -105,7 +145,7 @@ def save_model(model, optimizer, scheduler, output_dir):
     )
 
 
-def train(gpu, args):
+def run(gpu, args):
     rank = args.node_rank * args.gpus + gpu
     args.rank = rank
     args.gpu = gpu
@@ -122,11 +162,32 @@ def train(gpu, args):
     if args.rank == 0:
         logger.info("All processes joined!")
 
-    # Data loading
+    load_data(args)
+
+    if not args.test_only:
+        train(gpu, args)
+
+    test(gpu, args)
+
+
+def load_data(args):
     data_encoder = args.data_encoder_class(args)
-    train_dataset, valid_dataset, test_dataset = data_encoder.load_dataset()
-    train_loader = create_loader(train_dataset, args)
-    train_steps = round(args.epochs * (len(train_dataset) / (args.batch_size * args.world_size)))
+    args.train_dataset, args.valid_dataset, args.test_dataset = data_encoder.load_dataset()
+
+    if (args.output_dir / "stats.json").exists():
+        with open(str(args.output_dir / "stats.json")) as f:
+            args.stats = json.load(f)
+
+
+def save_stats(args):
+    if args.rank == 0:
+        with open(str(args.output_dir / "stats.json"), "w") as f:
+            f.write(json.dumps(args.stats, indent=2, sort_keys=False))
+
+
+def train(gpu, args):
+    train_loader = create_loader(args.train_dataset, args)
+    train_steps = round(args.epochs * (len(args.train_dataset) / (args.batch_size * args.world_size)))
     # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
 
     model = model_class.from_pretrained(args.model_name_or_path)
@@ -149,7 +210,7 @@ def train(gpu, args):
 
     if args.rank == 0:
         logger.info("***** Training *****")
-        logger.info(f"    Train data: {len(train_dataset)}")
+        logger.info(f"    Train data: {len(args.train_dataset)}")
         logger.info(f"    Epochs: {args.epochs}")
 
     start = datetime.now()
@@ -157,9 +218,9 @@ def train(gpu, args):
     elapsed_time = timedelta()
     args.best_checkpoint = (-1.0, 1)
     args.stats = {}
-    args.stats["train_set_size"] = len(train_dataset)
-    args.stats["valid_set_size"] = len(valid_dataset)
-    args.stats["test_set_size"] = len(test_dataset)
+    args.stats["train_set_size"] = len(args.train_dataset)
+    args.stats["valid_set_size"] = len(args.valid_dataset)
+    args.stats["test_set_size"] = len(args.test_dataset)
     args.stats["training_stats"] = {"epochs": []}
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -214,7 +275,7 @@ def train(gpu, args):
         if args.rank == 0:
             save_model(model, optimizer, scheduler, valid_output_dir)
 
-        bleu_score, em = eval(model, valid_dataset, args, valid_output_dir)
+        bleu_score, em = eval(model, args.valid_dataset, args, valid_output_dir)
         if args.scoring == "em":
             sel_score = em
         elif args.scoring == "bleu":
@@ -246,17 +307,19 @@ def train(gpu, args):
         logger.info("Training completed in: " + str(training_time))
         args.stats["training_stats"]["training_time"] = str(training_time)
 
+    save_stats(args)
+
+
+def test(gpu, args):
     if args.rank == 0:
-        logger.info(f"Testing with best checkpoint ({args.best_checkpoint})")
+        logger.info(f"Testing with best checkpoint")
     model = model_class.from_pretrained(args.output_dir / f"checkpoint-best")
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
-    bleu_score, em = eval(model, test_dataset, args, args.output_dir)
+    bleu_score, em = eval(model, args.test_dataset, args, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "em": em}
 
-    if args.rank == 0:
-        with open(str(args.output_dir / "stats.json"), "w") as f:
-            f.write(json.dumps(args.stats, indent=2, sort_keys=False))
+    save_stats(args)
 
 
 def eval(model, dataset, args, output_dir):
@@ -280,14 +343,45 @@ def eval(model, dataset, args, output_dir):
     for step, data in enumerate(loader, 1):
         source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
         source_ids, source_mask = source_ids.to(args.gpu), source_mask.to(args.gpu)
-        pred_ids = model_module.generate(
-            input_ids=source_ids,
-            attention_mask=source_mask,
-            num_beams=args.beam_size,
-            max_length=args.max_seq,
-            use_cache=True,
-            early_stopping=True,
-        )
+        if args.eval_full_beam:
+            outputs = model_module.generate(
+                input_ids=source_ids,
+                attention_mask=source_mask,
+                num_beams=args.beam_size,
+                max_length=args.max_seq,
+                use_cache=True,
+                early_stopping=True,
+                num_return_sequences=args.beam_size,
+                output_scores=True,
+                return_dict_in_generate=True,
+            )
+            # For prediction certainty
+            # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
+            curr_batch_size = target_ids.shape[0]
+            batch_preds = outputs.sequences.view(curr_batch_size, args.beam_size, -1).cpu()
+            pred_ids = torch.zeros((curr_batch_size, batch_preds.shape[2]))
+            for i, preds in enumerate(batch_preds):
+                em_ind = -1
+                for j, seq in enumerate(preds):
+                    seq_code = tokenizer.decode(seq, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    target_code = tokenizer.decode(target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    if seq_code == target_code:
+                        em_ind = j
+                        break
+                if em_ind == -1:
+                    pred_ids[i] = preds[0]
+                else:
+                    pred_ids[i] = preds[em_ind]
+        else:
+            pred_ids = model_module.generate(
+                input_ids=source_ids,
+                attention_mask=source_mask,
+                num_beams=args.beam_size,
+                max_length=args.max_seq,
+                use_cache=True,
+                early_stopping=True,
+            )
+
         local_preds.extend(list(pred_ids.cpu()))
         local_targets.extend(target_ids)
         local_ids.extend(data_ids)

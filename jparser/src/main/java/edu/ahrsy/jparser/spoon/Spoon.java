@@ -82,12 +82,6 @@ public class Spoon {
     return (executable instanceof CtMethod) || (executable instanceof CtConstructor);
   }
 
-  public String prettyPrint(CtBlock<?> block) {
-    CustomBlockJavaPrettyPrinter printer = new CustomBlockJavaPrettyPrinter(spoon.getFactory().getEnvironment());
-    printer.setIgnoreImplicit(false);
-    return printer.printElement(block);
-  }
-
   public Set<CtMethod<?>> getTestPreAndPostMethods(CtMethod<?> testMethod) {
     List<CtTypeReference<?>> refs = Arrays.asList(spoon.getFactory().Type().createReference("org.junit.Before"),
             spoon.getFactory().Type().createReference("org.junit.BeforeClass"),

@@ -92,4 +92,4 @@ def get_test_method_coverage(_class, method, tag):
     call_graph = get_call_graph(_class, method, tag)
     if call_graph is None:
         return None
-    return set([n["name"] for n in call_graph["nodes"]])
+    return [{k: n[k] for k in ["name", "depth"]} for n in call_graph["nodes"]]
