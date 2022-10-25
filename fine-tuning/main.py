@@ -67,6 +67,13 @@ def main():
             "TRTopAddedHunksSep",
         ],
     )
+    parser.add_argument(
+        "-gt",
+        "--ground_truth",
+        default="repaired_body",
+        type=str,
+        choices=["repaired_body", "repair_changes_hsep", "repair_changes_stsep", "repair_changes_tok"],
+    )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
@@ -364,7 +371,9 @@ def eval(model, dataset, args, output_dir):
                 em_ind = -1
                 for j, seq in enumerate(preds):
                     seq_code = tokenizer.decode(seq, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    target_code = tokenizer.decode(target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    target_code = tokenizer.decode(
+                        target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False
+                    )
                     if seq_code == target_code:
                         em_ind = j
                         break

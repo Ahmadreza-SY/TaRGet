@@ -249,6 +249,46 @@ class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
         SEP_TOKEN = self.tokenizer.sep_token
         return " ".join([test_code] + [SEP_TOKEN] + covered_changes)
 
+    def create_output(self, row):
+        SEP_TOKEN = self.tokenizer.sep_token
+        if self.args.ground_truth == "repaired_body":
+            return row["after_repair_body"]
+        elif self.args.ground_truth == "repair_changes_hsep":
+            return SEP_TOKEN.join(
+                [
+                    " ".join(
+                        [c["line"] for c in h.get("sourceChanges", [])] + [c["line"] for c in h.get("targetChanges", [])]
+                    )
+                    for h in row["repair_changes"]
+                ]
+            )
+        elif self.args.ground_truth == "repair_changes_stsep":
+            hunk_changes = []
+            for h in row["repair_changes"]:
+                src_changes = [c["line"] for c in h.get("sourceChanges", [])]
+                tr_changes = [c["line"] for c in h.get("targetChanges", [])]
+                line_changes = []
+                if len(src_changes) > 0:
+                    line_changes.append(" ".join(src_changes))
+                if len(tr_changes) > 0:
+                    line_changes.append(" ".join(tr_changes))
+                hunk_changes.append(SEP_TOKEN.join(line_changes))
+
+            return SEP_TOKEN.join(hunk_changes)
+        elif self.args.ground_truth == "repair_changes_tok":
+            hunk_changes = []
+            for h in row["repair_changes"]:
+                src_changes = [c["line"] for c in h.get("sourceChanges", [])]
+                tr_changes = [c["line"] for c in h.get("targetChanges", [])]
+                line_changes = []
+                if len(src_changes) > 0:
+                    line_changes.append("DEL " + " ".join(src_changes))
+                if len(tr_changes) > 0:
+                    line_changes.append("ADD " + " ".join(tr_changes))
+                hunk_changes.append(" ".join(line_changes))
+
+            return " ".join(hunk_changes)
+
     def create_inputs_and_outputs(self, ds):
         self.log("Prioritizing changed documents and creating inputs ...")
         included_change_p = []
@@ -272,7 +312,7 @@ class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
             f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changed documents are included in the input."
         )
         ds["input"] = inputs
-        ds["output"] = ds["after_repair_body"]
+        ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
         return ds
 
 
