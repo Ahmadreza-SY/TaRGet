@@ -180,6 +180,3 @@ def get_tag_tree(repo):
         print(f"{t}: {p}")
 
     return tag_parents
-
-
-get_tag_tree("alibaba/fastjson")
