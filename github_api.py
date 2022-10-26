@@ -1,4 +1,3 @@
-import requests
 from pathlib import Path
 import json
 import requests
@@ -130,7 +129,7 @@ def download_file(url, output_file):
                 shutil.copyfileobj(raw, f)
 
 
-def get_release_tree(repo, releases):
+def get_tag_tree(repo):
     clone_dir = (
             Path(Config.get("gh_clones_path"))
             / repo.replace("/", "@")
@@ -141,34 +140,46 @@ def get_release_tree(repo, releases):
     else:
         git_repo = git.Repo(clone_dir)
 
-    release_tags = [r.tag for r in releases]
-    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True) if t.name in release_tags]
-    tag_and_parent = dict()
-    visited_commits = {t.commit: t for t in tags}
-    commit_queue = sorted(visited_commits.keys(), key=lambda x: x.committed_datetime, reverse=True)
+    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
+    tag_parents = dict()
+    commit_parents = {t.commit.hexsha: t for t in tags}
+    commit_queue = sorted([t.commit for t in tags], key=lambda x: x.committed_datetime, reverse=True)
 
     print("Finding release parents")
     while len(commit_queue) > 0:
         curr_commit = commit_queue.pop(0)
 
         for p in curr_commit.parents:
-            if p not in visited_commits.keys():
-                visited_commits[p] = visited_commits[curr_commit]
-                commit_queue.append(p)
+            if p.hexsha not in commit_parents:
+                commit_parents[p.hexsha] = commit_parents[curr_commit.hexsha]
+                insert_index = next((i for i, c in enumerate(commit_queue) if c.committed_datetime < p.committed_datetime), -1)
+                commit_queue.insert(insert_index, p)
 
-            elif visited_commits[p] != visited_commits[curr_commit]:
-                if visited_commits[p].commit.committed_datetime < visited_commits[curr_commit].commit.committed_datetime:
-                    if visited_commits[curr_commit].name not in tag_and_parent.keys():
-                        tag_and_parent[visited_commits[curr_commit].name] = visited_commits[p].name
+            elif commit_parents[p.hexsha].name != commit_parents[curr_commit.hexsha].name:
+                # If the current commit has a tag that already has an assigned parent tag
+                # And the current commit's tag's parent tag happened before the current parent commit's parent tag
+                # And the current commit is later than the parent commit's parent tag
+                # And the current commit's parent tag is later than the parent commit
+                if commit_parents[curr_commit.hexsha].name in tag_parents and \
+                        tag_parents[commit_parents[curr_commit.hexsha].name].commit.committed_datetime < commit_parents[p.hexsha].commit.committed_datetime < curr_commit.committed_datetime and \
+                        commit_parents[curr_commit.hexsha].commit.committed_datetime > p.committed_datetime:
+                    tag_parents[commit_parents[curr_commit.hexsha].name] = commit_parents[p.hexsha]
+
+                if commit_parents[p.hexsha].commit.committed_datetime < commit_parents[curr_commit.hexsha].commit.committed_datetime:
+                    if commit_parents[curr_commit.hexsha].name not in tag_parents:
+                        tag_parents[commit_parents[curr_commit.hexsha].name] = commit_parents[p.hexsha]
 
                 else:
-                    visited_commits[p] = visited_commits[curr_commit]
-                    if visited_commits[p].name not in tag_and_parent.keys() and visited_commits[curr_commit] != visited_commits[p]:
-                        tag_and_parent[visited_commits[p].name] = visited_commits[curr_commit].name
+                    if commit_parents[p.hexsha].name not in tag_parents:
+                        tag_parents[commit_parents[p.hexsha].name] = commit_parents[curr_commit.hexsha]
 
-        commit_queue = sorted(commit_queue, key=lambda x: x.committed_datetime, reverse=True)
+                    commit_parents[p.hexsha] = commit_parents[curr_commit.hexsha]
 
-    for t, p in tag_and_parent.items():
+    tag_parents = {t:p.name for t, p in tag_parents.items()}
+    for t, p in tag_parents.items():
         print(f"{t}: {p}")
 
-    return tag_and_parent
+    return tag_parents
+
+
+get_tag_tree("alibaba/fastjson")
