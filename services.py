@@ -8,29 +8,25 @@ from release_analysis import Release, ReleasePair
 from code_analysis import create_repaired_tc_call_graphs, create_repaired_tc_change_coverage, get_test_method_coverage
 import copy
 
+
 class Service:
     @staticmethod
     def analyze_release_and_repairs():
-        releases = [
-            Release(r["name"], r["tag_name"], pd.to_datetime(r["created_at"]), r["tarball_url"])
-            for r in ghapi.get_all_releases(Config.get("repo"))
-            if not r["prerelease"]
-        ]
-        releases.sort(key=lambda r: r.date, reverse=True)
-        release_parents = ghapi.get_release_tree(Config.get("repo"), releases)
-        releases = [(r, release_parents[r.tag] if r.tag in release_parents.keys() else None) for r in releases]
+        releases = {r["tag_name"]: Release(r["name"], r["tag_name"], pd.to_datetime(r["created_at"]), r["tarball_url"])
+                    for r in ghapi.get_all_releases(Config.get("repo"))
+                    if not r["prerelease"]
+                    }
+        release_parents = ghapi.get_tag_tree(Config.get("repo"))
 
         rel_info_l = []
         rep_info_l = []
-        for i in trange(len(releases) - 1, ncols=100, position=0, leave=True):
-            head = releases[i][0]
-            index_list = [j for j, elem in enumerate(releases) if elem[0].tag == releases[i][1]]
-            base_index = index_list[0] if len(index_list) > 0 else None
+        for name, release in tqdm(releases.items()):
+            head = release
+            base = releases[release_parents[name]] if name in release_parents else None
 
-            if not base_index:
-                continue    # Only the case for a release with no parents
+            if not base:
+                continue  # Only the case for a release with no parents
 
-            base = releases[base_index][0]
             print()
             print(f"Analyzing release {base.tag}...{head.tag}")
             release_pair = ReleasePair(base, head)
@@ -70,17 +66,18 @@ class Service:
         test_repair_changes = json.loads(
             (Path(Config.get("output_path")) / "repairs" / "test_repair_changes.json").read_text()
         )
-        repair_changes_map = {f"{ch['baseTag']}-{ch['headTag']}-{ch['name']}": ch["hunks"] for ch in test_repair_changes}
+        repair_changes_map = {f"{ch['baseTag']}-{ch['headTag']}-{ch['name']}": ch["hunks"] for ch in
+                              test_repair_changes}
 
         dataset = []
         test_paths = {}
         for _, r in tqdm(
-            repair_info.iterrows(),
-            total=len(repair_info),
-            ncols=100,
-            position=0,
-            leave=True,
-            desc="Creating dataset",
+                repair_info.iterrows(),
+                total=len(repair_info),
+                ncols=100,
+                position=0,
+                leave=True,
+                desc="Creating dataset",
         ):
             _class, method, base_tag, head_tag = (
                 r["class"],
