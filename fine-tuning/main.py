@@ -28,6 +28,7 @@ from data import (
     TRTopHunksSepDataEncoder,
     TRTopAddedHunksDataEncoder,
     TRTopAddedHunksSepDataEncoder,
+    TRTHSFirstDepthCoverageDataEncoder
 )
 import json
 
@@ -65,6 +66,7 @@ def main():
             "TRTopHunksSep",
             "TRTopAddedHunks",
             "TRTopAddedHunksSep",
+            "TRTHSFirstDepthCoverage"
         ],
     )
     parser.add_argument(
@@ -114,6 +116,8 @@ def main():
         args.data_encoder_class = TRTopAddedHunksDataEncoder
     elif args.data_encoder == "TRTopAddedHunksSep":
         args.data_encoder_class = TRTopAddedHunksSepDataEncoder
+    elif args.data_encoder == "TRTHSFirstDepthCoverage":
+        args.data_encoder_class = TRTHSFirstDepthCoverageDataEncoder
 
     mp.spawn(run, nprocs=args.gpus, args=(args,))
 
