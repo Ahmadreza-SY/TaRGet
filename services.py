@@ -36,7 +36,6 @@ class Service:
                 continue
             rel_info_l.append(rel_info)
             rep_info_l.append(rep_info)
-            return
 
         pd.concat(rel_info_l).to_csv(
             Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
