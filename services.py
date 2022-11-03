@@ -16,7 +16,8 @@ class Service:
                     for r in ghapi.get_all_releases(Config.get("repo"))
                     if not r["prerelease"]
                     }
-        release_parents = ghapi.get_tag_tree(Config.get("repo"))
+
+        release_parents = ghapi.get_tag_tree(Config.get("repo"), releases.keys())
 
         rel_info_l = []
         rep_info_l = []
@@ -25,7 +26,7 @@ class Service:
             base = releases[release_parents[name]] if name in release_parents else None
 
             if not base:
-                continue  # Only the case for a release with no parents
+                continue  # Occurs when there is no ancestor to the head tag
 
             print()
             print(f"Analyzing release {base.tag}...{head.tag}")
@@ -35,6 +36,7 @@ class Service:
                 continue
             rel_info_l.append(rel_info)
             rep_info_l.append(rep_info)
+            return
 
         pd.concat(rel_info_l).to_csv(
             Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
@@ -122,3 +124,4 @@ class Service:
             )
 
         (Path(Config.get("output_path")) / "dataset.json").write_text(json.dumps(dataset), encoding="utf-8")
+
