@@ -129,7 +129,7 @@ def download_file(url, output_file):
                 shutil.copyfileobj(raw, f)
 
 
-def get_tag_tree(repo):
+def get_tag_tree(repo, releases):
     clone_dir = (
             Path(Config.get("gh_clones_path"))
             / repo.replace("/", "@")
@@ -140,43 +140,24 @@ def get_tag_tree(repo):
     else:
         git_repo = git.Repo(clone_dir)
 
-    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
+    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True) if t.name in releases]
     tag_parents = dict()
-    commit_parents = {t.commit.hexsha: t for t in tags}
-    commit_queue = sorted([t.commit for t in tags], key=lambda x: x.committed_datetime, reverse=True)
 
     print("Finding release parents")
-    while len(commit_queue) > 0:
-        curr_commit = commit_queue.pop(0)
+    for i in range(len(tags)):
+        for j in range(i+1, len(tags)):
+            if git_repo.is_ancestor(tags[j].commit, tags[i].commit):
+                tag_parents[tags[i].name] = tags[j].name
+                break
 
-        for p in curr_commit.parents:
-            if p.hexsha not in commit_parents:
-                commit_parents[p.hexsha] = commit_parents[curr_commit.hexsha]
-                insert_index = next((i for i, c in enumerate(commit_queue) if c.committed_datetime < p.committed_datetime), -1)
-                commit_queue.insert(insert_index, p)
+        if tags[i].name not in tag_parents:
+            tag_parents[tags[i].name] = None
 
-            elif commit_parents[p.hexsha].name != commit_parents[curr_commit.hexsha].name:
-                # If the current commit has a tag that already has an assigned parent tag
-                # And the current commit's tag's parent tag happened before the current parent commit's parent tag
-                # And the current commit is later than the parent commit's parent tag
-                # And the current commit's parent tag is later than the parent commit
-                if commit_parents[curr_commit.hexsha].name in tag_parents and \
-                        tag_parents[commit_parents[curr_commit.hexsha].name].commit.committed_datetime < commit_parents[p.hexsha].commit.committed_datetime < curr_commit.committed_datetime and \
-                        commit_parents[curr_commit.hexsha].commit.committed_datetime > p.committed_datetime:
-                    tag_parents[commit_parents[curr_commit.hexsha].name] = commit_parents[p.hexsha]
-
-                if commit_parents[p.hexsha].commit.committed_datetime < commit_parents[curr_commit.hexsha].commit.committed_datetime:
-                    if commit_parents[curr_commit.hexsha].name not in tag_parents:
-                        tag_parents[commit_parents[curr_commit.hexsha].name] = commit_parents[p.hexsha]
-
-                else:
-                    if commit_parents[p.hexsha].name not in tag_parents:
-                        tag_parents[commit_parents[p.hexsha].name] = commit_parents[curr_commit.hexsha]
-
-                    commit_parents[p.hexsha] = commit_parents[curr_commit.hexsha]
-
-    tag_parents = {t:p.name for t, p in tag_parents.items()}
     for t, p in tag_parents.items():
         print(f"{t}: {p}")
+
+    not_none = sum(value is not None for value in tag_parents.values())
+    percent = "%.2f" % (not_none/len(tag_parents) * 100)
+    print(f"{percent}% of {len(tag_parents)} tags have valid ancestors")
 
     return tag_parents
