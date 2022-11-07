@@ -15,7 +15,7 @@ def create_repaired_tc_call_graphs():
 
 
 def get_call_graph(_class, method, tag):
-    call_graph_path = Path(Config.get("output_path")) / "releases" / tag / "call_graphs" / _class / f"{method}.json"
+    call_graph_path = Path(Config.get("output_path")) / "tags" / tag / "call_graphs" / _class / f"{method}.json"
     if not call_graph_path.exists():
         return None
     call_graph = {}
@@ -26,7 +26,7 @@ def get_call_graph(_class, method, tag):
 
 
 def get_test_file_coverage(_class, method, tag):
-    all_tests = pd.read_csv(Path(Config.get("output_path")) / "releases" / tag / "tests.csv")
+    all_tests = pd.read_csv(Path(Config.get("output_path")) / "tags" / tag / "tests.csv")
     all_test_files = all_tests["PATH"].values.tolist()
 
     call_graph = get_call_graph(_class, method, tag)
