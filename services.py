@@ -4,7 +4,7 @@ import github_api as ghapi
 from tqdm import trange, tqdm
 import json
 from config import Config
-from release_analysis import Release, ReleasePair
+from release_analysis import Release, ReleasePair, TagPair
 from code_analysis import create_repaired_tc_call_graphs, create_repaired_tc_change_coverage, get_test_method_coverage
 import copy
 
@@ -32,6 +32,37 @@ class Service:
             print(f"Analyzing release {base.tag}...{head.tag}")
             release_pair = ReleasePair(base, head)
             rel_info, rep_info = release_pair.extract_release_repairs()
+            if rel_info.empty or rep_info.empty:
+                continue
+            rel_info_l.append(rel_info)
+            rep_info_l.append(rep_info)
+
+        pd.concat(rel_info_l).to_csv(
+            Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
+            index=False,
+        )
+        pd.concat(rep_info_l).to_csv(
+            Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv",
+            index=False,
+        )
+
+    @staticmethod
+    def analyze_tag_and_repairs():
+        tags, tag_parents = ghapi.get_tags_and_ancestors(Config.get("repo"))
+
+        rel_info_l = []
+        rep_info_l = []
+        for tag, parent in tqdm(tag_parents.items()):
+            head = tags[tag]
+            base = tags[parent] if parent else None
+
+            if not base:
+                continue  # Occurs when there is no ancestor to the head tag
+
+            print()
+            print(f"Analyzing release {base.name}...{head.name}")
+            tag_pair = TagPair(base, head)
+            rel_info, rep_info = tag_pair.extract_tag_repairs()
             if rel_info.empty or rep_info.empty:
                 continue
             rel_info_l.append(rel_info)
@@ -88,7 +119,7 @@ class Service:
             )
             name = f"{_class}.{method}"
             if base_tag not in test_paths:
-                tests = pd.read_csv(Path(Config.get("output_path")) / "releases" / base_tag / "tests.csv")
+                tests = pd.read_csv(Path(Config.get("output_path")) / "tags" / base_tag / "tests.csv")
                 test_paths[base_tag] = dict(zip(tests["NAME"].values.tolist(), tests["PATH"].values.tolist()))
             path = test_paths[base_tag][_class]
             before_repair, before_repair_body = Service.get_test_code(base_tag, _class, method)
@@ -123,4 +154,3 @@ class Service:
             )
 
         (Path(Config.get("output_path")) / "dataset.json").write_text(json.dumps(dataset), encoding="utf-8")
-

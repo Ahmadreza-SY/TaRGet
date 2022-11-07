@@ -5,7 +5,7 @@ from services import Service
 
 def analyze_github_releases(args):
     Config.set("gh_api_token", args.api_token)
-    Service.analyze_release_and_repairs()
+    Service.analyze_tag_and_repairs()
 
 
 def create_test_repair_dataset(args):
