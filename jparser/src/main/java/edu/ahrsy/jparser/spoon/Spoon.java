@@ -4,7 +4,6 @@ import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.SpoonException;
 import spoon.processing.Processor;
-import spoon.reflect.code.CtBlock;
 import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.CtTypeReference;
@@ -46,7 +45,7 @@ public class Spoon {
 
   public static String getRelativePath(CtExecutable<?> executable, String srcPath) {
     if (!executable.getPosition().isValidPosition() && !executable.getParent().getPosition().isValidPosition()) {
-      System.out.printf("getRelativePath: No valid position found for %s %n", Spoon.getSimpleName(executable));
+      System.out.printf("getRelativePath: No valid position found for %s %n", Spoon.getSimpleSignature(executable));
       return new NoSourcePosition().toString();
     }
     var srcURI = new File(srcPath).toURI();
@@ -56,11 +55,14 @@ public class Spoon {
   }
 
   public static String getUniqueName(CtExecutable<?> executable) {
-    if (executable instanceof CtConstructor<?>) return executable.getSignature();
-    return String.format("%s.%s", ((CtType<?>) executable.getParent()).getQualifiedName(), executable.getSignature());
+    String simpleSignature = getSimpleSignature(executable);
+    if (executable instanceof CtConstructor<?>) return String.format("%s.%s",
+            ((CtConstructor<?>) executable).getDeclaringType().getQualifiedName(),
+            simpleSignature);
+    else return String.format("%s.%s", ((CtType<?>) executable.getParent()).getQualifiedName(), simpleSignature);
   }
 
-  public static String getSimpleName(CtExecutable<?> executable) {
+  public static String getSimpleSignature(CtExecutable<?> executable) {
     SimpleSignaturePrinter pr = new SimpleSignaturePrinter();
     pr.scan(executable);
     return pr.getSignature();
@@ -72,10 +74,10 @@ public class Spoon {
       return executable.toString();
     } catch (SpoonException e) {
       System.out.printf("ERROR in prettyPrintWithoutComments: executable = %s%n %s%n",
-              executable.getSignature(),
+              getSimpleSignature(executable),
               e.getMessage());
     }
-    return executable.getSignature();
+    return getSimpleSignature(executable);
   }
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {

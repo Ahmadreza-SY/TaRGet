@@ -45,3 +45,8 @@ def create_call_graphs(output_path, release_tag):
 def detect_changed_methods(output_path):
     cmd = f"java -jar {Config.get('jparser_path')} methodChanges -o {output_path}"
     run_command(cmd)
+
+
+def mine_refactorings(base_tag, head_tag, repo_path, output_path):
+    cmd = f"java -jar {Config.get('jparser_path')} refactorings -r {repo_path} -b {base_tag} -h {head_tag} -o {output_path}"
+    run_command(cmd)

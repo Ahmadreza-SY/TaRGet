@@ -6,6 +6,20 @@ import shutil
 from tqdm.auto import tqdm
 from config import Config
 import time
+import git
+from git import RemoteProgress
+
+
+class CloneProgress(RemoteProgress):
+    def __init__(self):
+        super().__init__()
+        self.pbar = tqdm()
+
+    def update(self, op_code, cur_count, max_count=None, message=""):
+        self.pbar.total = max_count
+        self.pbar.n = cur_count
+        self.pbar.refresh()
+
 
 accept_diff_header = {"Accept": "application/vnd.github.v3.diff"}
 accept_json_header = {"Accept": "application/vnd.github+json"}
@@ -32,6 +46,17 @@ def get(url, headers=None, params=None):
                 continue
             else:
                 raise SystemExit(err)
+
+
+def get_repo(repo):
+    clone_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@")
+    if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
+        print(f"Cloning {repo} into {clone_dir}")
+        git_repo = git.Repo.clone_from(f"https://github.com/{repo}.git", clone_dir, progress=CloneProgress())
+    else:
+        git_repo = git.Repo(clone_dir)
+
+    return git_repo
 
 
 def get_diff(release_pair, repo):
