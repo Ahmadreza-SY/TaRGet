@@ -56,7 +56,7 @@ public class CallGraph {
             releaseTag,
             "call_graphs",
             testClassFullName,
-            root.executable.getSignature() + ".json");
+            Spoon.getSimpleSignature(root.executable) + ".json");
     IOUtils.saveFile(graphFile, graphJson);
   }
 

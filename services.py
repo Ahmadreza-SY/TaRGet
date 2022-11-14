@@ -5,8 +5,14 @@ from tqdm import trange, tqdm
 import json
 from config import Config
 from release_analysis import Release, ReleasePair
-from code_analysis import create_repaired_tc_call_graphs, create_repaired_tc_change_coverage, get_test_method_coverage
+from code_analysis import (
+    create_repaired_tc_call_graphs,
+    create_repaired_tc_change_coverage,
+    get_test_method_coverage,
+    mine_method_refactorings,
+)
 import copy
+
 
 class Service:
     @staticmethod
@@ -51,6 +57,8 @@ class Service:
     def create_dataset():
         create_repaired_tc_call_graphs()
         create_repaired_tc_change_coverage()
+        refactorings = mine_method_refactorings()
+        refactorings = {tag_pair: set([r["method"] for r in mrefs]) for tag_pair, mrefs in refactorings.items()}
 
         repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
         full_changed_methods = json.loads(
@@ -91,12 +99,14 @@ class Service:
                 print(f"No call graph found for {name} ! Skipping ...")
                 continue
 
+            refactored_methods = refactorings[(base_tag, head_tag)]
             covered_changes = []
             for change in changed_methods.get(base_tag, []):
                 found_coverage_i = [i for i, mc in enumerate(method_coverage) if mc["name"] == change["name"]]
                 if len(found_coverage_i) > 0 and len(change["hunks"]) > 0:
                     _change = copy.deepcopy(change)
                     _change["depth"] = method_coverage[found_coverage_i[0]]["depth"]
+                    _change["refactor"] = _change['name'] in refactored_methods
                     covered_changes.append(_change)
             repair_changes = repair_changes_map[f"{base_tag}-{head_tag}-{name}"]
 
@@ -112,6 +122,7 @@ class Service:
                     "after_repair_body": after_repair_body,
                     "covered_changes": covered_changes,
                     "repair_changes": repair_changes,
+                    "refactor": name in refactored_methods,
                 }
             )
 
