@@ -52,7 +52,7 @@ public class CallGraph {
     var graphJson = gson.toJson(Mapper.toDto(this, srcPath));
     var testClassFullName = ((CtType<?>) root.executable.getParent()).getQualifiedName();
     var graphFile = Path.of(outputPath,
-            "releases",
+            "tags",
             releaseTag,
             "call_graphs",
             testClassFullName,

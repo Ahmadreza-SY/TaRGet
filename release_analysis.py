@@ -211,10 +211,10 @@ class TagPair:
         return test_patches
 
     def get_test_out_path(self, _class, tag):
-        return Path(Config.get("output_path")) / "releases" / tag.name / "changed_tests" / _class
+        return Path(Config.get("output_path")) / "tags" / tag.name / "changed_tests" / _class
 
     def save_patches(self):
-        repairs_path = Path(Config.get("output_path")) / "repairs" / f"{self.base.tag}...{self.head.tag}"
+        repairs_path = Path(Config.get("output_path")) / "repairs" / f"{self.base.name}...{self.head.name}"
         repairs_path.mkdir(parents=True, exist_ok=True)
         pickle.dump(
             {"patches": self.patches, "test_patches": self.test_patches},

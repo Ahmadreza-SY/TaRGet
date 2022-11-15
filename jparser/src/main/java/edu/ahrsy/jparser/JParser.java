@@ -74,14 +74,14 @@ public class JParser {
     var testChanges = new ArrayList<TestChange>();
     for (var repair : repairs) {
       var beforeRepair = IOUtils.readFile(Path.of(outputPath,
-              "releases",
+              "tags",
               repair.baseTag,
               "changed_tests",
               repair._class,
               "methodBodies",
               repair.method));
       var afterRepair = IOUtils.readFile(Path.of(outputPath,
-              "releases",
+              "tags",
               repair.headTag,
               "changed_tests",
               repair._class,
@@ -121,8 +121,8 @@ public class JParser {
     for (var entry : ProgressBar.wrap(releaseChangedFileMap.entrySet(), "Detecting methods changes")) {
       if (entry.getValue().isEmpty()) continue;
       var tags = entry.getKey().split("\\$");
-      String baseSrcPath = Path.of(args.outputPath, "releases", tags[0], "code").toString();
-      String headSrcPath = Path.of(args.outputPath, "releases", tags[1], "code").toString();
+      String baseSrcPath = Path.of(args.outputPath, "tags", tags[0], "code").toString();
+      String headSrcPath = Path.of(args.outputPath, "tags", tags[1], "code").toString();
 
       var changedFiles = entry.getValue();
       var methodDiffParser = new MethodDiffParser(baseSrcPath, headSrcPath, args.complianceLevel);
