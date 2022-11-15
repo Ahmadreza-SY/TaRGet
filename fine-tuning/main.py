@@ -3,7 +3,6 @@ from transformers import (
     PLBartForConditionalGeneration,
     PLBartTokenizer,
     get_linear_schedule_with_warmup,
-    get_polynomial_decay_schedule_with_warmup,
 )
 from torch.utils.data import RandomSampler, DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -18,7 +17,7 @@ from datetime import datetime, timedelta
 import torch.distributed as dist
 import logging
 import os
-from bleu import score
+from bleu import score, _bleu
 from utils import write_lines
 from data import (
     ProgramRepairDataEncoder,
@@ -28,7 +27,7 @@ from data import (
     TRTopHunksSepDataEncoder,
     TRTopAddedHunksDataEncoder,
     TRTopAddedHunksSepDataEncoder,
-    TRTHSFirstDepthCoverageDataEncoder
+    TRTHSFirstDepthCoverageDataEncoder,
 )
 import json
 
@@ -66,7 +65,7 @@ def main():
             "TRTopHunksSep",
             "TRTopAddedHunks",
             "TRTopAddedHunksSep",
-            "TRTHSFirstDepthCoverage"
+            "TRTHSFirstDepthCoverage",
         ],
     )
     parser.add_argument(
@@ -333,6 +332,20 @@ def test(gpu, args):
     save_stats(args)
 
 
+def compute_single_bleus(targets, preds, output_dir):
+    bleus = []
+    target_file = output_dir / "temp_target.txt"
+    pred_file = output_dir / "temp_pred.txt"
+    for target, pred in zip(targets, preds):
+        write_lines(str(target_file), [target])
+        write_lines(str(pred_file), [pred])
+        bleus.append(_bleu(str(target_file), str(pred_file)))
+
+    target_file.unlink()
+    pred_file.unlink()
+    return bleus
+
+
 def eval(model, dataset, args, output_dir):
     if args.rank == 0:
         logger.info(f"Eval data: {len(dataset)}")
@@ -403,14 +416,15 @@ def eval(model, dataset, args, output_dir):
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
     dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
     if args.rank == 0:
+        output_dir = output_dir / "outputs"
         all_targets = [target for sub in global_targets for target in sub]
         all_preds = [pred for sub in global_preds for pred in sub]
         all_ids = [pred for sub in global_ids for pred in sub]
         logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
         target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        all_bleus = compute_single_bleus(target_codes, pred_codes, output_dir)
 
-        output_dir = output_dir / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
         target_file = output_dir / f"fixed_targets.txt"
         write_lines(target_file, target_codes)
@@ -418,6 +432,8 @@ def eval(model, dataset, args, output_dir):
         write_lines(pred_file, pred_codes)
         ids_file = output_dir / f"ids.txt"
         write_lines(ids_file, all_ids)
+        bleus_file = output_dir / f"bleus.txt"
+        write_lines(bleus_file, [str(bleu) for bleu in all_bleus])
 
         bleu_score, em = score(str(target_file), str(pred_file))
 
