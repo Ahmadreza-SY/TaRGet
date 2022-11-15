@@ -69,7 +69,7 @@ class Service:
             rep_info_l.append(rep_info)
 
         pd.concat(rel_info_l).to_csv(
-            Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
+            Path(Config.get("output_path")) / "tags" / "test_release_info.csv",
             index=False,
         )
         pd.concat(rep_info_l).to_csv(
@@ -79,7 +79,7 @@ class Service:
 
     @staticmethod
     def get_test_code(tag, _class, method):
-        base_path = Path(Config.get("output_path")) / "releases" / tag / "changed_tests" / _class
+        base_path = Path(Config.get("output_path")) / "tags" / tag / "changed_tests" / _class
         code = (base_path / "methods" / method).read_text()
         body_code = (base_path / "methodBodies" / method).read_text()
         return code, body_code
