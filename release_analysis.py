@@ -246,7 +246,7 @@ class TagPair:
             test_release_info["class"].append(_class)
             test_release_info["path"].append(path)
             test_release_info["release_tag"].append(tag.name)
-            test_release_info["release_date"].append(tag.commit.committed_date)
+            test_release_info["release_date"].append(pd.to_datetime(tag.commit.committed_datetime))
 
         test_release_info = {
             "class": [],
