@@ -7,7 +7,7 @@ class Config:
         "gh_api_base_url": "https://api.github.com",
         "gh_raw_base_url": "https://raw.githubusercontent.com",
         "gh_cache_path": "./api_cache",
-        "gh_clones_path": "./clones",
+        "gh_clones_path": "./api_cache/clones",
     }
 
     __setters = ["repo", "output_path", "gh_api_token"]
