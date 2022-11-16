@@ -21,8 +21,9 @@ def mine_method_refactorings():
     pbar = tqdm(tag_pairs, position=0, leave=True)
     refactorings = {}
     for base_tag, head_tag in pbar:
-        pbar.set_description(f"Mining refactorings {base_tag}...{head_tag}")
-        output_path = Path(Config.get("output_path")) / "releases" / base_tag
+        tag_pair = f"{base_tag}...{head_tag}"
+        pbar.set_description(f"Mining refactorings {tag_pair}")
+        output_path = Path(Config.get("output_path")) / "repairs" / tag_pair
         output_file = output_path / "method_refactorings.json"
         if not output_file.exists():
             jparser.mine_refactorings(base_tag, head_tag, repo_path, output_path)
