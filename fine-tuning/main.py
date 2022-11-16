@@ -174,6 +174,8 @@ def run(gpu, args):
 
     load_data(args)
 
+    torch.cuda.set_device(gpu)
+    
     if not args.test_only:
         train(gpu, args)
 
@@ -201,7 +203,6 @@ def train(gpu, args):
     # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
 
     model = model_class.from_pretrained(args.model_name_or_path)
-    torch.cuda.set_device(gpu)
     model = model.to(gpu)
     logger.info(f"Using device " + torch.cuda.get_device_name(gpu))
 
@@ -339,7 +340,8 @@ def compute_single_bleus(targets, preds, output_dir):
     for target, pred in zip(targets, preds):
         write_lines(str(target_file), [target])
         write_lines(str(pred_file), [pred])
-        bleus.append(_bleu(str(target_file), str(pred_file)))
+        bleu = _bleu(str(target_file), str(pred_file))
+        bleus.append(bleu)
 
     target_file.unlink()
     pred_file.unlink()
@@ -347,6 +349,7 @@ def compute_single_bleus(targets, preds, output_dir):
 
 
 def eval(model, dataset, args, output_dir):
+    logger = logging.getLogger(args.pname)
     if args.rank == 0:
         logger.info(f"Eval data: {len(dataset)}")
 
