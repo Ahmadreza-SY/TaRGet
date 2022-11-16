@@ -131,16 +131,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
         valid_ds = valid_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
         test_ds = test_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
 
-        if self.args.sub_sample:
-            ratio = self.args.sample_ratio
-            self.log(f"Subsampling with ration {ratio}")
-            # Warning: sub sampling is not stratified by ID
-            return (
-                train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
-                valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
-                test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
-            )
-
         return train_ds, valid_ds, test_ds
 
     def create_inputs_and_outputs(self, ds):
@@ -191,7 +181,16 @@ class TestRepairDataEncoder(BaseDataEncoder):
             train_ds.to_json(train_file, orient="records")
             valid_ds.to_json(valid_file, orient="records")
             test_ds.to_json(test_file, orient="records")
-
+        
+        if self.args.sub_sample:
+            ratio = self.args.sample_ratio
+            self.log(f"Subsampling with ration {ratio}")
+            # Warning: sub sampling is not stratified by ID
+            train_ds = train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            valid_ds = valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            test_ds = test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            
+        
         ds_len = len(train_ds) + len(valid_ds) + len(test_ds)
         self.log(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / ds_len, 1)} %)")
         self.log(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / ds_len, 1)} %)")
