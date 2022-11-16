@@ -338,6 +338,9 @@ def compute_single_bleus(targets, preds, output_dir):
     target_file = output_dir / "temp_target.txt"
     pred_file = output_dir / "temp_pred.txt"
     for target, pred in zip(targets, preds):
+        if len(pred) == 0:
+            bleus.append(0.0)
+            continue
         write_lines(str(target_file), [target])
         write_lines(str(pred_file), [pred])
         bleu = _bleu(str(target_file), str(pred_file))
