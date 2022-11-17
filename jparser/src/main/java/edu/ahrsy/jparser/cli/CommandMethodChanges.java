@@ -21,7 +21,7 @@ public class CommandMethodChanges {
   public Integer complianceLevel = 10;
 
   private static void extractTestMethodChanges(String outputPath) {
-    var repairs = IOUtils.readCsv(Path.of(outputPath, "repairs", "test_repair_info.csv").toString(), TestRepair.class);
+    var repairs = IOUtils.readCsv(Path.of(outputPath, "repairs", "repaired_test_methods.csv").toString(), TestRepair.class);
     var testChanges = new ArrayList<TestChange>();
     for (var repair : repairs) {
       var beforeRepair = IOUtils.readFile(Path.of(outputPath,
@@ -61,15 +61,15 @@ public class CommandMethodChanges {
             new TypeToken<ArrayList<TestChangeCoverage>>() {
             }.getType());
 
-    var releaseChangedFileMap = new HashMap<String, Set<String>>();
+    var tagChangedFileMap = new HashMap<String, Set<String>>();
     for (var changeCoverage : testChangeCoverages) {
-      String release = String.format("%s$%s", changeCoverage.baseTag, changeCoverage.headTag);
-      if (!releaseChangedFileMap.containsKey(release)) releaseChangedFileMap.put(release, new HashSet<>());
-      releaseChangedFileMap.get(release).addAll(changeCoverage.coveredChangedFiles);
+      String tagPair = String.format("%s$%s", changeCoverage.baseTag, changeCoverage.headTag);
+      if (!tagChangedFileMap.containsKey(tagPair)) tagChangedFileMap.put(tagPair, new HashSet<>());
+      tagChangedFileMap.get(tagPair).addAll(changeCoverage.coveredChangedFiles);
     }
 
-    var allReleasesMethodChanges = new ArrayList<ReleaseMethodChanges>();
-    for (var entry : ProgressBar.wrap(releaseChangedFileMap.entrySet(), "Detecting methods changes")) {
+    var allTagsMethodChanges = new ArrayList<TagMethodChanges>();
+    for (var entry : ProgressBar.wrap(tagChangedFileMap.entrySet(), "Detecting methods changes")) {
       if (entry.getValue().isEmpty()) continue;
       var tags = entry.getKey().split("\\$");
       String baseSrcPath = Path.of(args.outputPath, "tags", tags[0], "code").toString();
@@ -78,10 +78,10 @@ public class CommandMethodChanges {
       var changedFiles = entry.getValue();
       var methodDiffParser = new MethodDiffParser(baseSrcPath, headSrcPath, args.complianceLevel);
       var methodChanges = methodDiffParser.detectMethodsChanges(changedFiles);
-      allReleasesMethodChanges.add(new ReleaseMethodChanges(tags[0], tags[1], methodChanges));
+      allTagsMethodChanges.add(new TagMethodChanges(tags[0], tags[1], methodChanges));
     }
 
-    var outputJson = gson.toJson(allReleasesMethodChanges);
+    var outputJson = gson.toJson(allTagsMethodChanges);
     IOUtils.saveFile(Path.of(args.outputPath, "repairs", "test_coverage_changed_methods.json"), outputJson);
   }
 }
