@@ -1,10 +1,7 @@
 from pathlib import Path
-import json
-import requests
 import shutil
 from tqdm.auto import tqdm
 from config import Config
-import time
 import git
 from git import RemoteProgress
 
@@ -98,6 +95,6 @@ def copy_tag_code(repo, tag):
     git_repo = get_repo(repo)
     clone_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@")
 
-    git_repo.git.checkout(tag.name)
-    shutil.copytree(str(clone_dir), str(code_path), ignore=shutil.ignore_patterns('.git'))
+    git_repo.git.checkout(tag.name, force=True)
+    shutil.copytree(str(clone_dir), str(code_path), ignore=shutil.ignore_patterns(".git"))
     return code_path
