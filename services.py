@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import github_api as ghapi
-from tqdm import trange, tqdm
+from tqdm import tqdm
 import json
 from config import Config
 from tag_analysis import TagPair
@@ -69,18 +69,17 @@ class Service:
         test_repair_changes = json.loads(
             (Path(Config.get("output_path")) / "repairs" / "test_repair_changes.json").read_text()
         )
-        repair_changes_map = {f"{ch['baseTag']}-{ch['headTag']}-{ch['name']}": ch["hunks"] for ch in
-                              test_repair_changes}
+        repair_changes_map = {f"{ch['baseTag']}-{ch['headTag']}-{ch['name']}": ch["hunks"] for ch in test_repair_changes}
 
         dataset = []
         test_paths = {}
         for _, r in tqdm(
-                repair_info.iterrows(),
-                total=len(repair_info),
-                ncols=100,
-                position=0,
-                leave=True,
-                desc="Creating dataset",
+            repair_info.iterrows(),
+            total=len(repair_info),
+            ncols=100,
+            position=0,
+            leave=True,
+            desc="Creating dataset",
         ):
             _class, method, base_tag, head_tag = (
                 r["class"],
@@ -107,7 +106,7 @@ class Service:
                 if len(found_coverage_i) > 0 and len(change["hunks"]) > 0:
                     _change = copy.deepcopy(change)
                     _change["depth"] = method_coverage[found_coverage_i[0]]["depth"]
-                    _change["refactor"] = _change['name'] in refactored_methods
+                    _change["refactor"] = _change["name"] in refactored_methods
                     covered_changes.append(_change)
             repair_changes = repair_changes_map[f"{base_tag}-{head_tag}-{name}"]
 
