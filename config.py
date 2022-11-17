@@ -3,9 +3,6 @@ class Config:
         "repo": None,
         "output_path": None,
         "jparser_path": "assets/jparser.jar",
-        "gh_api_token": None,
-        "gh_api_base_url": "https://api.github.com",
-        "gh_raw_base_url": "https://raw.githubusercontent.com",
         "gh_cache_path": "./api_cache",
         "gh_clones_path": "./api_cache/clones",
     }

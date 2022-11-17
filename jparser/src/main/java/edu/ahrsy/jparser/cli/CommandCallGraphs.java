@@ -18,23 +18,23 @@ public class CommandCallGraphs extends Command {
   )
   public String outputPath;
 
-  @Parameter(names = {"-t", "--release-tag"},
-          description = "The release tag of the repo for call graph extraction",
+  @Parameter(names = {"-t", "--tag"},
+          description = "The tag of the repo for call graph extraction",
           required = true
   )
-  public String releaseTag;
+  public String tag;
 
   public static void cCallGraphs(CommandCallGraphs args) {
     var spoon = new Spoon(args.srcPath, args.complianceLevel);
-    var allRepairs = IOUtils.readCsv(Path.of(args.outputPath, "repairs", "test_repair_info.csv").toString(),
+    var allRepairs = IOUtils.readCsv(Path.of(args.outputPath, "repairs", "repaired_test_methods.csv").toString(),
             TestRepair.class);
-    var releaseRepairs = allRepairs.stream()
-            .filter(r -> r.baseTag.equals(args.releaseTag))
+    var tagRepairs = allRepairs.stream()
+            .filter(r -> r.baseTag.equals(args.tag))
             .collect(Collectors.toList());
-    var repairedMethods = releaseRepairs.stream()
+    var repairedMethods = tagRepairs.stream()
             .map(TestRepair::getMethodSignature)
             .collect(Collectors.toCollection(HashSet::new));
-    var repairedMethodPaths = releaseRepairs.stream()
+    var repairedMethodPaths = tagRepairs.stream()
             .map(TestRepair::getPath)
             .collect(Collectors.toCollection(HashSet::new));
     var methods = spoon.getExecutablesByName(repairedMethods, repairedMethodPaths, args.srcPath);
@@ -44,7 +44,7 @@ public class CommandCallGraphs extends Command {
       var relatedMethods = spoon.getTestPreAndPostMethods((CtMethod<?>) method);
       for (var relatedMethod : relatedMethods)
         callGraph.addSubGraph(relatedMethod);
-      callGraph.save(args.outputPath, args.releaseTag, args.srcPath);
+      callGraph.save(args.outputPath, args.tag, args.srcPath);
     }
   }
 }

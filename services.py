@@ -1,10 +1,10 @@
 from pathlib import Path
 import pandas as pd
 import github_api as ghapi
-from tqdm import trange, tqdm
+from tqdm import tqdm
 import json
 from config import Config
-from release_analysis import Release, ReleasePair
+from tag_analysis import TagPair
 from code_analysis import (
     create_repaired_tc_call_graphs,
     create_repaired_tc_change_coverage,
@@ -16,39 +16,39 @@ import copy
 
 class Service:
     @staticmethod
-    def analyze_release_and_repairs():
-        releases = [
-            Release(r["name"], r["tag_name"], pd.to_datetime(r["created_at"]), r["tarball_url"])
-            for r in ghapi.get_all_releases(Config.get("repo"))
-            if not r["prerelease"]
-        ]
-        releases.sort(key=lambda r: r.date, reverse=True)
-        rel_info_l = []
-        rep_info_l = []
-        for i in trange(len(releases) - 1, ncols=100, position=0, leave=True):
-            head = releases[i]
-            base = releases[i + 1]
-            print()
-            print(f"Analyzing release {base.tag}...{head.tag}")
-            release_pair = ReleasePair(base, head)
-            rel_info, rep_info = release_pair.extract_release_repairs()
-            if rel_info.empty or rep_info.empty:
-                continue
-            rel_info_l.append(rel_info)
-            rep_info_l.append(rep_info)
+    def analyze_tag_and_repairs():
+        tags, tag_parents = ghapi.get_tags_and_ancestors(Config.get("repo"))
 
-        pd.concat(rel_info_l).to_csv(
-            Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
+        class_info_l = []
+        method_info_l = []
+        for tag, parent in tqdm(tag_parents.items()):
+            head = tags[tag]
+            base = tags[parent] if parent else None
+
+            if not base:
+                continue  # Occurs when there is no ancestor to the head tag
+
+            print()
+            print(f"Analyzing tag pair {base.name}...{head.name}")
+            tag_pair = TagPair(base, head)
+            class_info, method_info = tag_pair.extract_tag_repairs()
+            if class_info.empty or method_info.empty:
+                continue
+            class_info_l.append(class_info)
+            method_info_l.append(method_info)
+
+        pd.concat(class_info_l).to_csv(
+            Path(Config.get("output_path")) / "tags" / "changed_test_classes.csv",
             index=False,
         )
-        pd.concat(rep_info_l).to_csv(
-            Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv",
+        pd.concat(method_info_l).to_csv(
+            Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv",
             index=False,
         )
 
     @staticmethod
     def get_test_code(tag, _class, method):
-        base_path = Path(Config.get("output_path")) / "releases" / tag / "changed_tests" / _class
+        base_path = Path(Config.get("output_path")) / "tags" / tag / "changed_tests" / _class
         code = (base_path / "methods" / method).read_text()
         body_code = (base_path / "methodBodies" / method).read_text()
         return code, body_code
@@ -60,7 +60,7 @@ class Service:
         refactorings = mine_method_refactorings()
         refactorings = {tag_pair: set([r["method"] for r in mrefs]) for tag_pair, mrefs in refactorings.items()}
 
-        repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
+        repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv")
         full_changed_methods = json.loads(
             (Path(Config.get("output_path")) / "repairs" / "test_coverage_changed_methods.json").read_text()
         )
@@ -89,7 +89,7 @@ class Service:
             )
             name = f"{_class}.{method}"
             if base_tag not in test_paths:
-                tests = pd.read_csv(Path(Config.get("output_path")) / "releases" / base_tag / "tests.csv")
+                tests = pd.read_csv(Path(Config.get("output_path")) / "tags" / base_tag / "tests.csv")
                 test_paths[base_tag] = dict(zip(tests["NAME"].values.tolist(), tests["PATH"].values.tolist()))
             path = test_paths[base_tag][_class]
             before_repair, before_repair_body = Service.get_test_code(base_tag, _class, method)
@@ -106,7 +106,7 @@ class Service:
                 if len(found_coverage_i) > 0 and len(change["hunks"]) > 0:
                     _change = copy.deepcopy(change)
                     _change["depth"] = method_coverage[found_coverage_i[0]]["depth"]
-                    _change["refactor"] = _change['name'] in refactored_methods
+                    _change["refactor"] = _change["name"] in refactored_methods
                     covered_changes.append(_change)
             repair_changes = repair_changes_map[f"{base_tag}-{head_tag}-{name}"]
 
@@ -114,8 +114,8 @@ class Service:
                 {
                     "name": name,
                     "path": path,
-                    "base_release_tag": base_tag,
-                    "head_release_tag": head_tag,
+                    "base_tag": base_tag,
+                    "head_tag": head_tag,
                     "before_repair": before_repair,
                     "before_repair_body": before_repair_body,
                     "after_repair": after_repair,

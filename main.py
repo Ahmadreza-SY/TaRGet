@@ -3,9 +3,8 @@ from config import Config
 from services import Service
 
 
-def analyze_github_releases(args):
-    Config.set("gh_api_token", args.api_token)
-    Service.analyze_release_and_repairs()
+def analyze_github_tags(args):
+    Service.analyze_tag_and_repairs()
 
 
 def create_test_repair_dataset(args):
@@ -33,23 +32,16 @@ def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
 
-    gh_releases_parser = subparsers.add_parser(
-        "gh_releases",
-        help="Analyzes all releases in the given GitHub repository and finds test case repairs.",
+    gh_tags_parser = subparsers.add_parser(
+        "gh_tags",
+        help="Analyzes all tags in the given GitHub repository and finds test case repairs.",
     )
-    gh_releases_parser.set_defaults(func=analyze_github_releases)
-    add_common_arguments(gh_releases_parser)
-    gh_releases_parser.add_argument(
-        "-t",
-        "--api-token",
-        help="A GitHub API token for fetching releases, diff, and source code",
-        type=str,
-        required=True,
-    )
+    gh_tags_parser.set_defaults(func=analyze_github_tags)
+    add_common_arguments(gh_tags_parser)
 
     dataset_parser = subparsers.add_parser(
         "dataset",
-        help="Creates a test case repair dataset that includes test code before and after repair plus SUT changes covered by tests cases across all releases",
+        help="Creates a test case repair dataset that includes test code before and after repair plus SUT changes covered by tests cases across all tags",
     )
     dataset_parser.set_defaults(func=create_test_repair_dataset)
     add_common_arguments(dataset_parser)

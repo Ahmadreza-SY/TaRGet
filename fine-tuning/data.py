@@ -98,13 +98,13 @@ class ProgramRepairDataEncoder(BaseDataEncoder):
 
 
 class TestRepairDataEncoder(BaseDataEncoder):
-    def split_by_release(self, ds):
+    def split_by_tag(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
         for project in projects:
             project_ds = ds[ds["project"] == project].iloc[::-1].reset_index(drop=True)
 
-            dup_ind = project_ds[~project_ds["base_release_tag"].duplicated()].index.tolist()[1:]
+            dup_ind = project_ds[~project_ds["base_tag"].duplicated()].index.tolist()[1:]
             train_size = int(self.args.train_size * len(project_ds))
             train_dup_ind = [i for i in dup_ind if i <= (train_size - 1)]
             if len(train_dup_ind) == 0:
@@ -175,7 +175,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             validsize_ind = self.get_validsize_indices(ds)
             ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
 
-            train_ds, valid_ds, test_ds = self.split_by_release(ds)
+            train_ds, valid_ds, test_ds = self.split_by_tag(ds)
 
             ds_output_dir.mkdir(exist_ok=True, parents=True)
             train_ds.to_json(train_file, orient="records")
