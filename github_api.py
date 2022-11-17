@@ -186,32 +186,6 @@ def download_file(url, output_file):
                 shutil.copyfileobj(raw, f)
 
 
-def get_tag_tree(repo, releases):
-    git_repo = get_repo(repo)
-
-    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True) if t.name in releases]
-    tag_parents = dict()
-
-    print("Finding release parents")
-    for i in range(len(tags)):
-        for j in range(i + 1, len(tags)):
-            if git_repo.is_ancestor(tags[j].commit, tags[i].commit):
-                tag_parents[tags[i].name] = tags[j].name
-                break
-
-        if tags[i].name not in tag_parents:
-            tag_parents[tags[i].name] = None
-
-    for t, p in tag_parents.items():
-        print(f"{t}: {p}")
-
-    not_none = sum(value is not None for value in tag_parents.values())
-    percent = "%.2f" % (not_none / len(tag_parents) * 100)
-    print(f"{percent}% of {len(tag_parents)} tags have valid ancestors")
-
-    return tag_parents
-
-
 def get_tags_and_ancestors(repo):
     git_repo = get_repo(repo)
 
@@ -227,9 +201,6 @@ def get_tags_and_ancestors(repo):
 
         if tags[i].name not in tag_parents:
             tag_parents[tags[i].name] = None
-
-    for t, p in tag_parents.items():
-        print(f"{t}: {p}")
 
     not_none = sum(value is not None for value in tag_parents.values())
     percent = "%.2f" % (not_none / len(tag_parents) * 100)
@@ -250,5 +221,5 @@ def copy_tag_code(repo, tag):
     clone_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@")
 
     git_repo.git.checkout(tag.name)
-    shutil.copytree(str(clone_dir), str(code_path))
+    shutil.copytree(str(clone_dir), str(code_path), ignore=shutil.ignore_patterns('.git'))
     return code_path
