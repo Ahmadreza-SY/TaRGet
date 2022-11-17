@@ -4,48 +4,12 @@ import github_api as ghapi
 from tqdm import trange, tqdm
 import json
 from config import Config
-from release_analysis import Release, ReleasePair, TagPair
+from tag_analysis import Release, ReleasePair, TagPair
 from code_analysis import create_repaired_tc_call_graphs, create_repaired_tc_change_coverage, get_test_method_coverage
 import copy
 
 
 class Service:
-    @staticmethod
-    def analyze_release_and_repairs():
-        releases = {r["tag_name"]: Release(r["name"], r["tag_name"], pd.to_datetime(r["created_at"]), r["tarball_url"])
-                    for r in ghapi.get_all_releases(Config.get("repo"))
-                    if not r["prerelease"]
-                    }
-
-        release_parents = ghapi.get_tag_tree(Config.get("repo"), releases.keys())
-
-        rel_info_l = []
-        rep_info_l = []
-        for name, release in tqdm(releases.items()):
-            head = release
-            base = releases[release_parents[name]] if name in release_parents else None
-
-            if not base:
-                continue  # Occurs when there is no ancestor to the head tag
-
-            print()
-            print(f"Analyzing release {base.tag}...{head.tag}")
-            release_pair = ReleasePair(base, head)
-            rel_info, rep_info = release_pair.extract_release_repairs()
-            if rel_info.empty or rep_info.empty:
-                continue
-            rel_info_l.append(rel_info)
-            rep_info_l.append(rep_info)
-
-        pd.concat(rel_info_l).to_csv(
-            Path(Config.get("output_path")) / "releases" / "test_release_info.csv",
-            index=False,
-        )
-        pd.concat(rep_info_l).to_csv(
-            Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv",
-            index=False,
-        )
-
     @staticmethod
     def analyze_tag_and_repairs():
         tags, tag_parents = ghapi.get_tags_and_ancestors(Config.get("repo"))
