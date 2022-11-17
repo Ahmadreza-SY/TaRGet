@@ -4,7 +4,6 @@ from services import Service
 
 
 def analyze_github_releases(args):
-    Config.set("gh_api_token", args.api_token)
     Service.analyze_tag_and_repairs()
 
 
@@ -39,13 +38,6 @@ def main():
     )
     gh_releases_parser.set_defaults(func=analyze_github_releases)
     add_common_arguments(gh_releases_parser)
-    gh_releases_parser.add_argument(
-        "-t",
-        "--api-token",
-        help="A GitHub API token for fetching releases, diff, and source code",
-        type=str,
-        required=True,
-    )
 
     dataset_parser = subparsers.add_parser(
         "dataset",
