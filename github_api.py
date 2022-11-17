@@ -47,6 +47,17 @@ def get(url, headers=None, params=None):
                 raise SystemExit(err)
 
 
+def get_repo(repo):
+    clone_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@")
+    if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
+        print(f"Cloning {repo} into {clone_dir}")
+        git_repo = git.Repo.clone_from(f"https://github.com/{repo}.git", clone_dir, progress=CloneProgress())
+    else:
+        git_repo = git.Repo(clone_dir)
+
+    return git_repo
+
+
 def get_diff(release_pair, repo):
     diff_pair = f"{release_pair.base.tag}...{release_pair.head.tag}"
     diff_cache_file = (

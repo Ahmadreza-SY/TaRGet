@@ -3,7 +3,6 @@ from transformers import (
     PLBartForConditionalGeneration,
     PLBartTokenizer,
     get_linear_schedule_with_warmup,
-    get_polynomial_decay_schedule_with_warmup,
 )
 from torch.utils.data import RandomSampler, DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -18,7 +17,7 @@ from datetime import datetime, timedelta
 import torch.distributed as dist
 import logging
 import os
-from bleu import score
+from bleu import score, _bleu
 from utils import write_lines
 from data import (
     ProgramRepairDataEncoder,
@@ -28,6 +27,7 @@ from data import (
     TRTopHunksSepDataEncoder,
     TRTopAddedHunksDataEncoder,
     TRTopAddedHunksSepDataEncoder,
+    TRTHSFirstDepthCoverageDataEncoder,
 )
 import json
 
@@ -65,7 +65,15 @@ def main():
             "TRTopHunksSep",
             "TRTopAddedHunks",
             "TRTopAddedHunksSep",
+            "TRTHSFirstDepthCoverage",
         ],
+    )
+    parser.add_argument(
+        "-gt",
+        "--ground_truth",
+        default="repaired_body",
+        type=str,
+        choices=["repaired_body", "repair_changes_hsep", "repair_changes_stsep", "repair_changes_tok"],
     )
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
@@ -107,6 +115,8 @@ def main():
         args.data_encoder_class = TRTopAddedHunksDataEncoder
     elif args.data_encoder == "TRTopAddedHunksSep":
         args.data_encoder_class = TRTopAddedHunksSepDataEncoder
+    elif args.data_encoder == "TRTHSFirstDepthCoverage":
+        args.data_encoder_class = TRTHSFirstDepthCoverageDataEncoder
 
     mp.spawn(run, nprocs=args.gpus, args=(args,))
 
@@ -164,6 +174,8 @@ def run(gpu, args):
 
     load_data(args)
 
+    torch.cuda.set_device(gpu)
+    
     if not args.test_only:
         train(gpu, args)
 
@@ -191,7 +203,6 @@ def train(gpu, args):
     # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
 
     model = model_class.from_pretrained(args.model_name_or_path)
-    torch.cuda.set_device(gpu)
     model = model.to(gpu)
     logger.info(f"Using device " + torch.cuda.get_device_name(gpu))
 
@@ -322,7 +333,26 @@ def test(gpu, args):
     save_stats(args)
 
 
+def compute_single_bleus(targets, preds, output_dir):
+    bleus = []
+    target_file = output_dir / "temp_target.txt"
+    pred_file = output_dir / "temp_pred.txt"
+    for target, pred in zip(targets, preds):
+        if len(pred) == 0:
+            bleus.append(0.0)
+            continue
+        write_lines(str(target_file), [target])
+        write_lines(str(pred_file), [pred])
+        bleu = _bleu(str(target_file), str(pred_file))
+        bleus.append(bleu)
+
+    target_file.unlink()
+    pred_file.unlink()
+    return bleus
+
+
 def eval(model, dataset, args, output_dir):
+    logger = logging.getLogger(args.pname)
     if args.rank == 0:
         logger.info(f"Eval data: {len(dataset)}")
 
@@ -364,7 +394,9 @@ def eval(model, dataset, args, output_dir):
                 em_ind = -1
                 for j, seq in enumerate(preds):
                     seq_code = tokenizer.decode(seq, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    target_code = tokenizer.decode(target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    target_code = tokenizer.decode(
+                        target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False
+                    )
                     if seq_code == target_code:
                         em_ind = j
                         break
@@ -390,14 +422,15 @@ def eval(model, dataset, args, output_dir):
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
     dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
     if args.rank == 0:
+        output_dir = output_dir / "outputs"
         all_targets = [target for sub in global_targets for target in sub]
         all_preds = [pred for sub in global_preds for pred in sub]
         all_ids = [pred for sub in global_ids for pred in sub]
         logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
         target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        all_bleus = compute_single_bleus(target_codes, pred_codes, output_dir)
 
-        output_dir = output_dir / "outputs"
         output_dir.mkdir(parents=True, exist_ok=True)
         target_file = output_dir / f"fixed_targets.txt"
         write_lines(target_file, target_codes)
@@ -405,6 +438,8 @@ def eval(model, dataset, args, output_dir):
         write_lines(pred_file, pred_codes)
         ids_file = output_dir / f"ids.txt"
         write_lines(ids_file, all_ids)
+        bleus_file = output_dir / f"bleus.txt"
+        write_lines(bleus_file, [str(bleu) for bleu in all_bleus])
 
         bleu_score, em = score(str(target_file), str(pred_file))
 

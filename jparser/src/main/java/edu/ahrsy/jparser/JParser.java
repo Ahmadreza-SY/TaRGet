@@ -1,138 +1,15 @@
 package edu.ahrsy.jparser;
 
 import com.beust.jcommander.JCommander;
-import com.google.gson.reflect.TypeToken;
-import edu.ahrsy.jparser.cli.CommandCallGraphs;
-import edu.ahrsy.jparser.cli.CommandMethodChanges;
-import edu.ahrsy.jparser.cli.CommandTestClasses;
-import edu.ahrsy.jparser.cli.CommandTestMethods;
-import edu.ahrsy.jparser.entity.*;
-import edu.ahrsy.jparser.graph.CallGraph;
-import edu.ahrsy.jparser.spoon.Spoon;
+import edu.ahrsy.jparser.cli.*;
 import edu.ahrsy.jparser.utils.IOUtils;
-import me.tongfei.progressbar.ProgressBar;
-import spoon.reflect.declaration.CtMethod;
-
-import java.io.File;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.stream.Collectors;
 
 public class JParser {
   private static final String TEST_CLASSES_CMD = "testClasses";
   private static final String TEST_METHODS_CMD = "testMethods";
   private static final String CALL_GRAPHS_CMD = "callGraphs";
   private static final String METHOD_CHANGES_CMD = "methodChanges";
-
-
-  public static void cTestClasses(CommandTestClasses args) {
-    var spoon = new Spoon(args.srcPath, args.complianceLevel);
-    var srcURI = new File(args.srcPath).toURI();
-    var ctTestClasses = spoon.getAllTestClasses();
-    var testClasses = ctTestClasses.stream().map(ctClass -> {
-      var absFile = ctClass.getPosition().getCompilationUnit().getFile();
-      return new TestClass(ctClass.getQualifiedName(), srcURI.relativize(absFile.toURI()).getPath());
-    }).collect(Collectors.toList());
-    IOUtils.toCsv(testClasses, args.outputFile);
-  }
-
-  public static void cTestMethods(CommandTestMethods args) {
-    var spoon = new Spoon(args.srcPath, args.complianceLevel);
-    for (var method : spoon.getTestMethods()) {
-      IOUtils.saveFile(Path.of(args.outputPath, method.getSignature()), Spoon.prettyPrint(method));
-      IOUtils.saveFile(Path.of(args.outputPath).getParent().resolve("methodBodies").resolve(method.getSignature()),
-              method.getBody().toString());
-    }
-  }
-
-  public static void cCallGraphs(CommandCallGraphs args) {
-    var spoon = new Spoon(args.srcPath, args.complianceLevel);
-    var allRepairs = IOUtils.readCsv(Path.of(args.outputPath, "repairs", "test_repair_info.csv").toString(),
-            TestRepair.class);
-    var releaseRepairs = allRepairs.stream()
-            .filter(r -> r.baseTag.equals(args.releaseTag))
-            .collect(Collectors.toList());
-    var repairedMethods = releaseRepairs.stream()
-            .map(TestRepair::getMethodSignature)
-            .collect(Collectors.toCollection(HashSet::new));
-    var repairedMethodPaths = releaseRepairs.stream()
-            .map(TestRepair::getPath)
-            .collect(Collectors.toCollection(HashSet::new));
-    var methods = spoon.getExecutablesByName(repairedMethods, repairedMethodPaths, args.srcPath);
-    for (var method : methods) {
-      var callGraph = new CallGraph(method, spoon);
-      callGraph.createCallGraph();
-      var relatedMethods = spoon.getTestPreAndPostMethods((CtMethod<?>) method);
-      for (var relatedMethod : relatedMethods)
-        callGraph.addSubGraph(relatedMethod);
-      callGraph.save(args.outputPath, args.releaseTag, args.srcPath);
-    }
-  }
-
-  private static void extractTestMethodChanges(String outputPath) {
-    var repairs = IOUtils.readCsv(Path.of(outputPath, "repairs", "test_repair_info.csv").toString(), TestRepair.class);
-    var testChanges = new ArrayList<TestChange>();
-    for (var repair : repairs) {
-      var beforeRepair = IOUtils.readFile(Path.of(outputPath,
-              "tags",
-              repair.baseTag,
-              "changed_tests",
-              repair._class,
-              "methodBodies",
-              repair.method));
-      var afterRepair = IOUtils.readFile(Path.of(outputPath,
-              "tags",
-              repair.headTag,
-              "changed_tests",
-              repair._class,
-              "methodBodies",
-              repair.method));
-
-      var methodChange = new MethodChange(repair.path, repair.method);
-      methodChange.extractHunks(beforeRepair, afterRepair);
-      testChanges.add(new TestChange(repair._class + "." + repair.method,
-              repair.baseTag,
-              repair.headTag,
-              methodChange.getHunks()));
-    }
-
-    var gson = IOUtils.createGsonInstance();
-    var outputJson = gson.toJson(testChanges);
-    IOUtils.saveFile(Path.of(outputPath, "repairs", "test_repair_changes.json"), outputJson);
-  }
-
-  public static void cMethodChanges(CommandMethodChanges args) {
-    extractTestMethodChanges(args.outputPath);
-
-    String changeCoverageJson = IOUtils.readFile(Path.of(args.outputPath, "repairs", "test_change_coverage.json"));
-    var gson = IOUtils.createGsonInstance();
-    List<TestChangeCoverage> testChangeCoverages = gson.fromJson(changeCoverageJson,
-            new TypeToken<ArrayList<TestChangeCoverage>>() {
-            }.getType());
-
-    var releaseChangedFileMap = new HashMap<String, Set<String>>();
-    for (var changeCoverage : testChangeCoverages) {
-      String release = String.format("%s$%s", changeCoverage.baseTag, changeCoverage.headTag);
-      if (!releaseChangedFileMap.containsKey(release)) releaseChangedFileMap.put(release, new HashSet<>());
-      releaseChangedFileMap.get(release).addAll(changeCoverage.coveredChangedFiles);
-    }
-
-    var allReleasesMethodChanges = new ArrayList<ReleaseMethodChanges>();
-    for (var entry : ProgressBar.wrap(releaseChangedFileMap.entrySet(), "Detecting methods changes")) {
-      if (entry.getValue().isEmpty()) continue;
-      var tags = entry.getKey().split("\\$");
-      String baseSrcPath = Path.of(args.outputPath, "tags", tags[0], "code").toString();
-      String headSrcPath = Path.of(args.outputPath, "tags", tags[1], "code").toString();
-
-      var changedFiles = entry.getValue();
-      var methodDiffParser = new MethodDiffParser(baseSrcPath, headSrcPath, args.complianceLevel);
-      var methodChanges = methodDiffParser.detectMethodsChanges(changedFiles);
-      allReleasesMethodChanges.add(new ReleaseMethodChanges(tags[0], tags[1], methodChanges));
-    }
-
-    var outputJson = gson.toJson(allReleasesMethodChanges);
-    IOUtils.saveFile(Path.of(args.outputPath, "repairs", "test_coverage_changed_methods.json"), outputJson);
-  }
+  private static final String REFACTORINGS_CMD = "refactorings";
 
   public static void main(String[] args) {
     IOUtils.disableReflectionWarning();
@@ -140,26 +17,32 @@ public class JParser {
     CommandTestMethods testMethodsArgs = new CommandTestMethods();
     CommandCallGraphs callGraphsArgs = new CommandCallGraphs();
     CommandMethodChanges methodChangesArgs = new CommandMethodChanges();
+    CommandRefactoring refactoringArgs = new CommandRefactoring();
     JCommander jc = JCommander.newBuilder()
             .addCommand(TEST_CLASSES_CMD, testClassesArgs)
             .addCommand(TEST_METHODS_CMD, testMethodsArgs)
             .addCommand(CALL_GRAPHS_CMD, callGraphsArgs)
             .addCommand(METHOD_CHANGES_CMD, methodChangesArgs)
+            .addCommand(REFACTORINGS_CMD, refactoringArgs)
             .build();
     jc.parse(args);
 
     switch (jc.getParsedCommand()) {
       case TEST_CLASSES_CMD:
-        cTestClasses(testClassesArgs);
+        CommandTestClasses.cTestClasses(testClassesArgs);
         break;
       case TEST_METHODS_CMD:
-        cTestMethods(testMethodsArgs);
+        CommandTestMethods.cTestMethods(testMethodsArgs);
         break;
       case CALL_GRAPHS_CMD:
-        cCallGraphs(callGraphsArgs);
+        CommandCallGraphs.cCallGraphs(callGraphsArgs);
         break;
       case METHOD_CHANGES_CMD:
-        cMethodChanges(methodChangesArgs);
+        CommandMethodChanges.cMethodChanges(methodChangesArgs);
+        break;
+      case REFACTORINGS_CMD:
+        CommandRefactoring.cRefactoring(refactoringArgs);
+        break;
     }
   }
 }
