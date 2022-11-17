@@ -23,13 +23,13 @@ class TagPair:
         if test_patches is None:
             return pd.DataFrame(), pd.DataFrame()
 
-        test_release_info = self.create_test_release_info()
-        test_repair_info = self.create_test_repair_info(test_release_info)
+        changed_test_classes = self.create_changed_test_classes()
+        repaired_test_methods = self.create_repaired_test_methods(changed_test_classes)
 
-        if len(test_repair_info) > 0:
+        if len(repaired_test_methods) > 0:
             self.save_patches()
 
-        return test_release_info, test_repair_info
+        return changed_test_classes, repaired_test_methods
 
     def fetch_patches(self):
         base_code_path = ghapi.copy_tag_code(Config.get("repo"), self.base)
@@ -40,10 +40,10 @@ class TagPair:
         if base_tests.empty or head_tests.empty:
             return None
 
-        release_test_path_set = set(base_tests["PATH"].values.tolist() + head_tests["PATH"].values.tolist())
+        test_path_set = set(base_tests["PATH"].values.tolist() + head_tests["PATH"].values.tolist())
         diff = ghapi.get_local_diff(self, Config.get("repo"))
         patches = PatchSet(diff)
-        test_patches = [patch for patch in patches.modified_files if patch.path in release_test_path_set]
+        test_patches = [patch for patch in patches.modified_files if patch.path in test_path_set]
         self.patches = patches
         self.test_patches = test_patches
         return test_patches
@@ -60,7 +60,6 @@ class TagPair:
         )
 
     def fetch_and_save_test_code(self, tag, test_path):
-        # start here
         content = ghapi.get_test_file_local(tag.name, test_path, Config.get("repo"))
 
         package_name = None
@@ -79,32 +78,32 @@ class TagPair:
 
         return full_name
 
-    def create_test_release_info(self):
-        def update_test_release_info(_class, path, tag):
-            test_release_info["class"].append(_class)
-            test_release_info["path"].append(path)
-            test_release_info["release_tag"].append(tag.name)
-            test_release_info["release_date"].append(pd.to_datetime(tag.commit.committed_datetime))
+    def create_changed_test_classes(self):
+        def update_changed_test_classes(_class, path, tag):
+            changed_test_classes["class"].append(_class)
+            changed_test_classes["path"].append(path)
+            changed_test_classes["tag"].append(tag.name)
+            changed_test_classes["date"].append(pd.to_datetime(tag.commit.committed_datetime))
 
-        test_release_info = {
+        changed_test_classes = {
             "class": [],
             "path": [],
-            "release_tag": [],
-            "release_date": [],
+            "tag": [],
+            "date": [],
         }
         for test_patch in self.test_patches:
             test_path = Path(test_patch.path)
             head_full_name = self.fetch_and_save_test_code(self.head, test_path)
-            update_test_release_info(head_full_name, str(test_path), self.head)
+            update_changed_test_classes(head_full_name, str(test_path), self.head)
             if test_patch.is_rename:
                 test_path = test_patch.source_file
                 if test_path.startswith("a/") or test_path.startswith("b/"):
                     test_path = test_path[2:]
                 test_path = Path(test_path)
             base_full_name = self.fetch_and_save_test_code(self.base, test_path)
-            update_test_release_info(base_full_name, str(test_path), self.base)
+            update_changed_test_classes(base_full_name, str(test_path), self.base)
 
-        return pd.DataFrame(test_release_info)
+        return pd.DataFrame(changed_test_classes)
 
     def find_changed_methods(self, _class):
         base_path = self.get_test_out_path(_class, self.base)
@@ -122,22 +121,22 @@ class TagPair:
                     changed_methods.append(bm_path.name)
         return changed_methods
 
-    def create_test_repair_info(self, test_release_info):
+    def create_repaired_test_methods(self, changed_test_classes):
         path_to_class = dict(
             zip(
-                test_release_info["path"].values.tolist(),
-                test_release_info["class"].values.tolist(),
+                changed_test_classes["path"].values.tolist(),
+                changed_test_classes["class"].values.tolist(),
             )
         )
-        test_repair_info = {"class": [], "method": [], "path": [], "base_tag": [], "head_tag": []}
+        repaired_test_methods = {"class": [], "method": [], "path": [], "base_tag": [], "head_tag": []}
         for test_patch in self.test_patches:
             test_path = Path(test_patch.path)
             _class = path_to_class[str(test_path)]
             changed_methods = self.find_changed_methods(_class)
             for method in changed_methods:
-                test_repair_info["class"].append(_class)
-                test_repair_info["method"].append(method)
-                test_repair_info["path"].append(test_patch.path)
-                test_repair_info["base_tag"].append(self.base.name)
-                test_repair_info["head_tag"].append(self.head.name)
-        return pd.DataFrame(test_repair_info)
+                repaired_test_methods["class"].append(_class)
+                repaired_test_methods["method"].append(method)
+                repaired_test_methods["path"].append(test_patch.path)
+                repaired_test_methods["base_tag"].append(self.base.name)
+                repaired_test_methods["head_tag"].append(self.head.name)
+        return pd.DataFrame(repaired_test_methods)

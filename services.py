@@ -19,8 +19,8 @@ class Service:
     def analyze_tag_and_repairs():
         tags, tag_parents = ghapi.get_tags_and_ancestors(Config.get("repo"))
 
-        rel_info_l = []
-        rep_info_l = []
+        class_info_l = []
+        method_info_l = []
         for tag, parent in tqdm(tag_parents.items()):
             head = tags[tag]
             base = tags[parent] if parent else None
@@ -29,20 +29,20 @@ class Service:
                 continue  # Occurs when there is no ancestor to the head tag
 
             print()
-            print(f"Analyzing release {base.name}...{head.name}")
+            print(f"Analyzing tag pair {base.name}...{head.name}")
             tag_pair = TagPair(base, head)
-            rel_info, rep_info = tag_pair.extract_tag_repairs()
-            if rel_info.empty or rep_info.empty:
+            class_info, method_info = tag_pair.extract_tag_repairs()
+            if class_info.empty or method_info.empty:
                 continue
-            rel_info_l.append(rel_info)
-            rep_info_l.append(rep_info)
+            class_info_l.append(class_info)
+            method_info_l.append(method_info)
 
-        pd.concat(rel_info_l).to_csv(
-            Path(Config.get("output_path")) / "tags" / "test_release_info.csv",
+        pd.concat(class_info_l).to_csv(
+            Path(Config.get("output_path")) / "tags" / "changed_test_classes.csv",
             index=False,
         )
-        pd.concat(rep_info_l).to_csv(
-            Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv",
+        pd.concat(method_info_l).to_csv(
+            Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv",
             index=False,
         )
 
@@ -60,7 +60,7 @@ class Service:
         refactorings = mine_method_refactorings()
         refactorings = {tag_pair: set([r["method"] for r in mrefs]) for tag_pair, mrefs in refactorings.items()}
 
-        repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
+        repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv")
         full_changed_methods = json.loads(
             (Path(Config.get("output_path")) / "repairs" / "test_coverage_changed_methods.json").read_text()
         )
@@ -114,8 +114,8 @@ class Service:
                 {
                     "name": name,
                     "path": path,
-                    "base_release_tag": base_tag,
-                    "head_release_tag": head_tag,
+                    "base_tag": base_tag,
+                    "head_tag": head_tag,
                     "before_repair": before_repair,
                     "before_repair_body": before_repair_body,
                     "after_repair": after_repair,

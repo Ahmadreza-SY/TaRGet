@@ -67,7 +67,7 @@ def get_tags_and_ancestors(repo):
     tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
     tag_parents = dict()
 
-    print("Finding release parents")
+    print("Finding tag parents")
     for i in range(len(tags)):
         for j in range(i + 1, len(tags)):
             if git_repo.is_ancestor(tags[j].commit, tags[i].commit):

@@ -34,10 +34,10 @@ def extract_test_methods(test_file):
     run_command(cmd)
 
 
-def create_call_graphs(output_path, release_tag):
-    release_code_path = output_path / "tags" / release_tag / "code"
+def create_call_graphs(output_path, tag):
+    tag_code_path = output_path / "tags" / tag / "code"
     cmd = (
-        f"java -jar {Config.get('jparser_path')} callGraphs -s {release_code_path} -cl 10 -o {output_path} -t {release_tag}"
+        f"java -jar {Config.get('jparser_path')} callGraphs -s {tag_code_path} -cl 10 -o {output_path} -t {tag}"
     )
     run_command(cmd)
 

@@ -11,7 +11,7 @@ import github_api as ghapi
 def mine_method_refactorings():
     repo = ghapi.get_repo(Config.get("repo"))
     repo_path = Path(repo.working_tree_dir)
-    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
+    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv")
     tag_pairs = (
         repair_info.groupby(["base_tag", "head_tag"], as_index=False)
         .size()
@@ -34,7 +34,7 @@ def mine_method_refactorings():
 
 
 def create_repaired_tc_call_graphs():
-    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
+    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv")
     base_tags = repair_info["base_tag"].unique()
     for base_tag in tqdm(base_tags, ncols=100, position=0, leave=True, desc="Creating call graphs"):
         jparser.create_call_graphs(Path(Config.get("output_path")), base_tag)
@@ -62,14 +62,14 @@ def get_test_file_coverage(_class, method, tag):
     return set([n["path"] for n in call_graph["nodes"] if n["path"] not in all_test_files])
 
 
-def get_release_changed_files(base_tag, head_tag):
-    release_patches_path = Path(Config.get("output_path")) / "repairs" / f"{base_tag}...{head_tag}" / "patches.pickle"
-    patches = pickle.load(open(str(release_patches_path), "rb"))
+def get_changed_files(base_tag, head_tag):
+    patches_path = Path(Config.get("output_path")) / "repairs" / f"{base_tag}...{head_tag}" / "patches.pickle"
+    patches = pickle.load(open(str(patches_path), "rb"))
     return set([patch.path for patch in patches["patches"].modified_files])
 
 
 def create_repaired_tc_change_coverage():
-    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
+    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "repaired_test_methods.csv")
 
     change_coverage = []
     for _, r in tqdm(
@@ -89,7 +89,7 @@ def create_repaired_tc_change_coverage():
         tc_coverage = get_test_file_coverage(_class, method, base_tag)
         if tc_coverage is None:
             continue
-        changed_files = get_release_changed_files(base_tag, head_tag)
+        changed_files = get_changed_files(base_tag, head_tag)
         tc_change_coverage = list(tc_coverage.intersection(changed_files))
         if len(tc_coverage) == 0:
             cov_per = 0.0
