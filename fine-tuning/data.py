@@ -131,16 +131,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
         valid_ds = valid_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
         test_ds = test_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
 
-        if self.args.sub_sample:
-            ratio = self.args.sample_ratio
-            self.log(f"Subsampling with ration {ratio}")
-            # Warning: sub sampling is not stratified by ID
-            return (
-                train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
-                valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
-                test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True),
-            )
-
         return train_ds, valid_ds, test_ds
 
     def create_inputs_and_outputs(self, ds):
@@ -191,7 +181,16 @@ class TestRepairDataEncoder(BaseDataEncoder):
             train_ds.to_json(train_file, orient="records")
             valid_ds.to_json(valid_file, orient="records")
             test_ds.to_json(test_file, orient="records")
-
+        
+        if self.args.sub_sample:
+            ratio = self.args.sample_ratio
+            self.log(f"Subsampling with ration {ratio}")
+            # Warning: sub sampling is not stratified by ID
+            train_ds = train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            valid_ds = valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            test_ds = test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            
+        
         ds_len = len(train_ds) + len(valid_ds) + len(test_ds)
         self.log(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / ds_len, 1)} %)")
         self.log(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / ds_len, 1)} %)")
@@ -249,6 +248,46 @@ class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
         SEP_TOKEN = self.tokenizer.sep_token
         return " ".join([test_code] + [SEP_TOKEN] + covered_changes)
 
+    def create_output(self, row):
+        SEP_TOKEN = self.tokenizer.sep_token
+        if self.args.ground_truth == "repaired_body":
+            return row["after_repair_body"]
+        elif self.args.ground_truth == "repair_changes_hsep":
+            return SEP_TOKEN.join(
+                [
+                    " ".join(
+                        [c["line"] for c in h.get("sourceChanges", [])] + [c["line"] for c in h.get("targetChanges", [])]
+                    )
+                    for h in row["repair_changes"]
+                ]
+            )
+        elif self.args.ground_truth == "repair_changes_stsep":
+            hunk_changes = []
+            for h in row["repair_changes"]:
+                src_changes = [c["line"] for c in h.get("sourceChanges", [])]
+                tr_changes = [c["line"] for c in h.get("targetChanges", [])]
+                line_changes = []
+                if len(src_changes) > 0:
+                    line_changes.append(" ".join(src_changes))
+                if len(tr_changes) > 0:
+                    line_changes.append(" ".join(tr_changes))
+                hunk_changes.append(SEP_TOKEN.join(line_changes))
+
+            return SEP_TOKEN.join(hunk_changes)
+        elif self.args.ground_truth == "repair_changes_tok":
+            hunk_changes = []
+            for h in row["repair_changes"]:
+                src_changes = [c["line"] for c in h.get("sourceChanges", [])]
+                tr_changes = [c["line"] for c in h.get("targetChanges", [])]
+                line_changes = []
+                if len(src_changes) > 0:
+                    line_changes.append("DEL " + " ".join(src_changes))
+                if len(tr_changes) > 0:
+                    line_changes.append("ADD " + " ".join(tr_changes))
+                hunk_changes.append(" ".join(line_changes))
+
+            return " ".join(hunk_changes)
+
     def create_inputs_and_outputs(self, ds):
         self.log("Prioritizing changed documents and creating inputs ...")
         included_change_p = []
@@ -272,7 +311,7 @@ class PrioritizedChangesDataEncoder(TRBodyDataEncoder):
             f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changed documents are included in the input."
         )
         ds["input"] = inputs
-        ds["output"] = ds["after_repair_body"]
+        ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
         return ds
 
 
@@ -353,6 +392,16 @@ class TRTopHunksSepDataEncoder(TRTopHunksDataEncoder):
     def create_input(self, test_code, covered_changes):
         SEP_TOKEN = self.tokenizer.sep_token
         return test_code + SEP_TOKEN + SEP_TOKEN.join(covered_changes)
+
+
+class TRTHSFirstDepthCoverageDataEncoder(TRTopHunksSepDataEncoder):
+    def preprocess(self, ds):
+        ds = super().preprocess(ds)
+        before_len = len(ds)
+        ds["prioritized_changes"] = ds["prioritized_changes"].apply(lambda p: [c for c in p if c["depth"] == 1])
+        ds = ds[ds["prioritized_changes"].map(len) > 0].reset_index(drop=True)
+        self.log(f"Removed {before_len - len(ds)} rows due to no first-depth covered changes.")
+        return ds
 
 
 class TRTopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):

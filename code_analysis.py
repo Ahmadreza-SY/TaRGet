@@ -5,6 +5,32 @@ import jparser
 from tqdm import tqdm
 import json
 from config import Config
+import github_api as ghapi
+
+
+def mine_method_refactorings():
+    repo = ghapi.get_repo(Config.get("repo"))
+    repo_path = Path(repo.working_tree_dir)
+    repair_info = pd.read_csv(Path(Config.get("output_path")) / "repairs" / "test_repair_info.csv")
+    tag_pairs = (
+        repair_info.groupby(["base_tag", "head_tag"], as_index=False)
+        .size()
+        .apply(lambda r: (r["base_tag"], r["head_tag"]), axis=1)
+        .values.tolist()
+    )
+    pbar = tqdm(tag_pairs, position=0, leave=True)
+    refactorings = {}
+    for base_tag, head_tag in pbar:
+        tag_pair = f"{base_tag}...{head_tag}"
+        pbar.set_description(f"Mining refactorings {tag_pair}")
+        output_path = Path(Config.get("output_path")) / "repairs" / tag_pair
+        output_file = output_path / "method_refactorings.json"
+        if not output_file.exists():
+            jparser.mine_refactorings(base_tag, head_tag, repo_path, output_path)
+        with open(str(output_file)) as f:
+            refactorings[(base_tag, head_tag)] = json.loads(f.read())
+    pbar.set_description(f"Mining refactorings")
+    return refactorings
 
 
 def create_repaired_tc_call_graphs():

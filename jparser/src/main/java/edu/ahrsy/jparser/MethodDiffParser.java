@@ -70,8 +70,8 @@ public class MethodDiffParser {
   private Double computeLineSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
     if (!source.getPosition().isValidPosition() || !target.getPosition().isValidPosition()) {
       System.out.printf("Line similarity: No valid position found for %s or %s%n",
-              Spoon.getSimpleName(source),
-              Spoon.getSimpleName(target));
+              Spoon.getSimpleSignature(source),
+              Spoon.getSimpleSignature(target));
       return null;
     }
     var sourceLineCnt = IOUtils.countLines(source.getPosition().getCompilationUnit().getFile());
@@ -85,8 +85,8 @@ public class MethodDiffParser {
   }
 
   private double computeSignatureSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
-    var sourceSig = Spoon.getSimpleName(source);
-    var targetSig = Spoon.getSimpleName(target);
+    var sourceSig = Spoon.getSimpleSignature(source);
+    var targetSig = Spoon.getSimpleSignature(target);
     return new JaroWinklerDistance().apply(sourceSig, targetSig);
   }
 
@@ -99,8 +99,8 @@ public class MethodDiffParser {
               targetBody == null ? "" : targetBody.toString());
     } catch (SpoonException e) {
       System.out.printf("ERROR in computeBodySimilarity: executable = %s or %s%n %s%n",
-              source.getSignature(),
-              target.getSignature(),
+              Spoon.getSimpleSignature(source),
+              Spoon.getSimpleSignature(target),
               e.getMessage());
     }
     return computeSignatureSimilarity(source, target);
