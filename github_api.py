@@ -42,6 +42,7 @@ def get_local_diff(tag_pair, repo):
 
     print(f"Determining {diff_pair} diff")
     diff = git_repo.git.diff(tag_pair.base.name, tag_pair.head.name)
+    diff = diff.encode('utf-8', 'replace').decode()
 
     diff_cache_file.parent.mkdir(exist_ok=True, parents=True)
     with open(str(diff_cache_file), "w") as f:
@@ -52,7 +53,7 @@ def get_local_diff(tag_pair, repo):
 
 def get_test_file_local(tag, test_path, repo):
     git_repo = get_repo(repo)
-    git_repo.git.checkout(tag)
+    git_repo.git.checkout(tag, force=True)
 
     file_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@") / test_path
     with open(file_dir, "r") as file:
