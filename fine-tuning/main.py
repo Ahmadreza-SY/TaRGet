@@ -323,10 +323,18 @@ def train(gpu, args):
 
 def test(gpu, args):
     if args.rank == 0:
-        logger.info(f"Testing with best checkpoint")
-    model = model_class.from_pretrained(args.output_dir / f"checkpoint-best")
+        logger.info(f"Loading best checkpoint")
+    best_checkpoint_path = args.output_dir / f"checkpoint-best"
+    model = model_class.from_pretrained(best_checkpoint_path)
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
+    
+    if args.rank == 0:
+        logger.info(f"Testing with best checkpoint on validation set")
+    bleu_score, em = eval(model, args.valid_dataset, args, best_checkpoint_path)
+
+    if args.rank == 0:
+        logger.info(f"Testing with best checkpoint on test set")
     bleu_score, em = eval(model, args.test_dataset, args, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "em": em}
 
@@ -423,6 +431,7 @@ def eval(model, dataset, args, output_dir):
     dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
     if args.rank == 0:
         output_dir = output_dir / "outputs"
+        output_dir.mkdir(parents=True, exist_ok=True)
         all_targets = [target for sub in global_targets for target in sub]
         all_preds = [pred for sub in global_preds for pred in sub]
         all_ids = [pred for sub in global_ids for pred in sub]
@@ -431,7 +440,6 @@ def eval(model, dataset, args, output_dir):
         pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         all_bleus = compute_single_bleus(target_codes, pred_codes, output_dir)
 
-        output_dir.mkdir(parents=True, exist_ok=True)
         target_file = output_dir / f"fixed_targets.txt"
         write_lines(target_file, target_codes)
         pred_file = output_dir / f"fixed_preds.txt"
