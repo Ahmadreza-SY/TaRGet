@@ -73,6 +73,7 @@ class TagPair:
         test_out_file = test_out_path / test_path.name
         with open(str(test_out_file), "w") as f:
             f.write(content)
+            f.write("\n")
 
         jparser.extract_test_methods(test_out_file)
 

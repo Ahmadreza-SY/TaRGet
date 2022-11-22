@@ -126,4 +126,6 @@ class Service:
                 }
             )
 
-        (Path(Config.get("output_path")) / "dataset.json").write_text(json.dumps(dataset), encoding="utf-8")
+        (Path(Config.get("output_path")) / "dataset.json").write_text(
+            json.dumps(dataset, indent=2, sort_keys=False), encoding="utf-8"
+        )

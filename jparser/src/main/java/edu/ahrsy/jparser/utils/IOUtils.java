@@ -51,7 +51,7 @@ public class IOUtils {
   }
 
   public static Gson createGsonInstance() {
-    return new GsonBuilder().disableHtmlEscaping().create();
+    return new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
   }
 
   public static void disableReflectionWarning() {

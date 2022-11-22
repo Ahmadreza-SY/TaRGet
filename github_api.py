@@ -58,7 +58,7 @@ def get_test_file_local(tag, test_path, repo):
 
     file_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@") / test_path
     with open(file_dir, "rb") as file:
-        contents = file.read().decode("unicode-escape")
+        contents = file.read().decode("unicode-escape").encode("utf-8", "replace").decode()
 
     return contents
 
@@ -68,7 +68,7 @@ def get_tags_and_ancestors(repo):
 
     tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
     tag_parents = dict()
-    ancestors = set()
+    tag_children = dict()
 
     print("Finding tag parents")
     for i in range(len(tags)):
@@ -76,14 +76,18 @@ def get_tags_and_ancestors(repo):
             if git_repo.is_ancestor(tags[j].commit, tags[i].commit):
                 child = tags[i].name
                 ancestor = tags[j].name
-                if ancestor in ancestors:
-                    print(f"WARNING Duplicate ancestor found {child} -> {ancestor}")
+                if not ancestor in tag_children:
+                    tag_children[ancestor] = []
                 tag_parents[child] = ancestor
-                ancestors.add(ancestor)
+                tag_children[ancestor].append(child)
                 break
 
         if tags[i].name not in tag_parents:
             tag_parents[tags[i].name] = None
+
+    for ancestor, children in tag_children.items():
+        if len(children) > 1:
+            print(f"WARNING: Ancestor with multiple children {ancestor} {children}")
 
     not_none = sum(value is not None for value in tag_parents.values())
     percent = "%.2f" % (not_none / len(tag_parents) * 100)

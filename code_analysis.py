@@ -109,7 +109,7 @@ def create_repaired_tc_change_coverage():
 
     cov_output_file = Path(Config.get("output_path")) / "repairs" / "test_change_coverage.json"
     with open(cov_output_file, "w") as f:
-        f.write(json.dumps(change_coverage))
+        f.write(json.dumps(change_coverage, indent=2, sort_keys=False))
 
     jparser.detect_changed_methods(Config.get("output_path"))
 
