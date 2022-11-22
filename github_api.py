@@ -42,11 +42,12 @@ def get_local_diff(tag_pair, repo):
 
     print(f"Determining {diff_pair} diff")
     diff = git_repo.git.diff(tag_pair.base.name, tag_pair.head.name)
-    diff = diff.encode('utf-8', 'replace').decode()
+    diff = diff.encode("utf-8", "replace").decode()
 
     diff_cache_file.parent.mkdir(exist_ok=True, parents=True)
     with open(str(diff_cache_file), "w") as f:
         f.write(diff)
+        f.write("\n")
 
     return diff
 
@@ -56,8 +57,8 @@ def get_test_file_local(tag, test_path, repo):
     git_repo.git.checkout(tag, force=True)
 
     file_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@") / test_path
-    with open(file_dir, "r") as file:
-        contents = file.read()
+    with open(file_dir, "rb") as file:
+        contents = file.read().decode("unicode-escape")
 
     return contents
 
@@ -67,12 +68,18 @@ def get_tags_and_ancestors(repo):
 
     tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
     tag_parents = dict()
+    ancestors = set()
 
     print("Finding tag parents")
     for i in range(len(tags)):
         for j in range(i + 1, len(tags)):
             if git_repo.is_ancestor(tags[j].commit, tags[i].commit):
-                tag_parents[tags[i].name] = tags[j].name
+                child = tags[i].name
+                ancestor = tags[j].name
+                if ancestor in ancestors:
+                    print(f"WARNING Duplicate ancestor found {child} -> {ancestor}")
+                tag_parents[child] = ancestor
+                ancestors.add(ancestor)
                 break
 
         if tags[i].name not in tag_parents:

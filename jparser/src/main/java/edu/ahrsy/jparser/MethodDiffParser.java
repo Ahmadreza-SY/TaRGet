@@ -48,7 +48,10 @@ public class MethodDiffParser {
   private List<MethodChange> getCommonMethodsChanges(
           List<CtExecutable<?>> baseMethods, List<CtExecutable<?>> headMethods
   ) {
-    var baseMethodsMap = baseMethods.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
+    var baseMethodsMap = baseMethods.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m, (m1, m2) -> {
+      System.out.printf("Duplicate key found: %s ; %s%n", m1.getSignature(), m2.getSignature());
+      return m1;
+    }));
     var methodChanges = new ArrayList<MethodChange>();
     for (var hMethod : headMethods) {
       var hMethodName = Spoon.getUniqueName(hMethod);
@@ -69,9 +72,9 @@ public class MethodDiffParser {
 
   private Double computeLineSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
     if (!source.getPosition().isValidPosition() || !target.getPosition().isValidPosition()) {
-      System.out.printf("Line similarity: No valid position found for %s or %s%n",
+      /*System.out.printf("Line similarity: No valid position found for %s or %s%n",
               Spoon.getSimpleSignature(source),
-              Spoon.getSimpleSignature(target));
+              Spoon.getSimpleSignature(target));*/
       return null;
     }
     var sourceLineCnt = IOUtils.countLines(source.getPosition().getCompilationUnit().getFile());
