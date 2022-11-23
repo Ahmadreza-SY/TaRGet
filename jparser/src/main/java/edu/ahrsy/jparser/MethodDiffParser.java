@@ -100,7 +100,7 @@ public class MethodDiffParser {
     try {
       return new JaroWinklerDistance().apply(sourceBody == null ? "" : sourceBody.toString(),
               targetBody == null ? "" : targetBody.toString());
-    } catch (SpoonException e) {
+    } catch (Exception e) {
       System.out.printf("ERROR in computeBodySimilarity: executable = %s or %s%n %s%n",
               Spoon.getSimpleSignature(source),
               Spoon.getSimpleSignature(target),

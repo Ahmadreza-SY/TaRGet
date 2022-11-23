@@ -18,8 +18,9 @@ public class CommandTestMethods extends Command {
     for (var method : spoon.getTestMethods()) {
       String signature = Spoon.getSimpleSignature(method);
       IOUtils.saveFile(Path.of(args.outputPath, signature), Spoon.prettyPrint(method));
+      String methodBody = Spoon.prettyPrint(method.getBody());
       IOUtils.saveFile(Path.of(args.outputPath).getParent().resolve("methodBodies").resolve(signature),
-              method.getBody().toString());
+              methodBody == null ? signature : methodBody);
     }
   }
 }

@@ -95,6 +95,8 @@
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs>
+                    <outputDirectory>../assets</outputDirectory>
+                    <finalName>jparser</finalName>
                 </configuration>
             </plugin>
         </plugins>

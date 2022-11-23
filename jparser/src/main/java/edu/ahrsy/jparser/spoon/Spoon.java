@@ -2,8 +2,8 @@ package edu.ahrsy.jparser.spoon;
 
 import spoon.Launcher;
 import spoon.SpoonAPI;
-import spoon.SpoonException;
 import spoon.processing.Processor;
+import spoon.reflect.code.CtBlock;
 import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.CtTypeReference;
@@ -72,12 +72,19 @@ public class Spoon {
   public static String prettyPrint(CtExecutable<?> executable) {
     try {
       return executable.toString();
-    } catch (SpoonException e) {
-      System.out.printf("ERROR in prettyPrintWithoutComments: executable = %s%n %s%n",
-              getSimpleSignature(executable),
-              e.getMessage());
+    } catch (Exception e) {
+      System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", getSimpleSignature(executable), e.getMessage());
     }
     return getSimpleSignature(executable);
+  }
+
+  public static String prettyPrint(CtBlock<?> block) {
+    try {
+      return block.toString();
+    } catch (Exception e) {
+      System.out.printf("ERROR in prettyPrint: block = %s%n", e.getMessage());
+    }
+    return null;
   }
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
