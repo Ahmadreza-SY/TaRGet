@@ -1,6 +1,7 @@
 api_cache
 data*/
 .vscode
+!.vscode/settings.json
 __pycache__
 results
 *.log
