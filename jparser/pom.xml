@@ -97,6 +97,7 @@
                     </descriptorRefs>
                     <outputDirectory>../assets</outputDirectory>
                     <finalName>jparser</finalName>
+                    <appendAssemblyId>false</appendAssemblyId>
                 </configuration>
             </plugin>
         </plugins>
