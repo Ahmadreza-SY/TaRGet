@@ -17,17 +17,13 @@ import copy
 class Service:
     @staticmethod
     def analyze_tag_and_repairs():
-        tags, tag_parents = ghapi.get_tags_and_ancestors(Config.get("repo"))
+        tags, tag_ancestors = ghapi.get_tags_and_ancestors(Config.get("repo"))
 
         class_info_l = []
         method_info_l = []
-        for tag, parent in tqdm(tag_parents.items()):
+        for tag, ancestor in tqdm(tag_ancestors):
             head = tags[tag]
-            base = tags[parent] if parent else None
-
-            if not base:
-                continue  # Occurs when there is no ancestor to the head tag
-
+            base = tags[ancestor]
             print()
             print(f"Analyzing tag pair {base.name}...{head.name}")
             tag_pair = TagPair(base, head)

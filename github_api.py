@@ -67,33 +67,37 @@ def get_tags_and_ancestors(repo):
     git_repo = get_repo(repo)
 
     tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
-    tag_parents = dict()
+    tag_ancestors = []
     tag_children = dict()
 
-    print("Finding tag parents")
+    print("Finding tag ancestors")
     for i in range(len(tags)):
         for j in range(i + 1, len(tags)):
             if git_repo.is_ancestor(tags[j].commit, tags[i].commit):
                 child = tags[i].name
                 ancestor = tags[j].name
-                if not ancestor in tag_children:
+                tag_ancestors.append((child, ancestor))
+
+                if ancestor not in tag_children:
                     tag_children[ancestor] = []
-                tag_parents[child] = ancestor
                 tag_children[ancestor].append(child)
+
                 break
 
-        if tags[i].name not in tag_parents:
-            tag_parents[tags[i].name] = None
-
+    removed_cnt = 0
     for ancestor, children in tag_children.items():
         if len(children) > 1:
-            print(f"WARNING: Ancestor with multiple children {ancestor} {children}")
+            print(f"WARNING: Ancestor with multiple ({len(children)}) children {ancestor} {children}")
+            for child in children[:-1]:
+                tag_ancestors.remove((child, ancestor))
+                removed_cnt += 1
+    print(f"Removed {removed_cnt} tag pairs due to multiple children")
 
-    not_none = sum(value is not None for value in tag_parents.values())
-    percent = "%.2f" % (not_none / len(tag_parents) * 100)
-    print(f"{percent}% of {len(tag_parents)} tags have valid ancestors")
 
-    return {t.name: t for t in tags}, tag_parents
+    percent = "%.2f" % (len(tag_ancestors) / (len(tags) -1) * 100)
+    print(f"{percent}% of {len(tags) -1} tags have valid ancestors")
+
+    return {t.name: t for t in tags}, tag_ancestors
 
 
 def copy_tag_code(repo, tag):
