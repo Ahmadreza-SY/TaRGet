@@ -6,3 +6,4 @@ __pycache__
 results
 *.log
 assets/*.jar
+*.sh

@@ -19,17 +19,9 @@ import logging
 import os
 from bleu import score, _bleu
 from utils import write_lines
-from data import (
-    ProgramRepairDataEncoder,
-    TRTopLinesDataEncoder,
-    TRTopAddedLinesDataEncoder,
-    TRTopHunksDataEncoder,
-    TRTopHunksSepDataEncoder,
-    TRTopAddedHunksDataEncoder,
-    TRTopAddedHunksSepDataEncoder,
-    TRTHSFirstDepthCoverageDataEncoder,
-)
+from data import *
 import json
+import sys
 
 # TODO: Fix Tokenization
 
@@ -52,22 +44,7 @@ def main():
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
-    parser.add_argument(
-        "-de",
-        "--data_encoder",
-        required=True,
-        type=str,
-        choices=[
-            "ProgramRepair",
-            "TRTopLines",
-            "TRTopAddedLines",
-            "TRTopHunks",
-            "TRTopHunksSep",
-            "TRTopAddedHunks",
-            "TRTopAddedHunksSep",
-            "TRTHSFirstDepthCoverage",
-        ],
-    )
+    parser.add_argument("-de", "--data_encoder", required=True, type=str)
     parser.add_argument(
         "-gt",
         "--ground_truth",
@@ -101,22 +78,11 @@ def main():
     args.world_size = args.gpus * args.nodes
     args.model_name_or_path = "uclanlp/plbart-base"
     args.model_tokenizer_class = PLBartTokenizer
-    if args.data_encoder == "ProgramRepair":
-        args.data_encoder_class = ProgramRepairDataEncoder
-    elif args.data_encoder == "TRTopLines":
-        args.data_encoder_class = TRTopLinesDataEncoder
-    elif args.data_encoder == "TRTopAddedLines":
-        args.data_encoder_class = TRTopAddedLinesDataEncoder
-    elif args.data_encoder == "TRTopHunks":
-        args.data_encoder_class = TRTopHunksDataEncoder
-    elif args.data_encoder == "TRTopHunksSep":
-        args.data_encoder_class = TRTopHunksSepDataEncoder
-    elif args.data_encoder == "TRTopAddedHunks":
-        args.data_encoder_class = TRTopAddedHunksDataEncoder
-    elif args.data_encoder == "TRTopAddedHunksSep":
-        args.data_encoder_class = TRTopAddedHunksSepDataEncoder
-    elif args.data_encoder == "TRTHSFirstDepthCoverage":
-        args.data_encoder_class = TRTHSFirstDepthCoverageDataEncoder
+    try:
+        args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
+    except AttributeError:
+        print(f"Invalid data encoder '{args.data_encoder}'")
+        sys.exit()
 
     mp.spawn(run, nprocs=args.gpus, args=(args,))
 
@@ -175,7 +141,7 @@ def run(gpu, args):
     load_data(args)
 
     torch.cuda.set_device(gpu)
-    
+
     if not args.test_only:
         train(gpu, args)
 
@@ -281,10 +247,10 @@ def train(gpu, args):
                 )
             )
 
-        valid_output_dir = args.output_dir / f"checkpoint-last"
         valid_start = datetime.now()
-        if args.rank == 0:
-            save_model(model, optimizer, scheduler, valid_output_dir)
+        valid_output_dir = args.output_dir / f"checkpoint-last"
+        # if args.rank == 0:
+        #     save_model(model, optimizer, scheduler, valid_output_dir)
 
         bleu_score, em = eval(model, args.valid_dataset, args, valid_output_dir)
         if args.scoring == "em":
@@ -328,7 +294,7 @@ def test(gpu, args):
     model = model_class.from_pretrained(best_checkpoint_path)
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
-    
+
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on validation set")
     bleu_score, em = eval(model, args.valid_dataset, args, best_checkpoint_path)
