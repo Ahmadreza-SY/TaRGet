@@ -63,9 +63,11 @@ class TagPair:
         content = ghapi.get_test_file_local(tag.name, test_path, Config.get("repo"))
 
         package_name = None
-        matches = re.compile("package (.+);").findall(content)
+        matches = re.compile("package ([a-z][a-z0-9_]*(\.[a-z0-9_]+)+[0-9a-z_]);").findall(content)
         if len(matches) == 1:
-            package_name = matches[0]
+            package_name = matches[0][0]
+        else:
+            raise Exception(f"Could not find the package name in tag {tag} and test {test_path}")
 
         full_name = f"{package_name}.{Path(test_path.stem)}"
         test_out_path = self.get_test_out_path(full_name, tag)
