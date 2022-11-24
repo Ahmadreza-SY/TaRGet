@@ -30,24 +30,10 @@ def get_repo(repo):
 
 def get_local_diff(tag_pair, repo):
     diff_pair = f"{tag_pair.base.name}...{tag_pair.head.name}"
-    diff_cache_file = (
-        Path(Config.get("gh_cache_path")) / repo.replace("/", "@") / f"{repo.replace('/', '@')}-{diff_pair}.diff"
-    )
-    if diff_cache_file.exists() and diff_cache_file.stat().st_size > 0:
-        print(f"Read diff from cache at {diff_cache_file}")
-        with open(str(diff_cache_file)) as f:
-            return f.read()
 
     git_repo = get_repo(repo)
-
     print(f"Determining {diff_pair} diff")
-    diff = git_repo.git.diff(tag_pair.base.name, tag_pair.head.name)
-    diff = diff.encode("utf-8", "replace").decode()
-
-    diff_cache_file.parent.mkdir(exist_ok=True, parents=True)
-    with open(str(diff_cache_file), "w") as f:
-        f.write(diff)
-        f.write("\n")
+    diff = git_repo.git.diff(tag_pair.base.name, tag_pair.head.name, "--", "*.java")
 
     return diff
 
@@ -93,8 +79,7 @@ def get_tags_and_ancestors(repo):
                 removed_cnt += 1
     print(f"Removed {removed_cnt} tag pairs due to multiple children")
 
-
-    percent = "%.2f" % (len(tag_ancestors) / (len(tags) -1) * 100)
+    percent = "%.2f" % (len(tag_ancestors) / (len(tags) - 1) * 100)
     print(f"{percent}% of {len(tags) -1} tags have valid ancestors")
 
     return {t.name: t for t in tags}, tag_ancestors
