@@ -178,9 +178,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
             train_ds, valid_ds, test_ds = self.split_by_tag(ds)
 
             ds_output_dir.mkdir(exist_ok=True, parents=True)
-            train_ds.to_json(train_file, orient="records")
-            valid_ds.to_json(valid_file, orient="records")
-            test_ds.to_json(test_file, orient="records")
+            train_ds.to_json(train_file, orient="records", indent=2)
+            valid_ds.to_json(valid_file, orient="records", indent=2)
+            test_ds.to_json(test_file, orient="records", indent=2)
         
         if self.args.sub_sample:
             ratio = self.args.sample_ratio
