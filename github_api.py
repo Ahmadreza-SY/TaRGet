@@ -43,8 +43,13 @@ def get_test_file_local(tag, test_path, repo):
     git_repo.git.checkout(tag, force=True)
 
     file_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@") / test_path
-    with open(file_dir, "r") as file:
-        contents = file.read()
+    try:
+        with open(file_dir, "r") as file:
+            contents = file.read()
+    except UnicodeDecodeError as e:
+        print(f"ERROR in reading test file {file_dir} at tag {tag}:\n  {str(e)}")
+        with open(file_dir, "r", errors="surrogateescape") as file:
+            contents = file.read()
 
     return file_dir, contents
 
