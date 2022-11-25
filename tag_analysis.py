@@ -6,6 +6,7 @@ import pandas as pd
 import github_api as ghapi
 from config import Config
 import jparser
+import shutil
 
 
 class TagPair:
@@ -60,7 +61,7 @@ class TagPair:
         )
 
     def fetch_and_save_test_code(self, tag, test_path):
-        content = ghapi.get_test_file_local(tag.name, test_path, Config.get("repo"))
+        test_file, content = ghapi.get_test_file_local(tag.name, test_path, Config.get("repo"))
 
         package_name = None
         matches = re.compile("^package (.+);$", re.MULTILINE).findall(content)
@@ -76,9 +77,7 @@ class TagPair:
         test_out_path = self.get_test_out_path(full_name, tag)
         test_out_path.mkdir(parents=True, exist_ok=True)
         test_out_file = test_out_path / test_path.name
-        with open(str(test_out_file), "w") as f:
-            f.write(content)
-            f.write("\n")
+        shutil.copyfile(str(test_file), str(test_out_file))
 
         jparser.extract_test_methods(test_out_file)
 

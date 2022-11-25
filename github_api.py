@@ -43,10 +43,10 @@ def get_test_file_local(tag, test_path, repo):
     git_repo.git.checkout(tag, force=True)
 
     file_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@") / test_path
-    with open(file_dir, "rb") as file:
-        contents = file.read().decode("unicode-escape").encode("utf-8", "replace").decode()
+    with open(file_dir, "r") as file:
+        contents = file.read()
 
-    return contents
+    return file_dir, contents
 
 
 def get_tags_and_ancestors(repo):
