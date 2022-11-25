@@ -70,7 +70,7 @@ class Service:
         after_repair, after_repair_body = Service.get_test_code(head_tag, _class, method)
         method_coverage = get_test_method_coverage(_class, method, base_tag)
         if method_coverage is None:
-            print(f"No call graph found for {name} ! Skipping ...")
+            # print(f"No call graph found for {name} ! Skipping ...")
             return None
 
         tag_pair = (base_tag, head_tag)
