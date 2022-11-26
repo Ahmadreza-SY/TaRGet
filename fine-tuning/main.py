@@ -52,7 +52,7 @@ def main():
         type=str,
         choices=["repaired_body", "repair_changes_hsep", "repair_changes_stsep", "repair_changes_tok"],
     )
-    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["blue", "em"])
+    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
     parser.add_argument("-m", "--max_seq", required=True, type=int)
