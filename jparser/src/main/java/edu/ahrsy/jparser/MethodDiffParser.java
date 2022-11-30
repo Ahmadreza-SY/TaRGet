@@ -3,7 +3,7 @@ package edu.ahrsy.jparser;
 import edu.ahrsy.jparser.entity.MethodChange;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
-import org.apache.commons.text.similarity.JaroWinklerDistance;
+import org.apache.commons.text.similarity.JaroWinklerSimilarity;
 import spoon.SpoonException;
 import spoon.reflect.declaration.CtExecutable;
 
@@ -90,7 +90,7 @@ public class MethodDiffParser {
   private double computeSignatureSimilarity(CtExecutable<?> source, CtExecutable<?> target) {
     var sourceSig = Spoon.getSimpleSignature(source);
     var targetSig = Spoon.getSimpleSignature(target);
-    return new JaroWinklerDistance().apply(sourceSig, targetSig);
+    return new JaroWinklerSimilarity().apply(sourceSig, targetSig);
   }
 
   private double computeBodySimilarity(CtExecutable<?> source, CtExecutable<?> target) {
@@ -98,7 +98,7 @@ public class MethodDiffParser {
     var targetBody = target.getBody();
     if (sourceBody == null && targetBody == null) return 1.0;
     try {
-      return new JaroWinklerDistance().apply(sourceBody == null ? "" : sourceBody.toString(),
+      return new JaroWinklerSimilarity().apply(sourceBody == null ? "" : sourceBody.toString(),
               targetBody == null ? "" : targetBody.toString());
     } catch (Exception e) {
       System.out.printf("ERROR in computeBodySimilarity: executable = %s or %s%n %s%n",
