@@ -19,7 +19,7 @@ import logging
 import os
 from bleu import score, _bleu
 from utils import write_lines
-from data import *
+from encoders import *
 import json
 import sys
 
