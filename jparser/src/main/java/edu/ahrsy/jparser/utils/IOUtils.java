@@ -18,7 +18,7 @@ import java.util.List;
 public class IOUtils {
   public static void saveFile(Path filePath, String content) {
     try {
-      Files.createDirectories(filePath.getParent());
+      if (filePath.getParent() != null) Files.createDirectories(filePath.getParent());
       Files.write(filePath, content.getBytes());
     } catch (IOException e) {
       throw new RuntimeException(e);

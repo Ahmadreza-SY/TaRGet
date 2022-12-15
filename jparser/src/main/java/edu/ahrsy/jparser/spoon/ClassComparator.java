@@ -2,6 +2,7 @@ package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.MethodChange;
+import edu.ahrsy.jparser.utils.IOUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.operations.Operation;
@@ -9,7 +10,11 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtMethod;
+import spoon.reflect.declaration.CtType;
+import spoon.reflect.visitor.filter.TypeFilter;
+import spoon.support.sniper.SniperJavaPrettyPrinter;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -55,12 +60,29 @@ public class ClassComparator {
     return true;
   }
 
+  public CtType<?> applyPatchAndSave(CtType<?> type, CtMethod<?> patchedMethod) {
+    var beforePatch = IOUtils.readFile(Path.of(type.getPosition().getFile().getPath()));
+    var oldMethod = type.getElements(new TypeFilter<>(CtMethod.class) {
+      @Override
+      public boolean matches(CtMethod method) {
+        return method.getSignature().equals(patchedMethod.getSignature());
+      }
+    }).get(0);
+    var stringBuilder = new StringBuilder(beforePatch);
+    var start = oldMethod.getPosition().getSourceStart();
+    var end = oldMethod.getPosition().getSourceEnd();
+    // TODO get output path and save this afterPatch
+    var afterPatch = stringBuilder.replace(start, end + 1, Spoon.prettyPrint(patchedMethod)).toString();
+    return type;
+  }
+
   public List<Pair<CtMethod<?>, CtMethod<?>>> getChangedTests() {
     var changedTests = new HashMap<String, Pair<CtMethod<?>, CtMethod<?>>>();
     var bTests = bSpoon.getTests().stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
     for (var aTest : aSpoon.getTests()) {
       var name = Spoon.getUniqueName(aTest);
-      if (bTests.containsKey(name)) changedTests.put(name, new ImmutablePair<>(bTests.get(name), aTest));
+      if (bTests.containsKey(name) && codeModification(bTests.get(name), aTest))
+        changedTests.put(name, new ImmutablePair<>(bTests.get(name), aTest));
     }
     return new ArrayList<>(changedTests.values());
   }
@@ -72,6 +94,7 @@ public class ClassComparator {
     var changedTests = getChangedTests();
     var testChanges = new ArrayList<MethodChange>();
     for (var test : changedTests) {
+      // applyPatchAndSave(aSpoon.createCopy().getType(0), test.getLeft());
       var name = Spoon.getUniqueName(test.getLeft());
       var change = new MethodChange(changedTestClass.beforePath, name);
       change.extractHunks(Spoon.prettyPrint(test.getLeft()), Spoon.prettyPrint(test.getRight()));
