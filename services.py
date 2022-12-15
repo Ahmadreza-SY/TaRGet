@@ -10,11 +10,51 @@ from code_analysis import (
     create_repaired_tc_change_coverage,
     get_test_method_coverage,
     mine_method_refactorings,
+    is_test_class,
 )
 import copy
+import re
+from tqdm import tqdm
+from utils import save_file
 
 
 class Service:
+    @staticmethod
+    def analyze_repair_commits():
+        repo_name = Config.get("repo")
+        commits = ghapi.get_all_commits(repo_name)
+        output_path = Path(Config.get("output_path"))
+        changed_tests = {"b_path": [], "a_path": [], "b_commit": [], "a_commit": []}
+        for commit in tqdm(commits[:100]):
+            if len(commit.parents) == 0:
+                continue
+            diffs = commit.diff(commit.parents[0].hexsha)
+            # Interested in renamed and modified paths
+            diffs = [d for d in diffs if d.change_type in ["R", "M"]]
+            java_regex = r"^.*\.java$"
+            diffs = [d for d in diffs if bool(re.search(java_regex, d.b_path)) and bool(re.search(java_regex, d.a_path))]
+            for diff in diffs:
+                before, after = ghapi.get_file_versions(diff, commit, repo_name)
+                if is_test_class(before) and before != after:
+                    b_commit = ghapi.get_short_commit(commit.parents[0], repo_name)
+                    a_commit = ghapi.get_short_commit(commit, repo_name)
+                    changed_tests["b_path"].append(diff.b_path)
+                    changed_tests["a_path"].append(diff.a_path)
+                    changed_tests["b_commit"].append(b_commit)
+                    changed_tests["a_commit"].append(a_commit)
+                    b_copy_path = output_path / "commits" / b_commit / diff.b_path
+                    a_copy_path = output_path / "commits" / a_commit / diff.a_path
+                    save_file(before, b_copy_path)
+                    save_file(after, a_copy_path)
+
+        changed_tests = pd.DataFrame(changed_tests)
+        changed_tests.to_csv(output_path / "changed_tests.csv", index=False)
+
+        # detect broken test cases by compiling and executing
+        # extract call graphs of changed test methods
+        # create test covered diff
+        # save results
+
     @staticmethod
     def analyze_tag_and_repairs():
         tags, tag_ancestors = ghapi.get_tags_and_ancestors(Config.get("repo"))
@@ -81,9 +121,7 @@ class Service:
                 _change = copy.deepcopy(change)
                 _change["depth"] = method_coverage[found_coverage_i[0]]["depth"]
                 _change["refactor"] = _change["name"] in refactored_methods[tag_pair]
-                _change["refactor_types"] = (
-                    None if not _change["refactor"] else refactor_types[tag_pair][_change["name"]]
-                )
+                _change["refactor_types"] = None if not _change["refactor"] else refactor_types[tag_pair][_change["name"]]
                 covered_changes.append(_change)
         repair_changes = repair_changes[f"{base_tag}-{head_tag}-{name}"]
 

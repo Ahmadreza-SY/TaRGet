@@ -7,7 +7,7 @@ class Config:
         "gh_clones_path": "./api_cache/clones",
     }
 
-    __setters = ["repo", "output_path", "gh_api_token"]
+    __setters = ["repo", "output_path", "jparser_path", "gh_cache_path", "gh_clones_path"]
 
     @staticmethod
     def get(name):

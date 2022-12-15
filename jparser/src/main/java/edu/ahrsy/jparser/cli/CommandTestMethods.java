@@ -15,7 +15,7 @@ public class CommandTestMethods extends Command {
 
   public static void cTestMethods(CommandTestMethods args) {
     var spoon = new Spoon(args.srcPath, args.complianceLevel);
-    for (var method : spoon.getTestMethods()) {
+    for (var method : spoon.getTests()) {
       String signature = Spoon.getSimpleSignature(method);
       IOUtils.saveFile(Path.of(args.outputPath, signature), Spoon.prettyPrint(method));
       String methodBody = Spoon.prettyPrint(method.getBody());

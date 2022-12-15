@@ -6,6 +6,7 @@ from tqdm import tqdm
 import json
 from config import Config
 import github_api as ghapi
+import re
 
 
 def mine_method_refactorings():
@@ -119,3 +120,9 @@ def get_test_method_coverage(_class, method, tag):
     if call_graph is None:
         return None
     return [{k: n[k] for k in ["name", "depth"]} for n in call_graph["nodes"]]
+
+
+def is_test_class(file_content):
+    junit_import = r"import\s+org\.junit\.(Test|\*|jupiter\.api\.(\*|Test))"
+    test_annotation = r"@Test"
+    return bool(re.search(junit_import, file_content)) and bool(re.search(test_annotation, file_content))

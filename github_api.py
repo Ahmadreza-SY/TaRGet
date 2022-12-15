@@ -104,3 +104,20 @@ def copy_tag_code(repo, tag):
     git_repo.git.checkout(tag.name, force=True)
     shutil.copytree(str(clone_dir), str(code_path), ignore=shutil.ignore_patterns(".git"))
     return code_path
+
+
+def get_all_commits(repo_name):
+    repo = get_repo(repo_name)
+    return list(repo.iter_commits())
+
+
+def get_file_versions(file_diff, commit, repo_name):
+    repo = get_repo(repo_name)
+    before = repo.git.show(f"{commit.parents[0].hexsha}:{file_diff.b_path}")
+    after = repo.git.show(f"{commit.hexsha}:{file_diff.a_path}")
+    return before, after
+
+
+def get_short_commit(commit, repo_name):
+    repo = get_repo(repo_name)
+    return repo.git.rev_parse(commit.hexsha, short=True)

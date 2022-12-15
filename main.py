@@ -4,7 +4,7 @@ from services import Service
 
 
 def analyze_github_tags(args):
-    Service.analyze_tag_and_repairs()
+    Service.analyze_repair_commits()
 
 
 def create_test_repair_dataset(args):

@@ -6,22 +6,23 @@ import edu.ahrsy.jparser.MethodDiffParser;
 import edu.ahrsy.jparser.entity.*;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBar;
+import me.tongfei.progressbar.ProgressBarBuilder;
+import me.tongfei.progressbar.ProgressBarStyle;
 
 import java.nio.file.Path;
 import java.util.*;
 
 public class CommandMethodChanges {
-  @Parameter(names = {"-o", "--output-path"},
-          description = "The root output folder of the repo's collected data",
-          required = true
-  )
+  @Parameter(names = {"-o", "--output-path"}, description = "The root output folder of the repo's collected data",
+          required = true)
   public String outputPath;
 
   @Parameter(names = {"-cl", "--compliance-level"}, description = "Java version compliance level")
   public Integer complianceLevel = 10;
 
   private static void extractTestMethodChanges(String outputPath) {
-    var repairs = IOUtils.readCsv(Path.of(outputPath, "repairs", "repaired_test_methods.csv").toString(), TestRepair.class);
+    var repairs = IOUtils.readCsv(Path.of(outputPath, "repairs", "repaired_test_methods.csv").toString(),
+            TestRepair.class);
     var testChanges = new ArrayList<TestChange>();
     for (var repair : repairs) {
       var beforeRepair = IOUtils.readFile(Path.of(outputPath,
@@ -69,7 +70,10 @@ public class CommandMethodChanges {
     }
 
     var allTagsMethodChanges = new ArrayList<TagMethodChanges>();
-    for (var entry : ProgressBar.wrap(tagChangedFileMap.entrySet(), "Detecting methods changes")) {
+    var pbb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
+            .showSpeed()
+            .setTaskName("Detecting methods changes");
+    for (var entry : ProgressBar.wrap(tagChangedFileMap.entrySet(), pbb)) {
       if (entry.getValue().isEmpty()) continue;
       var tags = entry.getKey().split("\\$");
       String baseSrcPath = Path.of(args.outputPath, "tags", tags[0], "code").toString();

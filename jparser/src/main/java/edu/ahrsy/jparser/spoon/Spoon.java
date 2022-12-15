@@ -15,9 +15,9 @@ import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 public class Spoon {
   private final SpoonAPI spoon;
@@ -92,12 +92,17 @@ public class Spoon {
   }
 
   public Set<CtMethod<?>> getTestPreAndPostMethods(CtMethod<?> testMethod) {
-    List<CtTypeReference<?>> refs = Arrays.asList(spoon.getFactory().Type().createReference("org.junit.Before"),
-            spoon.getFactory().Type().createReference("org.junit.BeforeClass"),
-            spoon.getFactory().Type().createReference("org.junit.After"),
-            spoon.getFactory().Type().createReference("org.junit.AfterClass"));
-
-    return testMethod.getDeclaringType().getMethodsAnnotatedWith(refs.toArray(new CtTypeReference[0]));
+    var refs = Stream.of("org.junit.Before",
+                    "org.junit.BeforeClass",
+                    "org.junit.After",
+                    "org.junit.AfterClass",
+                    "org.junit.jupiter.api.Before",
+                    "org.junit.jupiter.api.BeforeClass",
+                    "org.junit.jupiter.api.After",
+                    "org.junit.jupiter.api.AfterClass")
+            .map(refName -> spoon.getFactory().Type().createReference(refName))
+            .toArray(CtTypeReference[]::new);
+    return testMethod.getDeclaringType().getMethodsAnnotatedWith(refs);
   }
 
   public List<CtClass<?>> getAllTestClasses() {
@@ -123,11 +128,13 @@ public class Spoon {
     return spoon.getModel().getRootPackage().getElements(isRealTestingClass);
   }
 
-  public List<CtMethod<?>> getTestMethods() {
-    CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
+  public List<CtMethod<?>> getTests() {
+    var refs = Stream.of("org.junit.Test", "org.junit.jupiter.api.Test")
+            .map(refName -> spoon.getFactory().Type().createReference(refName))
+            .toArray(CtTypeReference[]::new);
     var testMethods = new ArrayList<CtMethod<?>>();
     for (var type : spoon.getModel().getAllTypes()) {
-      testMethods.addAll(type.getMethodsAnnotatedWith(juTestRef));
+      testMethods.addAll(type.getMethodsAnnotatedWith(refs));
     }
     return testMethods;
   }
@@ -156,5 +163,19 @@ public class Spoon {
       }
     };
     return spoon.getModel().getRootPackage().getElements(executableFileFilter);
+  }
+
+  public CtType<?> getType(Integer index) {
+    ArrayList<CtType<?>> orgTypes = (ArrayList<CtType<?>>) this.spoon.getModel().getAllTypes();
+    return orgTypes.get(index);
+  }
+
+  public boolean isTest(CtMethod<?> method) {
+    var junit = this.spoon.getFactory().Type().createReference("org.junit.Test");
+    var jupiter = this.spoon.getFactory().Type().createReference("org.junit.jupiter.api.Test");
+    for (var annotation : method.getAnnotations()) {
+      if (annotation.getAnnotationType().equals(junit) || annotation.getAnnotationType().equals(jupiter)) return true;
+    }
+    return false;
   }
 }
