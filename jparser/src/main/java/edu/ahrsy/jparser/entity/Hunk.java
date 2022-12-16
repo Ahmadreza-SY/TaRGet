@@ -3,8 +3,8 @@ package edu.ahrsy.jparser.entity;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Chunk;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class Hunk {
   public List<LineChange> sourceChanges;
@@ -12,11 +12,13 @@ public class Hunk {
   public ChangeType type;
 
   private static List<LineChange> getLines(Chunk<String> chunk, ChangeType type) {
-    return chunk.getLines()
-            .stream()
-            .map(l -> new LineChange(l, type))
-            .filter(l -> !l.line.isBlank())
-            .collect(Collectors.toList());
+    var lineChanges = new ArrayList<LineChange>();
+    var lines = chunk.getLines();
+    for (int i = 0; i < lines.size(); i++) {
+      var line = lines.get(i);
+      if (!line.isBlank()) lineChanges.add(new LineChange(line, type, chunk.getPosition() + i));
+    }
+    return lineChanges;
   }
 
   public static Hunk from(AbstractDelta<String> delta) {

@@ -29,6 +29,17 @@ public class MethodChange {
     }
   }
 
+  public void applyHunkLineNoOffset(Integer srcOffset, Integer targetOffset) {
+    for (var hunk : this.hunks) {
+      if (hunk.sourceChanges != null)
+        for (var sLine : hunk.sourceChanges)
+          sLine.lineNo += srcOffset;
+      if (hunk.targetChanges != null)
+        for (var tLine : hunk.targetChanges)
+          tLine.lineNo += targetOffset;
+    }
+  }
+
   public String getName() {
     return name;
   }

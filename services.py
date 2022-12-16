@@ -16,6 +16,7 @@ import copy
 import re
 from tqdm import tqdm
 from utils import save_file
+import jparser
 
 
 class Service:
@@ -24,7 +25,7 @@ class Service:
         repo_name = Config.get("repo")
         commits = ghapi.get_all_commits(repo_name)
         output_path = Path(Config.get("output_path"))
-        changed_tests = {"b_path": [], "a_path": [], "b_commit": [], "a_commit": []}
+        changed_test_classes = {"b_path": [], "a_path": [], "b_commit": [], "a_commit": []}
         for commit in tqdm(commits[:100]):
             if len(commit.parents) == 0:
                 continue
@@ -38,17 +39,19 @@ class Service:
                 if is_test_class(before) and before != after:
                     b_commit = ghapi.get_short_commit(commit.parents[0], repo_name)
                     a_commit = ghapi.get_short_commit(commit, repo_name)
-                    changed_tests["b_path"].append(diff.b_path)
-                    changed_tests["a_path"].append(diff.a_path)
-                    changed_tests["b_commit"].append(b_commit)
-                    changed_tests["a_commit"].append(a_commit)
+                    changed_test_classes["b_path"].append(diff.b_path)
+                    changed_test_classes["a_path"].append(diff.a_path)
+                    changed_test_classes["b_commit"].append(b_commit)
+                    changed_test_classes["a_commit"].append(a_commit)
                     b_copy_path = output_path / "commits" / b_commit / diff.b_path
                     a_copy_path = output_path / "commits" / a_commit / diff.a_path
                     save_file(before, b_copy_path)
                     save_file(after, a_copy_path)
 
-        changed_tests = pd.DataFrame(changed_tests)
-        changed_tests.to_csv(output_path / "changed_tests.csv", index=False)
+        changed_test_classes = pd.DataFrame(changed_test_classes)
+        changed_test_classes.to_csv(output_path / "changed_test_classes.csv", index=False)
+
+        jparser.compare_test_classes(output_path)
 
         # detect broken test cases by compiling and executing
         # extract call graphs of changed test methods

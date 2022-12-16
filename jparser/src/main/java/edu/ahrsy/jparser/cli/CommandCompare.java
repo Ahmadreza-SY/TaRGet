@@ -3,7 +3,7 @@ package edu.ahrsy.jparser.cli;
 import com.beust.jcommander.Parameter;
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
-import edu.ahrsy.jparser.spoon.ClassComparator;
+import edu.ahrsy.jparser.spoon.TestClassComparator;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarBuilder;
@@ -21,7 +21,8 @@ public class CommandCompare {
   public Integer complianceLevel = 10;
 
   public static void cCompare(CommandCompare args) {
-    var allChanges = IOUtils.readCsv(Path.of(args.outputPath, "changed_tests.csv").toString(), ChangedTestClass.class);
+    var allChanges = IOUtils.readCsv(Path.of(args.outputPath, "changed_test_classes.csv").toString(),
+            ChangedTestClass.class);
     var allSingleHunkTestChanges = new ArrayList<SingleHunkTestChange>();
     var pbb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .showSpeed()
@@ -29,8 +30,8 @@ public class CommandCompare {
     for (ChangedTestClass changedTestClass : ProgressBar.wrap(allChanges, pbb)) {
       var bPath = Path.of(args.outputPath, "commits", changedTestClass.beforeCommit, changedTestClass.beforePath);
       var aPath = Path.of(args.outputPath, "commits", changedTestClass.afterCommit, changedTestClass.afterPath);
-      var classComparator = new ClassComparator(bPath.toString(), aPath.toString(), args.complianceLevel);
-      var testChanges = classComparator.getSingleHunkMethodChanges(changedTestClass)
+      var classComparator = new TestClassComparator(bPath.toString(), aPath.toString(), args.complianceLevel);
+      var testChanges = classComparator.getSingleHunkMethodChanges(changedTestClass, args.outputPath)
               .stream()
               .map(mc -> new SingleHunkTestChange(mc.getName(),
                       changedTestClass.beforePath,

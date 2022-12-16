@@ -36,9 +36,7 @@ def extract_test_methods(test_file):
 
 def create_call_graphs(output_path, tag):
     tag_code_path = output_path / "tags" / tag / "code"
-    cmd = (
-        f"java -jar {Config.get('jparser_path')} callGraphs -s {tag_code_path} -cl 10 -o {output_path} -t {tag}"
-    )
+    cmd = f"java -jar {Config.get('jparser_path')} callGraphs -s {tag_code_path} -cl 10 -o {output_path} -t {tag}"
     run_command(cmd)
 
 
@@ -49,4 +47,9 @@ def detect_changed_methods(output_path):
 
 def mine_refactorings(base_tag, head_tag, repo_path, output_path):
     cmd = f"java -jar {Config.get('jparser_path')} refactorings -r {repo_path} -b {base_tag} -h {head_tag} -o {output_path}"
+    run_command(cmd)
+
+
+def compare_test_classes(output_path):
+    cmd = f"java -jar {Config.get('jparser_path')} compare -o {output_path}"
     run_command(cmd)
