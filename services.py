@@ -17,6 +17,8 @@ import re
 from tqdm import tqdm
 from utils import save_file
 import jparser
+import shutil
+import maven_parser as mvnp
 
 
 class Service:
@@ -53,7 +55,47 @@ class Service:
 
         jparser.compare_test_classes(output_path)
 
-        # detect broken test cases by compiling and executing
+        changed_tests = pd.read_json(output_path / "changed_tests.json")
+        pbar = tqdm(total=len(changed_tests), ascii=True)
+        changed_tests_verdicts = []
+        for commit, repairs in changed_tests.groupby("aCommit"):
+            repo = ghapi.get_repo(repo_name)
+            repo.git.checkout(commit, force=True)
+            for _, repair in repairs.iterrows():
+                test_simple_name = repair["name"].split(".")[-1].replace("()", "")
+                original_file = output_path / "commits" / commit / repair["aPath"]
+                broken_file = (
+                    output_path / "brokenPatches" / commit / original_file.stem / test_simple_name / repair["aPath"]
+                )
+                log_path = (
+                    output_path
+                    / "brokenExeLogs"
+                    / commit
+                    / original_file.stem
+                    / test_simple_name
+                    / Path(repair["aPath"]).parent
+                )
+                repo_path = Path(repo.working_tree_dir)
+                executable_file = repo_path / repair["aPath"]
+                shutil.copyfile(str(broken_file), str(executable_file))
+                pbar.set_description(f"Executing {original_file.stem}#{test_simple_name} at {commit}")
+                verdict = mvnp.compile_and_run_test(repo_path, repair["aPath"], test_simple_name, log_path)
+                changed_tests_verdicts.append(
+                    {
+                        "name": repair["name"],
+                        "aCommit": repair["aCommit"],
+                        "verdict": {
+                            "status": verdict.status,
+                            "error_lines": None if not verdict.error_lines else sorted(list(verdict.error_lines)),
+                        },
+                    }
+                )
+                shutil.copyfile(str(original_file), str(executable_file))
+                pbar.update(1)
+
+        (output_path / "changed_tests_verdicts.json").write_text(
+            json.dumps(changed_tests_verdicts, indent=2, sort_keys=False)
+        )
         # extract call graphs of changed test methods
         # create test covered diff
         # save results
@@ -197,9 +239,7 @@ class Service:
         for _, r in tqdm(
             repair_info.iterrows(),
             total=len(repair_info),
-            ncols=100,
-            position=0,
-            leave=True,
+            ascii=True,
             desc="Creating dataset",
         ):
             repair = Service.create_test_repair(r, features)

@@ -44,7 +44,7 @@ public class CommandCompare {
     }
     var gson = IOUtils.createGsonInstance();
     var outputJson = gson.toJson(allSingleHunkTestChanges);
-    IOUtils.saveFile(Path.of(args.outputPath, "test_repair_changes.json"), outputJson);
+    IOUtils.saveFile(Path.of(args.outputPath, "changed_tests.json"), outputJson);
     System.out.printf("Found %d single-hunk changed tests%n", allSingleHunkTestChanges.size());
   }
 }

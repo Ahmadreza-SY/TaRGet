@@ -1,5 +1,6 @@
 package edu.ahrsy.jparser.spoon;
 
+import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.processing.Processor;
@@ -14,6 +15,7 @@ import spoon.reflect.visitor.ImportConflictDetector;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -177,5 +179,9 @@ public class Spoon {
       if (annotation.getAnnotationType().equals(junit) || annotation.getAnnotationType().equals(jupiter)) return true;
     }
     return false;
+  }
+
+  public static String readSourceFile(CtType<?> type) {
+    return IOUtils.readFile(Path.of(type.getPosition().getFile().getPath()));
   }
 }

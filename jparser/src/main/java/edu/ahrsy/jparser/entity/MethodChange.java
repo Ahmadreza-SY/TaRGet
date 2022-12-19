@@ -21,6 +21,7 @@ public class MethodChange {
   }
 
   public void extractHunks(String source, String target) {
+    if (source == null || target == null) return;
     List<String> sourceLines = source.isBlank() ? Collections.emptyList() : Arrays.asList(source.split("\n"));
     List<String> targetLines = target.isBlank() ? Collections.emptyList() : Arrays.asList(target.split("\n"));
     Patch<String> patch = DiffUtils.diff(sourceLines, targetLines);
@@ -31,12 +32,10 @@ public class MethodChange {
 
   public void applyHunkLineNoOffset(Integer srcOffset, Integer targetOffset) {
     for (var hunk : this.hunks) {
-      if (hunk.sourceChanges != null)
-        for (var sLine : hunk.sourceChanges)
-          sLine.lineNo += srcOffset;
-      if (hunk.targetChanges != null)
-        for (var tLine : hunk.targetChanges)
-          tLine.lineNo += targetOffset;
+      if (hunk.sourceChanges != null) for (var sLine : hunk.sourceChanges)
+        sLine.lineNo += srcOffset;
+      if (hunk.targetChanges != null) for (var tLine : hunk.targetChanges)
+        tLine.lineNo += targetOffset;
     }
   }
 

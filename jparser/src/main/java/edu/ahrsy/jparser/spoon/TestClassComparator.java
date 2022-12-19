@@ -10,8 +10,6 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtMethod;
-import spoon.reflect.declaration.CtType;
-import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -46,6 +44,7 @@ public class TestClassComparator {
     if (src == null || dst == null) return true;
     var srcCode = Spoon.prettyPrint(src);
     var dstCode = Spoon.prettyPrint(dst);
+    if (srcCode == null || dstCode == null) return true;
     return !srcCode.equals(dstCode);
   }
 
@@ -60,18 +59,16 @@ public class TestClassComparator {
     return true;
   }
 
-  public String applyPatch(CtType<?> type, CtMethod<?> patchedMethod) {
-    var beforePatch = IOUtils.readFile(Path.of(type.getPosition().getFile().getPath()));
-    var oldMethod = type.getElements(new TypeFilter<>(CtMethod.class) {
-      @Override
-      public boolean matches(CtMethod method) {
-        return method.getSignature().equals(patchedMethod.getSignature());
-      }
-    }).get(0);
-    var stringBuilder = new StringBuilder(beforePatch);
-    var start = oldMethod.getPosition().getSourceStart();
-    var end = oldMethod.getPosition().getSourceEnd();
-    return stringBuilder.replace(start, end + 1, Spoon.prettyPrint(patchedMethod)).toString();
+  public String replaceChangedTestWithOriginal(CtMethod<?> original, CtMethod<?> changed) {
+    var originalSrcFile = Spoon.readSourceFile(original.getTopLevelType());
+    var originalStart = original.getPosition().getSourceStart();
+    var originalEnd = original.getPosition().getSourceEnd();
+    var originalSrc = originalSrcFile.substring(originalStart, originalEnd + 1);
+
+    var changedSrcFile = new StringBuilder(Spoon.readSourceFile(changed.getTopLevelType()));
+    var changedStart = changed.getPosition().getSourceStart();
+    var changedEnd = changed.getPosition().getSourceEnd();
+    return changedSrcFile.replace(changedStart, changedEnd + 1, originalSrc).toString();
   }
 
   public List<Pair<CtMethod<?>, CtMethod<?>>> getChangedTests() {
@@ -85,7 +82,7 @@ public class TestClassComparator {
     return new ArrayList<>(changedTests.values());
   }
 
-  private Integer getMethodStartLine(CtMethod<?> method) {
+  private Integer getStartLine(CtMethod<?> method) {
     var sourceStart = method.getPosition().getSourceStart();
     var lineSepPos = method.getPosition().getCompilationUnit().getLineSeparatorPositions();
     return IntStream.range(0, lineSepPos.length).filter(i -> sourceStart < lineSepPos[i]).findFirst().orElseThrow() + 1;
@@ -101,15 +98,14 @@ public class TestClassComparator {
       var name = Spoon.getUniqueName(test.getLeft());
       var change = new MethodChange(changedTestClass.beforePath, name);
       change.extractHunks(Spoon.prettyPrint(test.getLeft()), Spoon.prettyPrint(test.getRight()));
-      change.applyHunkLineNoOffset(getMethodStartLine(test.getLeft()), getMethodStartLine(test.getRight()));
+      change.applyHunkLineNoOffset(getStartLine(test.getLeft()), getStartLine(test.getRight()));
       if (change.getHunks().size() == 1) {
         testChanges.add(change);
-        var testType = aSpoon.getType(0);
-        var brokenPatch = applyPatch(testType, test.getLeft());
+        var brokenPatch = replaceChangedTestWithOriginal(test.getLeft(), test.getRight());
         var outputFile = Path.of(outputPath,
                 "brokenPatches",
                 changedTestClass.afterCommit,
-                testType.getSimpleName(),
+                test.getLeft().getTopLevelType().getSimpleName(),
                 test.getLeft().getSimpleName(),
                 changedTestClass.afterPath);
         IOUtils.saveFile(outputFile, brokenPatch);
