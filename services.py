@@ -23,6 +23,15 @@ import maven_parser as mvnp
 
 class Service:
     @staticmethod
+    def get_java_diffs(commit):
+        diffs = commit.diff(commit.parents[0].hexsha)
+        # Interested in renamed and modified paths
+        diffs = [d for d in diffs if d.change_type in ["R", "M"]]
+        java_regex = r"^.*\.java$"
+        diffs = [d for d in diffs if bool(re.search(java_regex, d.b_path)) and bool(re.search(java_regex, d.a_path))]
+        return diffs
+
+    @staticmethod
     def find_changed_test_classes():
         repo_name = Config.get("repo")
         output_path = Path(Config.get("output_path"))
@@ -32,11 +41,7 @@ class Service:
         for commit in tqdm(commits[:100], ascii=True, desc="Finding changed test classes"):
             if len(commit.parents) == 0:
                 continue
-            diffs = commit.diff(commit.parents[0].hexsha)
-            # Interested in renamed and modified paths
-            diffs = [d for d in diffs if d.change_type in ["R", "M"]]
-            java_regex = r"^.*\.java$"
-            diffs = [d for d in diffs if bool(re.search(java_regex, d.b_path)) and bool(re.search(java_regex, d.a_path))]
+            diffs = Service.get_java_diffs(commit)
             for diff in diffs:
                 before, after = ghapi.get_file_versions(diff, commit, repo_name)
                 if is_test_class(before) and before != after:
@@ -106,6 +111,30 @@ class Service:
         print(f"Found {len(repaired_tests)} repaired tests")
         (output_path / "repaired_tests.json").write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
 
+        return repaired_tests
+
+    @staticmethod
+    def find_changed_files(commits):
+        output_path = Path(Config.get("output_path"))
+        repo_name = Config.get("repo")
+        repo = ghapi.get_repo(repo_name)
+        changed_test_classes = pd.read_csv(output_path / "changed_test_classes.csv")
+        changed_test_class_paths = set(
+            changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist()
+        )
+        changed_files = {}
+        print('Finding changed files in repair commits')
+        for commit_sha in commits:
+            diffs = Service.get_java_diffs(repo.commit(commit_sha))
+            for diff in diffs:
+                if diff.a_path in changed_test_class_paths or diff.b_path in changed_test_class_paths:
+                    continue
+                if commit_sha not in changed_files:
+                    changed_files[commit_sha] = []
+                changed_files[commit_sha].append((diff.b_path, diff.a_path))
+
+        (output_path / "changed_sut_classes.json").write_text(json.dumps(changed_files, indent=2, sort_keys=False))
+
     @staticmethod
     def analyze_repair_commits():
         Service.find_changed_test_classes()
@@ -113,7 +142,9 @@ class Service:
         output_path = Path(Config.get("output_path"))
         jparser.compare_test_classes(output_path)
 
-        Service.detect_repaired_tests()
+        repaired_tests = Service.detect_repaired_tests()
+        repair_commits = set([r["aCommit"] for r in repaired_tests])
+        Service.find_changed_files(repair_commits)
 
         # extract call graphs of changed test methods
         # create test covered diff

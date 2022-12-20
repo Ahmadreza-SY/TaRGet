@@ -1,12 +1,12 @@
 package edu.ahrsy.jparser.entity;
 
 public class SingleHunkTestChange {
-  String name;
-  String bPath;
-  String aPath;
-  String bCommit;
-  String aCommit;
-  Hunk hunk;
+  public String name;
+  public String bPath;
+  public String aPath;
+  public String bCommit;
+  public String aCommit;
+  public Hunk hunk;
 
   public SingleHunkTestChange(String name, String bPath, String aPath, String bCommit, String aCommit, Hunk hunk) {
     this.name = name;

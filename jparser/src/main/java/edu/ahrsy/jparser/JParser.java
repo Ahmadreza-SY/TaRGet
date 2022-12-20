@@ -11,6 +11,7 @@ public class JParser {
   private static final String METHOD_CHANGES_CMD = "methodChanges";
   private static final String REFACTORINGS_CMD = "refactorings";
   private static final String COMPARE_CMD = "compare";
+  private static final String COVERAGE_CMD = "coverage";
 
   public static void main(String[] args) {
     IOUtils.disableReflectionWarning();
@@ -20,6 +21,7 @@ public class JParser {
     CommandMethodChanges methodChangesArgs = new CommandMethodChanges();
     CommandRefactoring refactoringArgs = new CommandRefactoring();
     CommandCompare compareArgs = new CommandCompare();
+    CommandCoverage coverageArgs = new CommandCoverage();
     JCommander jc = JCommander.newBuilder()
             .addCommand(TEST_CLASSES_CMD, testClassesArgs)
             .addCommand(TEST_METHODS_CMD, testMethodsArgs)
@@ -27,6 +29,7 @@ public class JParser {
             .addCommand(METHOD_CHANGES_CMD, methodChangesArgs)
             .addCommand(REFACTORINGS_CMD, refactoringArgs)
             .addCommand(COMPARE_CMD, compareArgs)
+            .addCommand(COVERAGE_CMD, coverageArgs)
             .build();
     jc.parse(args);
 
@@ -48,6 +51,9 @@ public class JParser {
         break;
       case COMPARE_CMD:
         CommandCompare.cCompare(compareArgs);
+        break;
+      case COVERAGE_CMD:
+        CommandCoverage.cCoverage(coverageArgs);
         break;
     }
   }

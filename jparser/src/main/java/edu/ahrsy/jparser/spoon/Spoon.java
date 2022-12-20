@@ -78,6 +78,7 @@ public class Spoon {
     return getSimpleSignature(executable);
   }
 
+  // TODO check whether comments are included. If yes (better not be), remove them and handle diff hunks!
   public static String print(CtMethod<?> method) {
     var srcFile = getOriginalSourceCode(method.getTopLevelType());
     var methodStart = method.getPosition().getSourceStart();
