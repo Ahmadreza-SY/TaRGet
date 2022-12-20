@@ -1,6 +1,5 @@
 package edu.ahrsy.jparser.spoon;
 
-import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.processing.Processor;
@@ -15,7 +14,6 @@ import spoon.reflect.visitor.ImportConflictDetector;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -78,6 +76,13 @@ public class Spoon {
       System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", getSimpleSignature(executable), e.getMessage());
     }
     return getSimpleSignature(executable);
+  }
+
+  public static String print(CtMethod<?> method) {
+    var srcFile = getOriginalSourceCode(method.getTopLevelType());
+    var methodStart = method.getPosition().getSourceStart();
+    var methodEnd = method.getPosition().getSourceEnd();
+    return srcFile.substring(methodStart, methodEnd + 1);
   }
 
   public static String prettyPrint(CtBlock<?> block) {
@@ -181,7 +186,7 @@ public class Spoon {
     return false;
   }
 
-  public static String readSourceFile(CtType<?> type) {
-    return IOUtils.readFile(Path.of(type.getPosition().getFile().getPath()));
+  public static String getOriginalSourceCode(CtType<?> type) {
+    return type.getPosition().getCompilationUnit().getOriginalSourceCode();
   }
 }

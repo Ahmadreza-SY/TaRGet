@@ -42,9 +42,8 @@ public class TestClassComparator {
 
   private boolean codeModification(CtMethod<?> src, CtMethod<?> dst) {
     if (src == null || dst == null) return true;
-    var srcCode = Spoon.prettyPrint(src);
-    var dstCode = Spoon.prettyPrint(dst);
-    if (srcCode == null || dstCode == null) return true;
+    var srcCode = Spoon.print(src);
+    var dstCode = Spoon.print(dst);
     return !srcCode.equals(dstCode);
   }
 
@@ -60,12 +59,12 @@ public class TestClassComparator {
   }
 
   public String replaceChangedTestWithOriginal(CtMethod<?> original, CtMethod<?> changed) {
-    var originalSrcFile = Spoon.readSourceFile(original.getTopLevelType());
+    var originalSrcFile = Spoon.getOriginalSourceCode(original.getTopLevelType());
     var originalStart = original.getPosition().getSourceStart();
     var originalEnd = original.getPosition().getSourceEnd();
     var originalSrc = originalSrcFile.substring(originalStart, originalEnd + 1);
 
-    var changedSrcFile = new StringBuilder(Spoon.readSourceFile(changed.getTopLevelType()));
+    var changedSrcFile = new StringBuilder(Spoon.getOriginalSourceCode(changed.getTopLevelType()));
     var changedStart = changed.getPosition().getSourceStart();
     var changedEnd = changed.getPosition().getSourceEnd();
     return changedSrcFile.replace(changedStart, changedEnd + 1, originalSrc).toString();
@@ -97,7 +96,7 @@ public class TestClassComparator {
     for (var test : changedTests) {
       var name = Spoon.getUniqueName(test.getLeft());
       var change = new MethodChange(changedTestClass.beforePath, name);
-      change.extractHunks(Spoon.prettyPrint(test.getLeft()), Spoon.prettyPrint(test.getRight()));
+      change.extractHunks(Spoon.print(test.getLeft()), Spoon.print(test.getRight()));
       change.applyHunkLineNoOffset(getStartLine(test.getLeft()), getStartLine(test.getRight()));
       if (change.getHunks().size() == 1) {
         testChanges.add(change);
