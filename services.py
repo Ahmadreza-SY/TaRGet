@@ -23,12 +23,13 @@ import maven_parser as mvnp
 
 class Service:
     @staticmethod
-    def analyze_repair_commits():
+    def find_changed_test_classes():
         repo_name = Config.get("repo")
-        commits = ghapi.get_all_commits(repo_name)
         output_path = Path(Config.get("output_path"))
+        commits = ghapi.get_all_commits(repo_name)
+
         changed_test_classes = {"b_path": [], "a_path": [], "b_commit": [], "a_commit": []}
-        for commit in tqdm(commits[:100]):
+        for commit in tqdm(commits[:100], ascii=True, desc="Finding changed test classes"):
             if len(commit.parents) == 0:
                 continue
             diffs = commit.diff(commit.parents[0].hexsha)
@@ -45,57 +46,75 @@ class Service:
                     changed_test_classes["a_path"].append(diff.a_path)
                     changed_test_classes["b_commit"].append(b_commit)
                     changed_test_classes["a_commit"].append(a_commit)
-                    b_copy_path = output_path / "commits" / b_commit / diff.b_path
-                    a_copy_path = output_path / "commits" / a_commit / diff.a_path
+                    b_copy_path = output_path / "testClasses" / b_commit / diff.b_path
+                    a_copy_path = output_path / "testClasses" / a_commit / diff.a_path
                     save_file(before, b_copy_path)
                     save_file(after, a_copy_path)
 
         changed_test_classes = pd.DataFrame(changed_test_classes)
         changed_test_classes.to_csv(output_path / "changed_test_classes.csv", index=False)
 
-        jparser.compare_test_classes(output_path)
+    @staticmethod
+    def detect_repaired_tests():
+        output_path = Path(Config.get("output_path"))
+        repo_name = Config.get("repo")
 
         changed_tests = pd.read_json(output_path / "changed_tests.json")
-        pbar = tqdm(total=len(changed_tests), ascii=True)
+        pbar = tqdm(total=len(changed_tests), ascii=True, desc="Executing tests")
         changed_tests_verdicts = []
-        for commit, repairs in changed_tests.groupby("aCommit"):
-            repo = ghapi.get_repo(repo_name)
-            repo.git.checkout(commit, force=True)
-            for _, repair in repairs.iterrows():
-                test_simple_name = repair["name"].split(".")[-1].replace("()", "")
-                original_file = output_path / "commits" / commit / repair["aPath"]
-                broken_file = (
-                    output_path / "brokenPatches" / commit / original_file.stem / test_simple_name / repair["aPath"]
-                )
+        repaired_tests = []
+        for a_commit, changes in changed_tests.groupby("aCommit"):
+            a_commit_path = ghapi.copy_commit_code(repo_name, a_commit)
+
+            for _, change in changes.iterrows():
+                test_simple_name = change["name"].split(".")[-1].replace("()", "")
+                test_a_path = Path(change["aPath"])
+                original_file = output_path / "testClasses" / a_commit / test_a_path
+                broken_file = output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
                 log_path = (
-                    output_path
-                    / "brokenExeLogs"
-                    / commit
-                    / original_file.stem
-                    / test_simple_name
-                    / Path(repair["aPath"]).parent
+                    output_path / "brokenExeLogs" / a_commit / original_file.stem / test_simple_name / test_a_path.parent
                 )
-                repo_path = Path(repo.working_tree_dir)
-                executable_file = repo_path / repair["aPath"]
+                executable_file = a_commit_path / test_a_path
                 shutil.copyfile(str(broken_file), str(executable_file))
-                pbar.set_description(f"Executing {original_file.stem}#{test_simple_name} at {commit}")
-                verdict = mvnp.compile_and_run_test(repo_path, repair["aPath"], test_simple_name, log_path)
+                verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, log_path)
+                verdict_obj = {
+                    "status": verdict.status,
+                    "error_lines": None if not verdict.error_lines else sorted(list(verdict.error_lines)),
+                }
                 changed_tests_verdicts.append(
                     {
-                        "name": repair["name"],
-                        "aCommit": repair["aCommit"],
-                        "verdict": {
-                            "status": verdict.status,
-                            "error_lines": None if not verdict.error_lines else sorted(list(verdict.error_lines)),
-                        },
+                        "name": change["name"],
+                        "aCommit": change["aCommit"],
+                        "verdict": verdict_obj,
                     }
                 )
+                if verdict.status != mvnp.TestVerdict.SUCCESS:
+                    ghapi.copy_commit_code(repo_name, change["bCommit"])
+                    change_obj = change.to_dict()
+                    change_obj["verdict"] = verdict_obj
+                    repaired_tests.append(change_obj)
                 shutil.copyfile(str(original_file), str(executable_file))
                 pbar.update(1)
 
+            mvnp.cleanup(a_commit_path)
+
+        pbar.close()
         (output_path / "changed_tests_verdicts.json").write_text(
             json.dumps(changed_tests_verdicts, indent=2, sort_keys=False)
         )
+
+        print(f"Found {len(repaired_tests)} repaired tests")
+        (output_path / "repaired_tests.json").write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
+
+    @staticmethod
+    def analyze_repair_commits():
+        Service.find_changed_test_classes()
+
+        output_path = Path(Config.get("output_path"))
+        jparser.compare_test_classes(output_path)
+
+        Service.detect_repaired_tests()
+
         # extract call graphs of changed test methods
         # create test covered diff
         # save results

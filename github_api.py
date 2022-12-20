@@ -106,8 +106,20 @@ def copy_tag_code(repo, tag):
     return code_path
 
 
+def copy_commit_code(repo_name, commit):
+    copy_path = Path(Config.get("output_path")) / "commits" / commit
+    if copy_path.exists():
+        return copy_path
+
+    repo = get_repo(repo_name)
+    repo_path = Path(repo.working_tree_dir)
+    repo.git.checkout(commit, force=True)
+    shutil.copytree(str(repo_path), str(copy_path), ignore=shutil.ignore_patterns(".git"))
+    return copy_path
+
 def get_all_commits(repo_name):
     repo = get_repo(repo_name)
+    repo.git.checkout("origin/HEAD", force=True)
     return list(repo.iter_commits())
 
 

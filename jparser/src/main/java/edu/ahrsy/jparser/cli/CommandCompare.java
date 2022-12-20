@@ -28,8 +28,8 @@ public class CommandCompare {
             .showSpeed()
             .setTaskName("Extracting test method changes");
     for (ChangedTestClass changedTestClass : ProgressBar.wrap(allChanges, pbb)) {
-      var bPath = Path.of(args.outputPath, "commits", changedTestClass.beforeCommit, changedTestClass.beforePath);
-      var aPath = Path.of(args.outputPath, "commits", changedTestClass.afterCommit, changedTestClass.afterPath);
+      var bPath = Path.of(args.outputPath, "testClasses", changedTestClass.beforeCommit, changedTestClass.beforePath);
+      var aPath = Path.of(args.outputPath, "testClasses", changedTestClass.afterCommit, changedTestClass.afterPath);
       var classComparator = new TestClassComparator(bPath.toString(), aPath.toString(), args.complianceLevel);
       var testChanges = classComparator.getSingleHunkMethodChanges(changedTestClass, args.outputPath)
               .stream()
