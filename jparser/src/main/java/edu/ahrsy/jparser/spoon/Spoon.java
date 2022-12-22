@@ -17,6 +17,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Spoon {
@@ -43,14 +44,14 @@ public class Spoon {
     spoon.buildModel();
   }
 
-  public static String getRelativePath(CtExecutable<?> executable, String srcPath) {
-    if (!executable.getPosition().isValidPosition() && !executable.getParent().getPosition().isValidPosition()) {
-      System.out.printf("getRelativePath: No valid position found for %s %n", Spoon.getSimpleSignature(executable));
+  public static String getRelativePath(CtNamedElement element, String srcPath) {
+    if (!element.getPosition().isValidPosition() && !element.getParent().getPosition().isValidPosition()) {
+      System.out.printf("getRelativePath: No valid position found for %s %n", element.getSimpleName());
       return new NoSourcePosition().toString();
     }
     var srcURI = new File(srcPath).toURI();
-    var absFile = executable.getPosition().getCompilationUnit().getFile();
-    if (absFile == null) absFile = executable.getParent().getPosition().getCompilationUnit().getFile();
+    var absFile = element.getPosition().getCompilationUnit().getFile();
+    if (absFile == null) absFile = element.getParent().getPosition().getCompilationUnit().getFile();
     return srcURI.relativize(absFile.toURI()).getPath();
   }
 
@@ -69,21 +70,21 @@ public class Spoon {
   }
 
 
-  public static String prettyPrint(CtExecutable<?> executable) {
+  public static String prettyPrint(CtNamedElement element) {
     try {
-      return executable.toString();
+      return element.toString();
     } catch (Exception e) {
-      System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", getSimpleSignature(executable), e.getMessage());
+      System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", element.getSimpleName(), e.getMessage());
     }
-    return getSimpleSignature(executable);
+    return element.getSimpleName();
   }
 
   // TODO check whether comments are included. If yes (better not be), remove them and handle diff hunks!
-  public static String print(CtMethod<?> method) {
-    var srcFile = getOriginalSourceCode(method.getTopLevelType());
-    var methodStart = method.getPosition().getSourceStart();
-    var methodEnd = method.getPosition().getSourceEnd();
-    return srcFile.substring(methodStart, methodEnd + 1);
+  public static String print(CtNamedElement element) {
+    var srcFile = getOriginalSourceCode(element);
+    var elementStart = element.getPosition().getSourceStart();
+    var elementEnd = element.getPosition().getSourceEnd();
+    return srcFile.substring(elementStart, elementEnd + 1);
   }
 
   public static String prettyPrint(CtBlock<?> block) {
@@ -96,7 +97,15 @@ public class Spoon {
   }
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
-    return (executable instanceof CtMethod) || (executable instanceof CtConstructor);
+    return ((executable instanceof CtMethod) || (executable instanceof CtConstructor)) &&
+            executable.getPosition().isValidPosition();
+  }
+
+  public static boolean codeIsModified(CtNamedElement src, CtNamedElement dst) {
+    if (src == null || dst == null) return true;
+    var srcCode = Spoon.prettyPrint(src);
+    var dstCode = Spoon.prettyPrint(dst);
+    return !srcCode.equals(dstCode);
   }
 
   public Set<CtMethod<?>> getTestPreAndPostMethods(CtMethod<?> testMethod) {
@@ -147,7 +156,7 @@ public class Spoon {
     return testMethods;
   }
 
-  public List<CtExecutable<?>> getExecutablesByName(Set<String> names, Set<String> paths, String srcPath) {
+  public List<CtExecutable<?>> getExecutablesByName(Set<String> names, Set<String> paths) {
     TypeFilter<CtExecutable<?>> executableNameFilter = new TypeFilter<>(CtExecutable.class) {
       @Override
       public boolean matches(CtExecutable<?> ctExecutable) {
@@ -187,7 +196,27 @@ public class Spoon {
     return false;
   }
 
-  public static String getOriginalSourceCode(CtType<?> type) {
-    return type.getPosition().getCompilationUnit().getOriginalSourceCode();
+  public static String getOriginalSourceCode(CtNamedElement element) {
+    return element.getPosition().getCompilationUnit().getOriginalSourceCode();
+  }
+
+  public static Integer getStartLine(CtNamedElement element) {
+    var sourceStart = element.getPosition().getSourceStart();
+    var lineSepPos = element.getPosition().getCompilationUnit().getLineSeparatorPositions();
+    return IntStream.range(0, lineSepPos.length).filter(i -> sourceStart < lineSepPos[i]).findFirst().orElseThrow() + 1;
+  }
+
+  public CtType<?> getTopLevelTypeByFile(String file) {
+    TypeFilter<CtType<?>> typeFileFilter = new TypeFilter<>(CtType.class) {
+      @Override
+      public boolean matches(CtType<?> ctType) {
+        if (!super.matches(ctType)) return false;
+        if (!ctType.isTopLevel()) return false;
+        if (!ctType.getPosition().isValidPosition()) return false;
+        var typeFile = getRelativePath(ctType, srcPath);
+        return typeFile.equals(file);
+      }
+    };
+    return spoon.getModel().getRootPackage().getElements(typeFileFilter).get(0);
   }
 }

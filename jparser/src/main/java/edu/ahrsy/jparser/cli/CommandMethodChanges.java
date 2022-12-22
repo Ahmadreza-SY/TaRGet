@@ -40,7 +40,7 @@ public class CommandMethodChanges {
               "methodBodies",
               repair.method));
 
-      var methodChange = new MethodChange(repair.path, repair.method);
+      var methodChange = new Change(repair.path, repair.method);
       methodChange.extractHunks(beforeRepair, afterRepair);
       testChanges.add(new TestChange(repair._class + "." + repair.method,
               repair.baseTag,

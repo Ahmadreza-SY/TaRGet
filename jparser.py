@@ -53,3 +53,8 @@ def mine_refactorings(base_tag, head_tag, repo_path, output_path):
 def compare_test_classes(output_path):
     cmd = f"java -jar {Config.get('jparser_path')} compare -o {output_path}"
     run_command(cmd)
+
+
+def extract_covered_changes_info(output_path):
+    cmd = f"java -jar {Config.get('jparser_path')} coverage -o {output_path}"
+    run_command(cmd)

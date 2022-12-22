@@ -1,7 +1,7 @@
 package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.ChangedTestClass;
-import edu.ahrsy.jparser.entity.MethodChange;
+import edu.ahrsy.jparser.entity.Change;
 import edu.ahrsy.jparser.utils.IOUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
@@ -17,7 +17,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class TestClassComparator {
   private final Spoon bSpoon;
@@ -40,19 +39,12 @@ public class TestClassComparator {
     return !(op.getSrcNode() instanceof CtMethod) && (getParentMethod(op.getSrcNode()) != null);
   }
 
-  private boolean codeModification(CtMethod<?> src, CtMethod<?> dst) {
-    if (src == null || dst == null) return true;
-    var srcCode = Spoon.print(src);
-    var dstCode = Spoon.print(dst);
-    return !srcCode.equals(dstCode);
-  }
-
   public boolean onlyTestsChanged() {
     if (this.diff.getRootOperations().size() == 0) return false;
     for (var op : this.diff.getRootOperations()) {
       var srcParent = getParentMethod(op.getSrcNode());
       var dstParent = getParentMethod(op.getDstNode());
-      if (!isInsideMethod(op) || !this.bSpoon.isTest(srcParent) || !codeModification(srcParent, dstParent))
+      if (!isInsideMethod(op) || !this.bSpoon.isTest(srcParent) || !Spoon.codeIsModified(srcParent, dstParent))
         return false;
     }
     return true;
@@ -75,29 +67,22 @@ public class TestClassComparator {
     var bTests = bSpoon.getTests().stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
     for (var aTest : aSpoon.getTests()) {
       var name = Spoon.getUniqueName(aTest);
-      if (bTests.containsKey(name) && codeModification(bTests.get(name), aTest))
+      if (bTests.containsKey(name) && Spoon.codeIsModified(bTests.get(name), aTest))
         changedTests.put(name, new ImmutablePair<>(bTests.get(name), aTest));
     }
     return new ArrayList<>(changedTests.values());
   }
 
-  private Integer getStartLine(CtMethod<?> method) {
-    var sourceStart = method.getPosition().getSourceStart();
-    var lineSepPos = method.getPosition().getCompilationUnit().getLineSeparatorPositions();
-    return IntStream.range(0, lineSepPos.length).filter(i -> sourceStart < lineSepPos[i]).findFirst().orElseThrow() + 1;
-  }
-
-  public List<MethodChange> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {
+  public List<Change> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {
     // TODO this condition can be removed
     if (!onlyTestsChanged()) return Collections.emptyList();
 
     var changedTests = getChangedTests();
-    var testChanges = new ArrayList<MethodChange>();
+    var testChanges = new ArrayList<Change>();
     for (var test : changedTests) {
       var name = Spoon.getUniqueName(test.getLeft());
-      var change = new MethodChange(changedTestClass.beforePath, name);
-      change.extractHunks(Spoon.print(test.getLeft()), Spoon.print(test.getRight()));
-      change.applyHunkLineNoOffset(getStartLine(test.getLeft()), getStartLine(test.getRight()));
+      var change = new Change(changedTestClass.beforePath, name);
+      change.extractHunks(test.getLeft(), test.getRight());
       if (change.getHunks().size() == 1) {
         testChanges.add(change);
         var brokenPatch = replaceChangedTestWithOriginal(test.getLeft(), test.getRight());

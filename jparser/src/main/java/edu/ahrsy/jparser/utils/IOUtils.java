@@ -7,6 +7,7 @@ import com.opencsv.bean.StatefulBeanToCsv;
 import com.opencsv.bean.StatefulBeanToCsvBuilder;
 import com.opencsv.exceptions.CsvDataTypeMismatchException;
 import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import sun.misc.Unsafe;
 
 import java.io.*;
@@ -51,7 +52,10 @@ public class IOUtils {
   }
 
   public static Gson createGsonInstance() {
-    return new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
+    return new GsonBuilder().disableHtmlEscaping()
+            .setPrettyPrinting()
+            .registerTypeAdapter(ImmutablePair.class, new ImmutablePairDeserializer())
+            .create();
   }
 
   public static void disableReflectionWarning() {

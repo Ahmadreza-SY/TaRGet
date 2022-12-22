@@ -1,10 +1,9 @@
 package edu.ahrsy.jparser;
 
-import edu.ahrsy.jparser.entity.MethodChange;
+import edu.ahrsy.jparser.entity.Change;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import org.apache.commons.text.similarity.JaroWinklerSimilarity;
-import spoon.SpoonException;
 import spoon.reflect.declaration.CtExecutable;
 
 import java.util.ArrayList;
@@ -13,6 +12,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+// TODO Remove
 public class MethodDiffParser {
   private static final float SIM_THRESHOLD = 0.65f;
   private static final float SIG_SIM_MUL = 1.25f;
@@ -26,7 +26,7 @@ public class MethodDiffParser {
     this.headSpoon = new Spoon(headSrcPath, complianceLevel);
   }
 
-  public List<MethodChange> detectMethodsChanges(Set<String> changedFiles) {
+  public List<Change> detectMethodsChanges(Set<String> changedFiles) {
     var baseMethods = baseSpoon.getExecutablesByFile(changedFiles);
     var headMethods = headSpoon.getExecutablesByFile(changedFiles);
 
@@ -45,14 +45,14 @@ public class MethodDiffParser {
     return Stream.concat(commonMethodsChanges.stream(), missingMethodsChanges.stream()).collect(Collectors.toList());
   }
 
-  private List<MethodChange> getCommonMethodsChanges(
+  private List<Change> getCommonMethodsChanges(
           List<CtExecutable<?>> baseMethods, List<CtExecutable<?>> headMethods
   ) {
     var baseMethodsMap = baseMethods.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m, (m1, m2) -> {
       System.out.printf("Duplicate key found: %s ; %s%n", m1.getSignature(), m2.getSignature());
       return m1;
     }));
-    var methodChanges = new ArrayList<MethodChange>();
+    var methodChanges = new ArrayList<Change>();
     for (var hMethod : headMethods) {
       var hMethodName = Spoon.getUniqueName(hMethod);
       if (!baseMethodsMap.containsKey(hMethodName)) continue;
@@ -62,7 +62,7 @@ public class MethodDiffParser {
       if (bMethodCode.equals(hMethodCode)) continue;
 
       var methodFilePath = Spoon.getRelativePath(hMethod, headSpoon.srcPath);
-      var methodChange = new MethodChange(methodFilePath, hMethodName);
+      var methodChange = new Change(methodFilePath, hMethodName);
       methodChange.extractHunks(bMethodCode, hMethodCode);
       methodChanges.add(methodChange);
     }
@@ -117,16 +117,16 @@ public class MethodDiffParser {
             (lineSimilarity == null ? 0.0 : lineSimilarity) * LINE_SIM_MUL) / max;
   }
 
-  private List<MethodChange> detectMissingMethodsChanges(
+  private List<Change> detectMissingMethodsChanges(
           List<CtExecutable<?>> missingMethods, List<CtExecutable<?>> newMethods
   ) {
-    var methodChanges = new ArrayList<MethodChange>();
+    var methodChanges = new ArrayList<Change>();
 
     // If no new methods are added, the missing method is deleted
     if (newMethods.isEmpty()) {
       for (var missingMethod : missingMethods) {
         var methodFilePath = Spoon.getRelativePath(missingMethod, baseSpoon.srcPath);
-        var methodChange = new MethodChange(methodFilePath, Spoon.getUniqueName(missingMethod));
+        var methodChange = new Change(methodFilePath, Spoon.getUniqueName(missingMethod));
         methodChange.extractHunks(Spoon.prettyPrint(missingMethod), "");
         methodChanges.add(methodChange);
       }
@@ -151,7 +151,7 @@ public class MethodDiffParser {
         }
       }
 
-      var methodChange = new MethodChange(missingMethodFile, Spoon.getUniqueName(missingMethod));
+      var methodChange = new Change(missingMethodFile, Spoon.getUniqueName(missingMethod));
       // If the most similar method has higher similarity than the threshold, it's matched
       if (maxSimilarity > SIM_THRESHOLD) {
         methodChange.extractHunks(Spoon.prettyPrint(missingMethod), Spoon.prettyPrint(mostSimilarMethod));

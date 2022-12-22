@@ -122,16 +122,16 @@ class Service:
         changed_test_class_paths = set(
             changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist()
         )
-        changed_files = {}
-        print('Finding changed files in repair commits')
-        for commit_sha in commits:
-            diffs = Service.get_java_diffs(repo.commit(commit_sha))
+        changed_files = []
+        print("Finding changed files in repair commits")
+        for b_commit, a_commit in commits:
+            diffs = Service.get_java_diffs(repo.commit(a_commit))
+            commit_changed_files = []
             for diff in diffs:
                 if diff.a_path in changed_test_class_paths or diff.b_path in changed_test_class_paths:
                     continue
-                if commit_sha not in changed_files:
-                    changed_files[commit_sha] = []
-                changed_files[commit_sha].append((diff.b_path, diff.a_path))
+                commit_changed_files.append((diff.b_path, diff.a_path))
+            changed_files.append({"bCommit": b_commit, "aCommit": a_commit, "changedClasses": commit_changed_files})
 
         (output_path / "changed_sut_classes.json").write_text(json.dumps(changed_files, indent=2, sort_keys=False))
 
@@ -143,11 +143,10 @@ class Service:
         jparser.compare_test_classes(output_path)
 
         repaired_tests = Service.detect_repaired_tests()
-        repair_commits = set([r["aCommit"] for r in repaired_tests])
+        
+        repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
         Service.find_changed_files(repair_commits)
-
-        # extract call graphs of changed test methods
-        # create test covered diff
+        jparser.extract_covered_changes_info()
         # save results
 
     @staticmethod

@@ -5,11 +5,11 @@ import java.util.List;
 public class TagMethodChanges {
   String baseTag;
   String headTag;
-  List<MethodChange> methodChanges;
+  List<Change> changes;
 
-  public TagMethodChanges(String baseTag, String headTag, List<MethodChange> methodChanges) {
+  public TagMethodChanges(String baseTag, String headTag, List<Change> changes) {
     this.baseTag = baseTag;
     this.headTag = headTag;
-    this.methodChanges = methodChanges;
+    this.changes = changes;
   }
 }

@@ -37,7 +37,7 @@ public class CommandCallGraphs extends Command {
     var repairedMethodPaths = tagRepairs.stream()
             .map(TestRepair::getPath)
             .collect(Collectors.toCollection(HashSet::new));
-    var methods = spoon.getExecutablesByName(repairedMethods, repairedMethodPaths, args.srcPath);
+    var methods = spoon.getExecutablesByName(repairedMethods, repairedMethodPaths);
     for (var method : methods) {
       var callGraph = new CallGraph(method, spoon);
       callGraph.createCallGraph();
