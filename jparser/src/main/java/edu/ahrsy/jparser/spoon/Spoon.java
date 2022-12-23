@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 public class Spoon {
   private final SpoonAPI spoon;
   public String srcPath;
+  private List<CtMethod<?>> testMethods = null;
 
   public Spoon(String srcPath, Integer complianceLevel) {
     this.srcPath = srcPath;
@@ -146,14 +147,16 @@ public class Spoon {
   }
 
   public List<CtMethod<?>> getTests() {
+    if (this.testMethods != null) return this.testMethods;
+
     var refs = Stream.of("org.junit.Test", "org.junit.jupiter.api.Test")
             .map(refName -> spoon.getFactory().Type().createReference(refName))
             .toArray(CtTypeReference[]::new);
-    var testMethods = new ArrayList<CtMethod<?>>();
+    this.testMethods = new ArrayList<>();
     for (var type : spoon.getModel().getAllTypes()) {
-      testMethods.addAll(type.getMethodsAnnotatedWith(refs));
+      this.testMethods.addAll(type.getMethodsAnnotatedWith(refs));
     }
-    return testMethods;
+    return this.testMethods;
   }
 
   public List<CtExecutable<?>> getExecutablesByName(Set<String> names, Set<String> paths) {

@@ -2,6 +2,7 @@ package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.Change;
+import edu.ahrsy.jparser.entity.TestSource;
 import edu.ahrsy.jparser.utils.IOUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
@@ -71,6 +72,15 @@ public class TestClassComparator {
         changedTests.put(name, new ImmutablePair<>(bTests.get(name), aTest));
     }
     return new ArrayList<>(changedTests.values());
+  }
+
+  public TestSource getBeforeTestSource(String name) {
+    var method = bSpoon.getTests()
+            .stream()
+            .filter(tm -> Spoon.getUniqueName(tm).equals(name))
+            .findFirst()
+            .orElseThrow();
+    return TestSource.from(method);
   }
 
   public List<Change> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {

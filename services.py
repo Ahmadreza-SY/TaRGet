@@ -143,10 +143,10 @@ class Service:
         jparser.compare_test_classes(output_path)
 
         repaired_tests = Service.detect_repaired_tests()
-        
+
         repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
         Service.find_changed_files(repair_commits)
-        jparser.extract_covered_changes_info()
+        jparser.extract_covered_changes_info(output_path)
         # save results
 
     @staticmethod

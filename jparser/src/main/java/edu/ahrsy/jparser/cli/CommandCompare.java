@@ -34,6 +34,7 @@ public class CommandCompare {
       var testChanges = classComparator.getSingleHunkMethodChanges(changedTestClass, args.outputPath)
               .stream()
               .map(mc -> new SingleHunkTestChange(mc.getName(),
+                      classComparator.getBeforeTestSource(mc.getName()),
                       changedTestClass.beforePath,
                       changedTestClass.afterPath,
                       changedTestClass.beforeCommit,
