@@ -24,13 +24,13 @@ public class CommitDiffParser {
 
     var commonExecutableChanges = getCommonExecutableChanges(bExecutables, aExecutables);
 
-    var bExecutableNames = bExecutables.stream().map(Spoon::getUniqueName).collect(Collectors.toSet());
-    var aExecutableNames = aExecutables.stream().map(Spoon::getUniqueName).collect(Collectors.toSet());
+    var bExecutableNames = bExecutables.stream().map(this::getExecutableLocalName).collect(Collectors.toSet());
+    var aExecutableNames = aExecutables.stream().map(this::getExecutableLocalName).collect(Collectors.toSet());
     var missingExecutables = bExecutables.stream()
-            .filter(bm -> !aExecutableNames.contains(Spoon.getUniqueName(bm)))
+            .filter(bm -> !aExecutableNames.contains(getExecutableLocalName(bm)))
             .collect(Collectors.toList());
     var newExecutables = aExecutables.stream()
-            .filter(am -> !bExecutableNames.contains(Spoon.getUniqueName(am)))
+            .filter(am -> !bExecutableNames.contains(getExecutableLocalName(am)))
             .collect(Collectors.toList());
     var missingExecutablesChanges = detectMissingExecutablesChanges(missingExecutables, newExecutables);
 
@@ -38,19 +38,27 @@ public class CommitDiffParser {
             .collect(Collectors.toList());
   }
 
+  private String getExecutableLocalName(CtExecutable<?> executable) {
+    var parentName = Spoon.getParentQualifiedName(executable);
+    var items = parentName.split("\\$");
+    var simpleSignature = Spoon.getSimpleSignature(executable);
+    if (items.length == 1) return simpleSignature;
+    return String.format("%s.%s", String.join(".", Arrays.copyOfRange(items, 1, items.length)), simpleSignature);
+  }
+
   private List<Change> getCommonExecutableChanges(List<CtExecutable<?>> bExecutables,
           List<CtExecutable<?>> aExecutables) {
-    var bExecutablesMap = bExecutables.stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
+    var bExecutablesMap = bExecutables.stream().collect(Collectors.toMap(this::getExecutableLocalName, m -> m));
     var changes = new ArrayList<Change>();
     for (var aExecutable : aExecutables) {
-      var aExecutableName = Spoon.getUniqueName(aExecutable);
+      var aExecutableName = getExecutableLocalName(aExecutable);
       if (!bExecutablesMap.containsKey(aExecutableName)) continue;
 
       var bExecutable = bExecutablesMap.get(aExecutableName);
       if (!Spoon.codeIsModified(bExecutable, aExecutable)) continue;
 
-      var path = Spoon.getRelativePath(aExecutable, aSpoon.srcPath);
-      var change = new Change(path, aExecutableName);
+      var path = Spoon.getRelativePath(bExecutable, bSpoon.srcPath);
+      var change = new Change(path, Spoon.getUniqueName(bExecutable));
       change.extractHunks(bExecutable, aExecutable);
       changes.add(change);
     }
@@ -78,9 +86,6 @@ public class CommitDiffParser {
       CtExecutable<?> mostSimilarExecutable = null;
       double maxSimilarity = -1;
       for (var newExecutable : newExecutables) {
-        var newExecutableFile = Spoon.getRelativePath(newExecutable, aSpoon.srcPath);
-        // missing executable and new executable should be in the same file
-        if (!missingExecutableFile.equals(newExecutableFile)) continue;
         // missing executable and new executable should be both the same type (both constructors or methods)
         if (missingExecutable.getClass() != newExecutable.getClass()) continue;
 
@@ -113,8 +118,8 @@ public class CommitDiffParser {
 
     if (!Spoon.codeIsModified(aClass, bClass)) return null;
 
-    var path = Spoon.getRelativePath(aClass, aSpoon.srcPath);
-    var change = new Change(path, aClass.getQualifiedName());
+    var path = Spoon.getRelativePath(bClass, bSpoon.srcPath);
+    var change = new Change(path, bClass.getQualifiedName());
     change.extractHunks(bClass, aClass);
     return change;
   }

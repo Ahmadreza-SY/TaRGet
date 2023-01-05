@@ -73,7 +73,7 @@ public class CommandCoverage {
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .setInitialMax(changedSUTClasses.stream().mapToInt(c -> c.changedClasses.size()).sum())
             .showSpeed()
-            .setTaskName("Extracting SUT method and class changes")
+            .setTaskName("Extracting SUT changes")
             .build();
     for (var changedClasses : changedSUTClasses) {
       var bSrcPath = Path.of(args.outputPath, "commits", changedClasses.bCommit).toString();

@@ -56,12 +56,16 @@ public class Spoon {
     return srcURI.relativize(absFile.toURI()).getPath();
   }
 
+  public static String getParentQualifiedName(CtExecutable<?> executable) {
+    if (executable instanceof CtConstructor<?>)
+      return ((CtConstructor<?>) executable).getDeclaringType().getQualifiedName();
+    else return ((CtType<?>) executable.getParent()).getQualifiedName();
+  }
+
   public static String getUniqueName(CtExecutable<?> executable) {
     String simpleSignature = getSimpleSignature(executable);
-    if (executable instanceof CtConstructor<?>) return String.format("%s.%s",
-            ((CtConstructor<?>) executable).getDeclaringType().getQualifiedName(),
-            simpleSignature);
-    else return String.format("%s.%s", ((CtType<?>) executable.getParent()).getQualifiedName(), simpleSignature);
+    String parentQualifiedName = getParentQualifiedName(executable);
+    return String.format("%s.%s", parentQualifiedName, simpleSignature);
   }
 
   public static String getSimpleSignature(CtExecutable<?> executable) {

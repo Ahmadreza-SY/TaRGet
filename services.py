@@ -19,6 +19,7 @@ from utils import save_file
 import jparser
 import shutil
 import maven_parser as mvnp
+from coverage_repository import ClassChangesRepository, MethodChangesRepository
 
 
 class Service:
@@ -136,6 +137,30 @@ class Service:
         (output_path / "changed_sut_classes.json").write_text(json.dumps(changed_files, indent=2, sort_keys=False))
 
     @staticmethod
+    def make_dataset(repaired_tests):
+        output_path = Path(Config.get("output_path"))
+        class_change_repo = ClassChangesRepository(output_path)
+        method_change_repo = MethodChangesRepository(output_path)
+        zero_cov_cnt = 0
+        dataset = []
+        for repair in repaired_tests:
+            _repair = copy.deepcopy(repair)
+            covered_class_changes = class_change_repo.get_covered_changes(_repair)
+            covered_method_changes = method_change_repo.get_covered_changes(_repair)
+            if len(covered_class_changes) == 0 and len(covered_method_changes) == 0:
+                zero_cov_cnt += 1
+                continue
+
+            _repair["covered_class_changes"] = covered_class_changes
+            _repair["covered_method_changes"] = covered_method_changes
+            dataset.append(_repair)
+
+        zero_cov_per = round(100 * zero_cov_cnt / len(repaired_tests), 1)
+        print(f"Removed {zero_cov_per}% ({zero_cov_cnt} / {len(repaired_tests)}) repairs due to zero coverage.")
+        (output_path / "dataset.json").write_text(json.dumps(dataset, indent=2, sort_keys=False))
+        print(f"Done! Saved {len(dataset)} test repairs.")
+
+    @staticmethod
     def analyze_repair_commits():
         Service.find_changed_test_classes()
 
@@ -146,8 +171,10 @@ class Service:
 
         repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
         Service.find_changed_files(repair_commits)
+
         jparser.extract_covered_changes_info(output_path)
-        # save results
+
+        Service.make_dataset(repaired_tests)
 
     @staticmethod
     def analyze_tag_and_repairs():
