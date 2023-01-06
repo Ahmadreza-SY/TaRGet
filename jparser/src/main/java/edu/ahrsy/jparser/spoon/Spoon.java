@@ -4,6 +4,7 @@ import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.processing.Processor;
 import spoon.reflect.code.CtBlock;
+import spoon.reflect.code.CtComment;
 import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.CtTypeReference;
@@ -14,9 +15,8 @@ import spoon.reflect.visitor.ImportConflictDetector;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -31,7 +31,6 @@ public class Spoon {
     spoon.addInputResource(srcPath);
     spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
-    spoon.getEnvironment().setCommentEnabled(false);
     spoon.getFactory().getEnvironment().setPrettyPrinterCreator(() -> {
       var printer = new CustomJavaPrettyPrinter(spoon.getFactory().getEnvironment());
       List<Processor<CtElement>> preprocessors = List.of(new ForceImportProcessor(),
@@ -43,6 +42,7 @@ public class Spoon {
       return printer;
     });
     spoon.buildModel();
+    spoon.getEnvironment().setCommentEnabled(false);
   }
 
   public static String getRelativePath(CtNamedElement element, String srcPath) {
@@ -84,7 +84,6 @@ public class Spoon {
     return element.getSimpleName();
   }
 
-  // TODO check whether comments are included. If yes (better not be), remove them and handle diff hunks!
   public static String print(CtNamedElement element) {
     var srcFile = getOriginalSourceCode(element);
     var elementStart = element.getPosition().getSourceStart();
@@ -207,10 +206,24 @@ public class Spoon {
     return element.getPosition().getCompilationUnit().getOriginalSourceCode();
   }
 
-  public static Integer getStartLine(CtNamedElement element) {
+  public static Integer getStartLine(CtElement element) {
+    if (element == null) return 0;
     var sourceStart = element.getPosition().getSourceStart();
+    return getPositionLine(element, sourceStart);
+  }
+
+  public static Integer getEndLine(CtElement element) {
+    if (element == null) return 0;
+    var sourceEnd = element.getPosition().getSourceEnd();
+    return getPositionLine(element, sourceEnd);
+  }
+
+  private static Integer getPositionLine(CtElement element, Integer position) {
     var lineSepPos = element.getPosition().getCompilationUnit().getLineSeparatorPositions();
-    return IntStream.range(0, lineSepPos.length).filter(i -> sourceStart < lineSepPos[i]).findFirst().orElseThrow() + 1;
+    return IntStream.range(0, lineSepPos.length)
+            .filter(i -> position < lineSepPos[i])
+            .findFirst()
+            .orElse(lineSepPos.length) + 1;
   }
 
   public CtType<?> getTopLevelTypeByFile(String file) {
@@ -225,5 +238,20 @@ public class Spoon {
       }
     };
     return spoon.getModel().getRootPackage().getElements(typeFileFilter).get(0);
+  }
+
+  public static Set<Integer> getCommentsLineNumbers(CtNamedElement element) {
+    if (element == null) return Collections.emptySet();
+    List<CtComment> comments = element.getElements(new TypeFilter<>(CtComment.class));
+    if (comments.isEmpty()) return Collections.emptySet();
+
+    var commentsLineNumbers = new HashSet<Integer>();
+    for (var comment : comments) {
+      var commentLines = IntStream.rangeClosed(getStartLine(comment), getEndLine(comment))
+              .boxed()
+              .collect(Collectors.toList());
+      commentsLineNumbers.addAll(commentLines);
+    }
+    return commentsLineNumbers;
   }
 }

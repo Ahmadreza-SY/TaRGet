@@ -74,8 +74,7 @@ public class CommitDiffParser {
       for (var missingExecutable : missingExecutables) {
         var path = Spoon.getRelativePath(missingExecutable, bSpoon.srcPath);
         var change = new Change(path, Spoon.getUniqueName(missingExecutable));
-        change.extractHunks(Spoon.print(missingExecutable), "");
-        change.applyHunkLineNoOffset(Spoon.getStartLine(missingExecutable), 0);
+        change.extractHunks(missingExecutable, null);
         executableChanges.add(change);
       }
       return executableChanges;
@@ -103,8 +102,7 @@ public class CommitDiffParser {
       }
       // Otherwise, the missing executable is deleted
       else {
-        executableChange.extractHunks(Spoon.print(missingExecutable), "");
-        executableChange.applyHunkLineNoOffset(Spoon.getStartLine(missingExecutable), 0);
+        executableChange.extractHunks(missingExecutable, null);
       }
       executableChanges.add(executableChange);
     }
