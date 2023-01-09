@@ -22,3 +22,9 @@ def decompose_full_method_name(full_method_name):
     class_name = items[-2]
     method_short_name = re.sub("\(.*\)", "", items[-1])
     return class_full_name, class_name, method_short_name
+
+
+def is_test_class(file_content):
+    junit_import = r"import\s+org\.junit\.(Test|\*|jupiter\.api\.(\*|Test))"
+    test_annotation = r"@Test"
+    return bool(re.search(junit_import, file_content)) and bool(re.search(test_annotation, file_content))

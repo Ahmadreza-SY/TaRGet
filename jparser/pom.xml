@@ -89,7 +89,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>edu.ahrsy.jparser.JParser</mainClass>
+                            <mainClass>edu.ahrsy.jparser.Application</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

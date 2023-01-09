@@ -1,8 +1,9 @@
-package edu.ahrsy.jparser.spoon;
+package edu.ahrsy.jparser;
 
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.Change;
 import edu.ahrsy.jparser.entity.TestSource;
+import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
@@ -22,12 +23,10 @@ import java.util.stream.Collectors;
 public class TestClassComparator {
   private final Spoon bSpoon;
   private final Spoon aSpoon;
-  private final Diff diff;
 
   public TestClassComparator(String bSrcPath, String aSrcPath, Integer complianceLevel) {
     this.bSpoon = new Spoon(bSrcPath, complianceLevel);
     this.aSpoon = new Spoon(aSrcPath, complianceLevel);
-    this.diff = new AstComparator().compare(bSpoon.getType(0), aSpoon.getType(0));
   }
 
   private CtMethod<?> getParentMethod(CtElement element) {
@@ -41,8 +40,9 @@ public class TestClassComparator {
   }
 
   public boolean onlyTestsChanged() {
-    if (this.diff.getRootOperations().size() == 0) return false;
-    for (var op : this.diff.getRootOperations()) {
+    Diff diff = new AstComparator().compare(bSpoon.getType(0), aSpoon.getType(0));
+    if (diff.getRootOperations().size() == 0) return false;
+    for (var op : diff.getRootOperations()) {
       var srcParent = getParentMethod(op.getSrcNode());
       var dstParent = getParentMethod(op.getDstNode());
       if (!isInsideMethod(op) || !this.bSpoon.isTest(srcParent) || !Spoon.codeIsModified(srcParent, dstParent))
@@ -84,10 +84,11 @@ public class TestClassComparator {
   }
 
   public List<Change> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {
+    var changedTests = getChangedTests();
+    if (changedTests.isEmpty()) return Collections.emptyList();
     // TODO this condition can be removed
     if (!onlyTestsChanged()) return Collections.emptyList();
 
-    var changedTests = getChangedTests();
     var testChanges = new ArrayList<Change>();
     for (var test : changedTests) {
       var name = Spoon.getUniqueName(test.getLeft());

@@ -26,15 +26,6 @@ public class IOUtils {
     }
   }
 
-  public static <T> void toCsv(List<T> rows, String outputFile) {
-    try (Writer writer = new FileWriter(outputFile)) {
-      StatefulBeanToCsv<T> beanToCsv = new StatefulBeanToCsvBuilder<T>(writer).build();
-      beanToCsv.write(rows);
-    } catch (IOException | CsvRequiredFieldEmptyException | CsvDataTypeMismatchException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   public static <T> List<T> readCsv(String inputFile, Class<T> type) {
     try {
       return new CsvToBeanBuilder<T>(new FileReader(inputFile)).withType(type).build().parse();

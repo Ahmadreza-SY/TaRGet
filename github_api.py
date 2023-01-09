@@ -28,84 +28,6 @@ def get_repo(repo):
     return git_repo
 
 
-def get_local_diff(tag_pair, repo):
-    diff_pair = f"{tag_pair.base.name}...{tag_pair.head.name}"
-
-    git_repo = get_repo(repo)
-    print(f"Determining {diff_pair} diff")
-    diff = git_repo.git.diff(tag_pair.base.name, tag_pair.head.name, "--", "*.java")
-
-    return diff
-
-
-def get_test_file_local(tag, test_path, repo):
-    git_repo = get_repo(repo)
-    git_repo.git.checkout(tag, force=True)
-
-    file_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@") / test_path
-    try:
-        with open(file_dir, "r") as file:
-            contents = file.read()
-    except UnicodeDecodeError as e:
-        print(f"ERROR in reading test file {file_dir} at tag {tag}:\n  {str(e)}")
-        with open(file_dir, "r", errors="surrogateescape") as file:
-            contents = file.read()
-
-    return file_dir, contents
-
-
-def get_tags_and_ancestors(repo):
-    git_repo = get_repo(repo)
-
-    tags = [t for t in sorted(git_repo.tags, key=lambda x: x.commit.committed_datetime, reverse=True)]
-    tag_ancestors = []
-    tag_children = dict()
-
-    print("Finding tag ancestors")
-    for i in range(len(tags)):
-        for j in range(i + 1, len(tags)):
-            if git_repo.is_ancestor(tags[j].commit, tags[i].commit):
-                child = tags[i].name
-                ancestor = tags[j].name
-                tag_ancestors.append((child, ancestor))
-
-                if ancestor not in tag_children:
-                    tag_children[ancestor] = []
-                tag_children[ancestor].append(child)
-
-                break
-
-    removed_cnt = 0
-    for ancestor, children in tag_children.items():
-        if len(children) > 1:
-            print(f"WARNING: Ancestor with multiple ({len(children)}) children {ancestor} {children}")
-            for child in children[:-1]:
-                tag_ancestors.remove((child, ancestor))
-                removed_cnt += 1
-    print(f"Removed {removed_cnt} tag pairs due to multiple children")
-
-    percent = "%.2f" % (len(tag_ancestors) / (len(tags) - 1) * 100)
-    print(f"{percent}% of {len(tags) -1} tags have valid ancestors")
-
-    return {t.name: t for t in tags}, tag_ancestors
-
-
-def copy_tag_code(repo, tag):
-    tag_path = Path(Config.get("output_path")) / "tags" / tag.name
-    tag_path.mkdir(parents=True, exist_ok=True)
-    code_path = tag_path / "code"
-
-    if code_path.exists():
-        return code_path
-
-    git_repo = get_repo(repo)
-    clone_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@")
-
-    git_repo.git.checkout(tag.name, force=True)
-    shutil.copytree(str(clone_dir), str(code_path), ignore=shutil.ignore_patterns(".git"))
-    return code_path
-
-
 def copy_commit_code(repo_name, commit):
     copy_path = Path(Config.get("output_path")) / "commits" / commit
     if copy_path.exists():
@@ -116,6 +38,7 @@ def copy_commit_code(repo_name, commit):
     repo.git.checkout(commit, force=True)
     shutil.copytree(str(repo_path), str(copy_path), ignore=shutil.ignore_patterns(".git"))
     return copy_path
+
 
 def get_all_commits(repo_name):
     repo = get_repo(repo_name)

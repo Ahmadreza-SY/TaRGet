@@ -3,7 +3,7 @@ package edu.ahrsy.jparser.cli;
 import com.beust.jcommander.Parameter;
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
-import edu.ahrsy.jparser.spoon.TestClassComparator;
+import edu.ahrsy.jparser.TestClassComparator;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarBuilder;

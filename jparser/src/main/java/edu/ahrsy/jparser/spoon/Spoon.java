@@ -91,15 +91,6 @@ public class Spoon {
     return srcFile.substring(elementStart, elementEnd + 1);
   }
 
-  public static String prettyPrint(CtBlock<?> block) {
-    try {
-      return block.toString();
-    } catch (Exception e) {
-      System.out.printf("ERROR in prettyPrint: block = %s%n", e.getMessage());
-    }
-    return null;
-  }
-
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
     return ((executable instanceof CtMethod) || (executable instanceof CtConstructor)) &&
             executable.getPosition().isValidPosition();
@@ -110,43 +101,6 @@ public class Spoon {
     var srcCode = Spoon.prettyPrint(src);
     var dstCode = Spoon.prettyPrint(dst);
     return !srcCode.equals(dstCode);
-  }
-
-  public Set<CtMethod<?>> getTestPreAndPostMethods(CtMethod<?> testMethod) {
-    var refs = Stream.of("org.junit.Before",
-                    "org.junit.BeforeClass",
-                    "org.junit.After",
-                    "org.junit.AfterClass",
-                    "org.junit.jupiter.api.Before",
-                    "org.junit.jupiter.api.BeforeClass",
-                    "org.junit.jupiter.api.After",
-                    "org.junit.jupiter.api.AfterClass")
-            .map(refName -> spoon.getFactory().Type().createReference(refName))
-            .toArray(CtTypeReference[]::new);
-    return testMethod.getDeclaringType().getMethodsAnnotatedWith(refs);
-  }
-
-  public List<CtClass<?>> getAllTestClasses() {
-    CtTypeReference<?> juTestRef = spoon.getFactory().Type().createReference("org.junit.Test");
-    TypeFilter<CtClass<?>> isRealTestingClass = new TypeFilter<>(CtClass.class) {
-      @Override
-      public boolean matches(CtClass<?> ctClass) {
-        // First step is to reuse standard filtering
-        if (!super.matches(ctClass)) {
-          return false;
-        }
-        CtTypeReference<?> current = ctClass.getReference();
-        // Walk up the chain of inheritance and find whether there is a method annotated as test
-        do {
-          if (current.getDeclaration() != null &&
-                  !current.getDeclaration().getMethodsAnnotatedWith(juTestRef).isEmpty()) {
-            return true;
-          }
-        } while ((current = current.getSuperclass()) != null);
-        return false;
-      }
-    };
-    return spoon.getModel().getRootPackage().getElements(isRealTestingClass);
   }
 
   public List<CtMethod<?>> getTests() {

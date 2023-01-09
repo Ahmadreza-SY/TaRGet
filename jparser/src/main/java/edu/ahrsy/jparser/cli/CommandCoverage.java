@@ -31,6 +31,20 @@ public class CommandCoverage {
 
   private static final Gson gson = IOUtils.createGsonInstance();
 
+  public static void cCoverage(CommandCoverage args) {
+    var repairedTestsJSON = IOUtils.readFile(Path.of(args.outputPath, "repaired_tests.json"));
+    List<SingleHunkTestChange> repairedTests = gson.fromJson(repairedTestsJSON,
+            new TypeToken<ArrayList<SingleHunkTestChange>>() {
+            }.getType());
+    createCallGraphs(args, repairedTests);
+
+    var changedSUTClassesJSON = IOUtils.readFile(Path.of(args.outputPath, "changed_sut_classes.json"));
+    List<CommitChangedClasses> changedSUTClasses = gson.fromJson(changedSUTClassesJSON,
+            new TypeToken<List<CommitChangedClasses>>() {
+            }.getType());
+    extractChanges(args, changedSUTClasses);
+  }
+
   private static void createCallGraphs(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
     var repairedTestsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
@@ -94,19 +108,5 @@ public class CommandCoverage {
     pb.close();
     IOUtils.saveFile(Path.of(args.outputPath, "sut_class_changes.json"), gson.toJson(SUTClassChanges));
     IOUtils.saveFile(Path.of(args.outputPath, "sut_method_changes.json"), gson.toJson(SUTExecutableChanges));
-  }
-
-  public static void cCoverage(CommandCoverage args) {
-    var repairedTestsJSON = IOUtils.readFile(Path.of(args.outputPath, "repaired_tests.json"));
-    List<SingleHunkTestChange> repairedTests = gson.fromJson(repairedTestsJSON,
-            new TypeToken<ArrayList<SingleHunkTestChange>>() {
-            }.getType());
-    createCallGraphs(args, repairedTests);
-
-    var changedSUTClassesJSON = IOUtils.readFile(Path.of(args.outputPath, "changed_sut_classes.json"));
-    List<CommitChangedClasses> changedSUTClasses = gson.fromJson(changedSUTClassesJSON,
-            new TypeToken<List<CommitChangedClasses>>() {
-            }.getType());
-    extractChanges(args, changedSUTClasses);
   }
 }

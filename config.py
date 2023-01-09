@@ -3,11 +3,10 @@ class Config:
         "repo": None,
         "output_path": None,
         "jparser_path": "assets/jparser.jar",
-        "gh_cache_path": "./api_cache",
         "gh_clones_path": "./api_cache/clones",
     }
 
-    __setters = ["repo", "output_path", "jparser_path", "gh_cache_path", "gh_clones_path"]
+    __setters = ["repo", "output_path", "jparser_path", "gh_clones_path"]
 
     @staticmethod
     def get(name):

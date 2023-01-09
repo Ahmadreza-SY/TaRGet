@@ -47,26 +47,8 @@ public class CallGraph {
     }
   }
 
-  public void save(String outputPath, String tag, String srcPath) {
-    var graphJson = toJSON(srcPath);
-    var testClassFullName = ((CtType<?>) root.executable.getParent()).getQualifiedName();
-    var graphFile = Path.of(outputPath,
-            "tags",
-            tag,
-            "call_graphs",
-            testClassFullName,
-            Spoon.getSimpleSignature(root.executable) + ".json");
-    IOUtils.saveFile(graphFile, graphJson);
-  }
-
   public String toJSON(String srcPath) {
     var gson = IOUtils.createGsonInstance();
     return gson.toJson(Mapper.toDto(this, srcPath));
-  }
-
-  public void addSubGraph(CtExecutable<?> executable) {
-    var subGraphRoot = new CGNode(executable);
-    graph.get(root).add(subGraphRoot);
-    createCallGraph(subGraphRoot);
   }
 }
