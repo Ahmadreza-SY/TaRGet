@@ -28,10 +28,19 @@ def main():
         type=str,
         required=True,
     )
+    parser.add_argument(
+        "-j",
+        "--java-home",
+        help="The home of Java for executing test cases of the repository. If not passed, Maven's default java home will be used.",
+        type=str,
+        required=False,
+        default=None,
+    )
 
     args = parser.parse_args()
     Config.set("repo", args.repository)
     Config.set("output_path", args.output_path)
+    Config.set("java_home", args.java_home)
     args.func(args)
 
 

@@ -116,6 +116,10 @@ class DataCollector:
             json.dumps(changed_tests_verdicts, indent=2, sort_keys=False)
         )
 
+        non_broken_cnt = len(changed_tests) - len(repaired_tests)
+        print(
+            f"{round(100*non_broken_cnt/len(changed_tests), 1)}% ({non_broken_cnt}/{len(changed_tests)}) of changed tests were not broken!"
+        )
         print(f"Found {len(repaired_tests)} repaired tests")
         (self.output_path / "repaired_tests.json").write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
 

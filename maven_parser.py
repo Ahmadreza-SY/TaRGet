@@ -4,6 +4,8 @@ import shlex
 import re
 import sys
 from utils import auto_str
+from config import Config
+import os
 
 
 @auto_str
@@ -79,12 +81,18 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             f'-Dtest="{test_class}#{test_method}"',
             "-Dcheckstyle.skip",
         ]
-        result = subprocess.run(shlex.split(" ".join(cmd)), capture_output=True, text=True)
+        java_home = Config.get("java_home")
+        my_env = os.environ.copy()
+        if java_home is not None:
+            my_env["JAVA_HOME"] = java_home
+        result = subprocess.run(shlex.split(" ".join(cmd)), capture_output=True, text=True, env=my_env)
         returncode = result.returncode
         log = result.stdout
         log_path.mkdir(parents=True, exist_ok=True)
         rc_file.write_text(str(returncode))
         log_file.write_text(log)
+        cmd_file = log_path / "command"
+        cmd_file.write_text(" ".join(cmd))
 
     if returncode == 0:
         return TestVerdict(TestVerdict.SUCCESS, None)
@@ -101,7 +109,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
 
 
 def cleanup(project_path):
-    if not list(project_path.glob('**/target')):
+    if not list(project_path.glob("**/target")):
         return
     cmd = ["mvn", "clean", f'-f {str(project_path / "pom.xml")}']
     result = subprocess.run(shlex.split(" ".join(cmd)), capture_output=True, text=True)
