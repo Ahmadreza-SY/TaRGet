@@ -17,7 +17,7 @@ class TestVerdict:
     UNRELATED_COMPILE_ERR = "unrelated_compile_error"
     EXPECTED_EXCEPTION_FAILURE = "expected_exception_failure"
     TEST_MATCH_FAILURE = "test_match_failure"
-    RUNTIME_EXCEPTION_FAILURE = "runtime_exception_failure"
+    UNRELATED_FAILURE = "unrelated_failure"
     DEPENDENCY_ERROR = "dependency_error"
     OTHER = "other"
 
@@ -78,7 +78,7 @@ def parse_invalid_execution(log):
     if "java.lang.Exception: No tests found matching Method" in log:
         return TestVerdict(TestVerdict.TEST_MATCH_FAILURE, set())
     if "<<< ERROR!" in log:
-        return TestVerdict(TestVerdict.RUNTIME_EXCEPTION_FAILURE, set())
+        return TestVerdict(TestVerdict.UNRELATED_FAILURE, set())
     if "Could not resolve dependencies" in log or "Non-resolvable parent POM" in log:
         return TestVerdict(TestVerdict.DEPENDENCY_ERROR, set())
 
