@@ -11,6 +11,7 @@ import jparser
 import shutil
 import maven_parser as mvnp
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
+import multiprocessing as mp
 
 
 class DataCollector:
@@ -64,61 +65,80 @@ class DataCollector:
         changed_test_classes = pd.DataFrame(changed_test_classes)
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
-    def detect_repaired_tests(self):
-        changed_tests = pd.read_json(self.output_path / "changed_tests.json")
-        pbar = tqdm(total=len(changed_tests), ascii=True, desc="Executing tests")
+    def run_changed_tests(self, change_group):
         changed_tests_verdicts = []
         repaired_tests = []
-        for a_commit, changes in changed_tests.groupby("aCommit"):
-            a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit)
+        (a_commit, changes) = change_group
+        a_commit_path = self.output_path / "commits" / a_commit
 
-            for _, change in changes.iterrows():
-                test_simple_name = change["name"].split(".")[-1].replace("()", "")
-                test_a_path = Path(change["aPath"])
-                original_file = self.output_path / "testClasses" / a_commit / test_a_path
-                broken_file = (
-                    self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
-                )
-                log_path = (
-                    self.output_path
-                    / "brokenExeLogs"
-                    / a_commit
-                    / original_file.stem
-                    / test_simple_name
-                    / test_a_path.parent
-                )
-                executable_file = a_commit_path / test_a_path
-                shutil.copyfile(str(broken_file), str(executable_file))
-                verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, log_path)
-                verdict_obj = {
-                    "status": verdict.status,
-                    "error_lines": None if not verdict.error_lines else sorted(list(verdict.error_lines)),
+        ghapi.copy_commit_code(self.repo_name, a_commit)
+
+        for _, change in changes.iterrows():
+            test_simple_name = change["name"].split(".")[-1].replace("()", "")
+            test_a_path = Path(change["aPath"])
+            original_file = self.output_path / "testClasses" / a_commit / test_a_path
+            broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
+            log_path = (
+                self.output_path / "brokenExeLogs" / a_commit / original_file.stem / test_simple_name / test_a_path.parent
+            )
+            executable_file = a_commit_path / test_a_path
+            shutil.copyfile(str(broken_file), str(executable_file))
+            verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, log_path)
+            verdict_obj = {
+                "status": verdict.status,
+                "error_lines": None if not verdict.error_lines else sorted(list(verdict.error_lines)),
+            }
+            changed_tests_verdicts.append(
+                {
+                    "name": change["name"],
+                    "aCommit": change["aCommit"],
+                    "verdict": verdict_obj,
                 }
-                changed_tests_verdicts.append(
-                    {
-                        "name": change["name"],
-                        "aCommit": change["aCommit"],
-                        "verdict": verdict_obj,
-                    }
+            )
+            if verdict.is_valid() and verdict.status != mvnp.TestVerdict.SUCCESS:
+                change_obj = change.to_dict()
+                change_obj["verdict"] = verdict_obj
+                repaired_tests.append(change_obj)
+            shutil.copyfile(str(original_file), str(executable_file))
+
+        ghapi.remove_commit_code(self.repo_name, a_commit)
+
+        return changed_tests_verdicts, repaired_tests
+
+    # TODO implement worktree add/remove or checkout copy/delete to save disk space
+    # TODO delete invalid test executions and re-execute them using the new categories implementation
+    # TODO update jparser call graph to add/remove worktrees
+    def detect_repaired_tests(self):
+        changed_tests = pd.read_json(self.output_path / "changed_tests.json")
+        change_groups = list(changed_tests.groupby("aCommit"))
+        changed_tests_cnt = sum([len(g[1]) for g in change_groups])
+        changed_tests_verdicts = []
+        repaired_tests = []
+        proc_cnt = (1 + mp.cpu_count() // 2) if mp.cpu_count() > 2 else mp.cpu_count()
+        with mp.Pool(proc_cnt) as pool:
+            results = list(
+                tqdm(
+                    pool.imap(self.run_changed_tests, change_groups),
+                    ascii=True,
+                    desc="Executing tests",
+                    total=len(change_groups),
                 )
-                if verdict.status != mvnp.TestVerdict.SUCCESS:
-                    ghapi.copy_commit_code(self.repo_name, change["bCommit"])
-                    change_obj = change.to_dict()
-                    change_obj["verdict"] = verdict_obj
-                    repaired_tests.append(change_obj)
-                shutil.copyfile(str(original_file), str(executable_file))
-                pbar.update(1)
+            )
+            for verdicts, repaired in results:
+                changed_tests_verdicts.extend(verdicts)
+                repaired_tests.extend(repaired)
 
-            mvnp.cleanup(a_commit_path)
-
-        pbar.close()
         (self.output_path / "changed_tests_verdicts.json").write_text(
             json.dumps(changed_tests_verdicts, indent=2, sort_keys=False)
         )
+        print("Test execution done! Verdict stats:")
+        verdict_df = pd.DataFrame({"verdict": [v["verdict"]["status"] for v in changed_tests_verdicts]})
+        for v, cnt in verdict_df["verdict"].value_counts().iteritems():
+            print(f"{v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt}))")
 
-        non_broken_cnt = len(changed_tests) - len(repaired_tests)
+        non_broken_cnt = changed_tests_cnt - len(repaired_tests)
         print(
-            f"{round(100*non_broken_cnt/len(changed_tests), 1)}% ({non_broken_cnt}/{len(changed_tests)}) of changed tests were not broken!"
+            f"{round(100*non_broken_cnt/changed_tests_cnt, 1)}% ({non_broken_cnt}/{changed_tests_cnt}) of changed tests were not broken!"
         )
         print(f"Found {len(repaired_tests)} repaired tests")
         (self.output_path / "repaired_tests.json").write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))

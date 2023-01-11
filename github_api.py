@@ -18,7 +18,7 @@ class CloneProgress(RemoteProgress):
 
 
 def get_repo(repo):
-    clone_dir = Path(Config.get("gh_clones_path")) / repo.replace("/", "@")
+    clone_dir = Path(Config.get("output_path")) / "clone"
     if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
         print(f"Cloning {repo} into {clone_dir}")
         git_repo = git.Repo.clone_from(f"https://github.com/{repo}.git", clone_dir, progress=CloneProgress())
@@ -34,10 +34,18 @@ def copy_commit_code(repo_name, commit):
         return copy_path
 
     repo = get_repo(repo_name)
-    repo_path = Path(repo.working_tree_dir)
-    repo.git.checkout(commit, force=True)
-    shutil.copytree(str(repo_path), str(copy_path), ignore=shutil.ignore_patterns(".git"))
+    repo.git.worktree("add", str(copy_path.absolute()), commit)
     return copy_path
+
+
+def remove_commit_code(repo_name, commit):
+    code_path = Path(Config.get("output_path")) / "commits" / commit
+    if not code_path.exists():
+        return
+
+    repo = get_repo(repo_name)
+    repo.git.worktree("remove", str(code_path.absolute()))
+    repo.git.worktree("prune")
 
 
 def get_all_commits(repo_name):
