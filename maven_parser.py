@@ -113,6 +113,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             "-Dsurefire.failIfNoSpecifiedTests=false",
             f'-Dtest="{test_class}#{test_method}"',
             "-Dcheckstyle.skip",
+            "--batch-mode"
         ]
         result = run_cmd(cmd)
         returncode = result.returncode

@@ -20,12 +20,21 @@ class DataCollector:
         self.output_path = Path(output_path)
 
     def collect_test_repairs(self):
-        self.find_changed_test_classes()
+        print("Phase #1: Identifying changed tests and extracting their changes")
+        self.identify_changed_test_classes()
         jparser.compare_test_classes(self.output_path)
+        print()
+
+        print("Phase #2: Detecting broken tests by executing them")
         repaired_tests = self.detect_repaired_tests()
+        print()
+
+        print("Phase #3: Identifying and extracting covered changes")
         repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
         self.find_changed_files(repair_commits)
         jparser.extract_covered_changes_info(self.output_path)
+        print()
+
         self.make_dataset(repaired_tests)
 
     def get_java_diffs(self, commit):
@@ -36,7 +45,7 @@ class DataCollector:
         diffs = [d for d in diffs if bool(re.search(java_regex, d.b_path)) and bool(re.search(java_regex, d.a_path))]
         return diffs
 
-    def find_changed_test_classes(self):
+    def identify_changed_test_classes(self):
         changed_test_classes_path = self.output_path / "changed_test_classes.csv"
         if changed_test_classes_path.exists():
             print("Changed tests classes already exists, skipping ...")
@@ -44,7 +53,7 @@ class DataCollector:
         commits = ghapi.get_all_commits(self.repo_name)
 
         changed_test_classes = {"b_path": [], "a_path": [], "b_commit": [], "a_commit": []}
-        for commit in tqdm(commits, ascii=True, desc="Finding changed test classes"):
+        for commit in tqdm(commits, ascii=True, desc="Identifying changed test classes"):
             if len(commit.parents) == 0:
                 continue
             diffs = self.get_java_diffs(commit)
@@ -105,36 +114,36 @@ class DataCollector:
 
         return changed_tests_verdicts, repaired_tests
 
-    # TODO implement worktree add/remove or checkout copy/delete to save disk space
     # TODO delete invalid test executions and re-execute them using the new categories implementation
     # TODO update jparser call graph to add/remove worktrees
     def detect_repaired_tests(self):
         changed_tests = pd.read_json(self.output_path / "changed_tests.json")
         change_groups = list(changed_tests.groupby("aCommit"))
         changed_tests_cnt = sum([len(g[1]) for g in change_groups])
+
+        ghapi.cleanup_worktrees(self.repo_name)
+
         changed_tests_verdicts = []
         repaired_tests = []
+
         proc_cnt = (1 + mp.cpu_count() // 2) if mp.cpu_count() > 2 else mp.cpu_count()
         with mp.Pool(proc_cnt) as pool:
-            results = list(
-                tqdm(
-                    pool.imap(self.run_changed_tests, change_groups),
-                    ascii=True,
-                    desc="Executing tests",
-                    total=len(change_groups),
-                )
-            )
-            for verdicts, repaired in results:
+            for verdicts, repaired in tqdm(
+                pool.imap_unordered(self.run_changed_tests, change_groups),
+                total=len(change_groups),
+                ascii=True,
+                desc="Executing tests",
+            ):
                 changed_tests_verdicts.extend(verdicts)
                 repaired_tests.extend(repaired)
 
         (self.output_path / "changed_tests_verdicts.json").write_text(
             json.dumps(changed_tests_verdicts, indent=2, sort_keys=False)
         )
-        print("Test execution done! Verdict stats:")
+        print(f"Executed {changed_tests_cnt} test cases! Verdict stats:")
         verdict_df = pd.DataFrame({"verdict": [v["verdict"]["status"] for v in changed_tests_verdicts]})
-        for v, cnt in verdict_df["verdict"].value_counts().iteritems():
-            print(f"{v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt}))")
+        for v, cnt in verdict_df["verdict"].value_counts().items():
+            print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
 
         non_broken_cnt = changed_tests_cnt - len(repaired_tests)
         print(
