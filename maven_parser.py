@@ -19,7 +19,8 @@ class TestVerdict:
     TEST_MATCH_FAILURE = "test_match_failure"
     UNRELATED_FAILURE = "unrelated_failure"
     DEPENDENCY_ERROR = "dependency_error"
-    OTHER = "other"
+    POM_NOT_FOUND = "pom_not_found"
+    UNKNOWN = "unknown"
 
     def __init__(self, status, error_lines):
         self.status = status
@@ -35,8 +36,7 @@ def find_parent_pom(file_path):
         if (current_dir / "pom.xml").exists():
             return current_dir / "pom.xml"
         current_dir = current_dir.parent
-        if current_dir == Path("/"):
-            print(f"No pom.xml parent found for {file_path}")
+        if current_dir == current_dir.parent:
             return None
 
 
@@ -82,7 +82,7 @@ def parse_invalid_execution(log):
     if "Could not resolve dependencies" in log or "Non-resolvable parent POM" in log:
         return TestVerdict(TestVerdict.DEPENDENCY_ERROR, set())
 
-    return TestVerdict(TestVerdict.OTHER, set())
+    return TestVerdict(TestVerdict.UNKNOWN, set())
 
 
 def run_cmd(cmd):
@@ -103,6 +103,8 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
         log = log_file.read_text()
     else:
         pom_path = find_parent_pom(test_path)
+        if pom_path is None:
+            return TestVerdict(TestVerdict.POM_NOT_FOUND, None)
         cmd = [
             "mvn",
             "clean",
@@ -113,7 +115,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             "-Dsurefire.failIfNoSpecifiedTests=false",
             f'-Dtest="{test_class}#{test_method}"',
             "-Dcheckstyle.skip",
-            "--batch-mode"
+            "--batch-mode",
         ]
         result = run_cmd(cmd)
         returncode = result.returncode

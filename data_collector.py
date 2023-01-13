@@ -14,6 +14,11 @@ from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
 
 
+def pool_init(_lock):
+    global lock
+    lock = _lock
+
+
 class DataCollector:
     def __init__(self, repo_name, output_path):
         self.repo_name = repo_name
@@ -80,7 +85,9 @@ class DataCollector:
         (a_commit, changes) = change_group
         a_commit_path = self.output_path / "commits" / a_commit
 
+        lock.acquire()
         ghapi.copy_commit_code(self.repo_name, a_commit)
+        lock.release()
 
         for _, change in changes.iterrows():
             test_simple_name = change["name"].split(".")[-1].replace("()", "")
@@ -110,12 +117,12 @@ class DataCollector:
                 repaired_tests.append(change_obj)
             shutil.copyfile(str(original_file), str(executable_file))
 
+        lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit)
+        lock.release()
 
         return changed_tests_verdicts, repaired_tests
 
-    # TODO delete invalid test executions and re-execute them using the new categories implementation
-    # TODO update jparser call graph to add/remove worktrees
     def detect_repaired_tests(self):
         changed_tests = pd.read_json(self.output_path / "changed_tests.json")
         change_groups = list(changed_tests.groupby("aCommit"))
@@ -127,7 +134,7 @@ class DataCollector:
         repaired_tests = []
 
         proc_cnt = (1 + mp.cpu_count() // 2) if mp.cpu_count() > 2 else mp.cpu_count()
-        with mp.Pool(proc_cnt) as pool:
+        with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for verdicts, repaired in tqdm(
                 pool.imap_unordered(self.run_changed_tests, change_groups),
                 total=len(change_groups),
