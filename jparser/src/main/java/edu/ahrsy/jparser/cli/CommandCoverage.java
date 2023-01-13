@@ -87,6 +87,7 @@ public class CommandCoverage {
   }
 
   private static void extractChanges(CommandCoverage args, List<CommitChangedClasses> changedSUTClasses) {
+    var repoDir = Path.of(args.outputPath, "clone");
     var SUTClassChanges = new ArrayList<CommitChanges>();
     var SUTExecutableChanges = new ArrayList<CommitChanges>();
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
@@ -95,8 +96,8 @@ public class CommandCoverage {
             .setTaskName("Extracting SUT changes")
             .build();
     for (var changedClasses : changedSUTClasses) {
-      var bSrcPath = Path.of(args.outputPath, "commits", changedClasses.bCommit).toString();
-      var aSrcPath = Path.of(args.outputPath, "commits", changedClasses.aCommit).toString();
+      var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
+      var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
       var parser = new CommitDiffParser(SpoonFactory.getOrCreateSpoon(bSrcPath, args.complianceLevel),
               SpoonFactory.getOrCreateSpoon(aSrcPath, args.complianceLevel));
       var commitClassChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
@@ -109,6 +110,8 @@ public class CommandCoverage {
       }
       SUTClassChanges.add(commitClassChanges);
       SUTExecutableChanges.add(commitExecutableChanges);
+      GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
+      GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
     }
     pb.close();
     IOUtils.saveFile(Path.of(args.outputPath, "sut_class_changes.json"), gson.toJson(SUTClassChanges));
