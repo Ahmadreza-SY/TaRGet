@@ -1,6 +1,6 @@
 from pathlib import Path
 import pandas as pd
-import github_api as ghapi
+import git_api as ghapi
 from tqdm import tqdm
 import json
 import copy

@@ -3,10 +3,7 @@ package edu.ahrsy.jparser.utils;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.opencsv.bean.CsvToBeanBuilder;
-import com.opencsv.bean.StatefulBeanToCsv;
-import com.opencsv.bean.StatefulBeanToCsvBuilder;
-import com.opencsv.exceptions.CsvDataTypeMismatchException;
-import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import sun.misc.Unsafe;
 
@@ -17,6 +14,15 @@ import java.nio.file.Path;
 import java.util.List;
 
 public class IOUtils {
+  public static void deleteDir(Path dir) {
+    try {
+      if (Files.exists(dir))
+        FileUtils.deleteDirectory(dir.toFile());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   public static void saveFile(Path filePath, String content) {
     try {
       if (filePath.getParent() != null) Files.createDirectories(filePath.getParent());

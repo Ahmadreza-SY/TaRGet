@@ -10,15 +10,15 @@ import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.spoon.SpoonFactory;
+import edu.ahrsy.jparser.utils.GitAPI;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
-import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.eclipse.jgit.api.Git;
 import spoon.reflect.declaration.CtMethod;
 
 import java.nio.file.Path;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class CommandCoverage {
@@ -32,6 +32,9 @@ public class CommandCoverage {
   private static final Gson gson = IOUtils.createGsonInstance();
 
   public static void cCoverage(CommandCoverage args) {
+    var repoDir = Path.of(args.outputPath, "clone");
+    GitAPI.cleanupWorktrees(repoDir);
+
     var repairedTestsJSON = IOUtils.readFile(Path.of(args.outputPath, "repaired_tests.json"));
     List<SingleHunkTestChange> repairedTests = gson.fromJson(repairedTestsJSON,
             new TypeToken<ArrayList<SingleHunkTestChange>>() {
@@ -46,6 +49,7 @@ public class CommandCoverage {
   }
 
   private static void createCallGraphs(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
+    var repoDir = Path.of(args.outputPath, "clone");
     var repairedTestsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .setInitialMax(repairedTests.size())
@@ -55,7 +59,7 @@ public class CommandCoverage {
     for (var entry : repairedTestsMap.entrySet()) {
       var bCommit = entry.getKey();
       var commitRepairs = entry.getValue();
-      var srcPath = Path.of(args.outputPath, "commits", bCommit).toString();
+      var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
       var spoon = SpoonFactory.getOrCreateSpoon(srcPath, args.complianceLevel);
       var names = commitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
       var paths = commitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
@@ -77,6 +81,7 @@ public class CommandCoverage {
         IOUtils.saveFile(graphFile, graphJSON);
         pb.step();
       }
+      GitAPI.removeWorktree(repoDir, bCommit);
     }
     pb.close();
   }
