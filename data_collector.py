@@ -36,7 +36,7 @@ class DataCollector:
 
         print("Phase #3: Identifying and extracting covered changes")
         repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
-        self.find_changed_files(repair_commits)
+        self.find_changed_sut_classes(repair_commits)
         jparser.extract_covered_changes_info(self.output_path)
         print()
 
@@ -124,6 +124,12 @@ class DataCollector:
         return changed_tests_verdicts, repaired_tests
 
     def detect_repaired_tests(self):
+        changed_tests_verdicts_path = self.output_path / "changed_tests_verdicts.json"
+        repaired_tests_path = self.output_path / "repaired_tests.json"
+        if changed_tests_verdicts_path.exists() and repaired_tests_path.exists():
+            print("Tests have been already executed, skipping ...")
+            return json.loads(repaired_tests_path.read_text())
+
         changed_tests = pd.read_json(self.output_path / "changed_tests.json")
         change_groups = list(changed_tests.groupby("aCommit"))
         changed_tests_cnt = sum([len(g[1]) for g in change_groups])
@@ -144,9 +150,7 @@ class DataCollector:
                 changed_tests_verdicts.extend(verdicts)
                 repaired_tests.extend(repaired)
 
-        (self.output_path / "changed_tests_verdicts.json").write_text(
-            json.dumps(changed_tests_verdicts, indent=2, sort_keys=False)
-        )
+        changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
         print(f"Executed {changed_tests_cnt} test cases! Verdict stats:")
         verdict_df = pd.DataFrame({"verdict": [v["verdict"]["status"] for v in changed_tests_verdicts]})
         for v, cnt in verdict_df["verdict"].value_counts().items():
@@ -157,28 +161,32 @@ class DataCollector:
             f"{round(100*non_broken_cnt/changed_tests_cnt, 1)}% ({non_broken_cnt}/{changed_tests_cnt}) of changed tests were not broken!"
         )
         print(f"Found {len(repaired_tests)} repaired tests")
-        (self.output_path / "repaired_tests.json").write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
+        repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
 
         return repaired_tests
 
-    def find_changed_files(self, commits):
+    def find_changed_sut_classes(self, commits):
+        changed_sut_classes_path = self.output_path / "changed_sut_classes.json"
+        if changed_sut_classes_path.exists():
+            print("Changed SUT classes already exists, skipping ...")
+            return
+
         repo = ghapi.get_repo(self.repo_name)
         changed_test_classes = pd.read_csv(self.output_path / "changed_test_classes.csv")
         changed_test_class_paths = set(
             changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist()
         )
-        changed_files = []
-        print("Finding changed files in repair commits")
-        for b_commit, a_commit in commits:
+        changed_classes = []
+        for b_commit, a_commit in tqdm(commits, ascii=True, desc="Finding changed classes in the SUT"):
             diffs = self.get_java_diffs(repo.commit(a_commit))
-            commit_changed_files = []
+            commit_changed_classes = []
             for diff in diffs:
                 if diff.a_path in changed_test_class_paths or diff.b_path in changed_test_class_paths:
                     continue
-                commit_changed_files.append((diff.b_path, diff.a_path))
-            changed_files.append({"bCommit": b_commit, "aCommit": a_commit, "changedClasses": commit_changed_files})
+                commit_changed_classes.append((diff.b_path, diff.a_path))
+            changed_classes.append({"bCommit": b_commit, "aCommit": a_commit, "changedClasses": commit_changed_classes})
 
-        (self.output_path / "changed_sut_classes.json").write_text(json.dumps(changed_files, indent=2, sort_keys=False))
+        changed_sut_classes_path.write_text(json.dumps(changed_classes, indent=2, sort_keys=False))
 
     def make_dataset(self, repaired_tests):
         class_change_repo = ClassChangesRepository(self.output_path)

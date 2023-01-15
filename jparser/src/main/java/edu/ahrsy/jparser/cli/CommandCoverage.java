@@ -9,16 +9,17 @@ import edu.ahrsy.jparser.entity.CommitChanges;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.spoon.Spoon;
-import edu.ahrsy.jparser.spoon.SpoonFactory;
 import edu.ahrsy.jparser.utils.GitAPI;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
-import org.eclipse.jgit.api.Git;
 import spoon.reflect.declaration.CtMethod;
 
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class CommandCoverage {
@@ -60,7 +61,7 @@ public class CommandCoverage {
       var bCommit = entry.getKey();
       var commitRepairs = entry.getValue();
       var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
-      var spoon = SpoonFactory.getOrCreateSpoon(srcPath, args.complianceLevel);
+      var spoon = new Spoon(srcPath, args.complianceLevel);
       var names = commitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
       var paths = commitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
       var executables = spoon.getExecutablesByName(names, paths)
@@ -98,8 +99,8 @@ public class CommandCoverage {
     for (var changedClasses : changedSUTClasses) {
       var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
       var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
-      var parser = new CommitDiffParser(SpoonFactory.getOrCreateSpoon(bSrcPath, args.complianceLevel),
-              SpoonFactory.getOrCreateSpoon(aSrcPath, args.complianceLevel));
+      var parser = new CommitDiffParser(new Spoon(bSrcPath, args.complianceLevel),
+              new Spoon(aSrcPath, args.complianceLevel));
       var commitClassChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
       var commitExecutableChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
       for (var changedClass : changedClasses.changedClasses) {
