@@ -29,6 +29,18 @@ class TestVerdict:
     def is_valid(self):
         return self.status in [TestVerdict.SUCCESS, TestVerdict.FAILURE, TestVerdict.COMPILE_ERR]
 
+    def is_broken(self):
+        return self.is_valid() and self.status != TestVerdict.SUCCESS
+
+    def succeeded(self):
+        return self.status == TestVerdict.SUCCESS
+
+    def to_dict(self):
+        return {
+            "status": self.status,
+            "error_lines": sorted(list(self.error_lines)) if self.error_lines is not None else None,
+        }
+
 
 def find_parent_pom(file_path):
     current_dir = file_path.parent
@@ -72,17 +84,17 @@ def parse_test_failure(log, test_class, test_method):
 
 def parse_invalid_execution(log):
     if "COMPILATION ERROR" in log:
-        return TestVerdict(TestVerdict.UNRELATED_COMPILE_ERR, set())
+        return TestVerdict(TestVerdict.UNRELATED_COMPILE_ERR, None)
     if "java.lang.AssertionError: Expected exception:" in log:
-        return TestVerdict(TestVerdict.EXPECTED_EXCEPTION_FAILURE, set())
+        return TestVerdict(TestVerdict.EXPECTED_EXCEPTION_FAILURE, None)
     if "java.lang.Exception: No tests found matching Method" in log:
-        return TestVerdict(TestVerdict.TEST_MATCH_FAILURE, set())
+        return TestVerdict(TestVerdict.TEST_MATCH_FAILURE, None)
     if "<<< ERROR!" in log:
-        return TestVerdict(TestVerdict.UNRELATED_FAILURE, set())
+        return TestVerdict(TestVerdict.UNRELATED_FAILURE, None)
     if "Could not resolve dependencies" in log or "Non-resolvable parent POM" in log:
-        return TestVerdict(TestVerdict.DEPENDENCY_ERROR, set())
+        return TestVerdict(TestVerdict.DEPENDENCY_ERROR, None)
 
-    return TestVerdict(TestVerdict.UNKNOWN, set())
+    return TestVerdict(TestVerdict.UNKNOWN, None)
 
 
 def run_cmd(cmd):

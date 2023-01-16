@@ -83,10 +83,9 @@ class DataCollector:
         changed_tests_verdicts = []
         repaired_tests = []
         (a_commit, changes) = change_group
-        a_commit_path = self.output_path / "commits" / a_commit
 
         lock.acquire()
-        ghapi.copy_commit_code(self.repo_name, a_commit)
+        a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit)
         lock.release()
 
         for _, change in changes.iterrows():
@@ -94,28 +93,33 @@ class DataCollector:
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "testClasses" / a_commit / test_a_path
             broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
-            log_path = (
-                self.output_path / "brokenExeLogs" / a_commit / original_file.stem / test_simple_name / test_a_path.parent
-            )
+            log_path = a_commit / original_file.stem / test_simple_name / test_a_path.parent
+            broken_log_path = self.output_path / "brokenExeLogs" / log_path
             executable_file = a_commit_path / test_a_path
             shutil.copyfile(str(broken_file), str(executable_file))
-            verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, log_path)
-            verdict_obj = {
-                "status": verdict.status,
-                "error_lines": None if not verdict.error_lines else sorted(list(verdict.error_lines)),
-            }
+            # To detect whether the test case is broken (needs repair)
+            before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, broken_log_path)
+            shutil.copyfile(str(original_file), str(executable_file))
+
+            after_verdict = None
+            repaired_log_path = self.output_path / "repairedExeLogs" / log_path
+            if before_verdict.is_broken():
+                # To detect whether test case is correctly repaired
+                after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, repaired_log_path)
+                if after_verdict.succeeded():
+                    change_obj = change.to_dict()
+                    change_obj["verdict"] = before_verdict.to_dict()
+                    repaired_tests.append(change_obj)
+
             changed_tests_verdicts.append(
                 {
                     "name": change["name"],
                     "aCommit": change["aCommit"],
-                    "verdict": verdict_obj,
+                    "verdict": before_verdict.to_dict(),
+                    "broken": before_verdict.is_broken(),
+                    "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
                 }
             )
-            if verdict.is_valid() and verdict.status != mvnp.TestVerdict.SUCCESS:
-                change_obj = change.to_dict()
-                change_obj["verdict"] = verdict_obj
-                repaired_tests.append(change_obj)
-            shutil.copyfile(str(original_file), str(executable_file))
 
         lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit)
@@ -151,14 +155,25 @@ class DataCollector:
                 repaired_tests.extend(repaired)
 
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
-        print(f"Executed {changed_tests_cnt} test cases! Verdict stats:")
-        verdict_df = pd.DataFrame({"verdict": [v["verdict"]["status"] for v in changed_tests_verdicts]})
+        print(f"Executed {changed_tests_cnt} test cases!")
+
+        verdict_df = pd.DataFrame(
+            {
+                "verdict": [v["verdict"]["status"] for v in changed_tests_verdicts],
+                "correctly_repaired": [v["correctly_repaired"] for v in changed_tests_verdicts],
+            }
+        )
+        print("Verdict stats:")
         for v, cnt in verdict_df["verdict"].value_counts().items():
             print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
 
-        non_broken_cnt = changed_tests_cnt - len(repaired_tests)
+        print("Correctly repaired stats:")
+        for v, cnt in verdict_df["correctly_repaired"].value_counts(dropna=False).items():
+            print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
+
+        repair_per = round(100 * len(repaired_tests) / changed_tests_cnt, 1)
         print(
-            f"{round(100*non_broken_cnt/changed_tests_cnt, 1)}% ({non_broken_cnt}/{changed_tests_cnt}) of changed tests were not broken!"
+            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correclty repaired!"
         )
         print(f"Found {len(repaired_tests)} repaired tests")
         repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
