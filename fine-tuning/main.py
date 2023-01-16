@@ -22,6 +22,7 @@ from utils import write_lines
 from encoders import *
 import json
 import sys
+import maven_parser as mvnp
 
 # TODO: Fix Tokenization
 
@@ -252,7 +253,7 @@ def train(gpu, args):
         # if args.rank == 0:
         #     save_model(model, optimizer, scheduler, valid_output_dir)
 
-        bleu_score, em = eval(model, args.valid_dataset, args, valid_output_dir)
+        bleu_score, em = eval(model, args.valid_dataset, args, valid_output_dir, args.output_dir)
         if args.scoring == "em":
             sel_score = em
         elif args.scoring == "bleu":
@@ -297,11 +298,11 @@ def test(gpu, args):
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on validation set")
-    bleu_score, em = eval(model, args.valid_dataset, args, best_checkpoint_path)
+    bleu_score, em = eval(model, args.valid_dataset, args, best_checkpoint_path, args.output_dir)
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on test set")
-    bleu_score, em = eval(model, args.test_dataset, args, args.output_dir)
+    bleu_score, em = eval(model, args.test_dataset, args, args.output_dir, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "em": em}
 
     save_stats(args)
@@ -325,7 +326,36 @@ def compute_single_bleus(targets, preds, output_dir):
     return bleus
 
 
-def eval(model, dataset, args, output_dir):
+def plaus_score(references, predictions, base_output_dir, data_dir):
+    with open(f"{base_output_dir}/splits/test.json", 'r') as f:
+        test_objs = json.load(f)
+
+    for i, obj in enumerate(test_objs):
+        git_dir = data_dir / obj['bcommit']
+        test_file = git_dir / 'code' / obj['path']
+        ref = references[i]
+        pred = predictions[i]
+        with open(test_file, 'rw') as orig_file:
+            contents = orig_file.read()
+            contents.replace(obj['input'], pred)
+            orig_file.write(contents)
+        test_simple_name = obj["name"].split(".")[-1].replace("()", "")
+        log_path = (
+                base_output_dir
+                / "testLogs"
+                / obj['a_commit']
+                / test_simple_name
+        )
+        verdict = mvnp.compile_and_run_test(git_dir, test_file, test_simple_name, log_path)
+        # update file, replace reference with prediction
+        # run
+        # reset repo
+        print(obj['head_tag'])
+
+    return 0
+
+
+def eval(model, dataset, args, output_dir, base_output_dir):
     logger = logging.getLogger(args.pname)
     if args.rank == 0:
         logger.info(f"Eval data: {len(dataset)}")
@@ -416,6 +446,8 @@ def eval(model, dataset, args, output_dir):
         write_lines(bleus_file, [str(bleu) for bleu in all_bleus])
 
         bleu_score, em = score(str(target_file), str(pred_file))
+
+        plausibility = plaus_score(str(target_file), str(pred_file), base_output_dir, Path(args.dataset_dir))
 
         logger.info(f"*** BLEU: {bleu_score} ; EM: {em} *** Eval completed in: {datetime.now() - start}")
 
