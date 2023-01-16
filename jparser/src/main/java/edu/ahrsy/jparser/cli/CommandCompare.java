@@ -9,6 +9,7 @@ import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
@@ -21,6 +22,11 @@ public class CommandCompare {
   public Integer complianceLevel = 10;
 
   public static void cCompare(CommandCompare args) {
+    var changedTestsPath = Path.of(args.outputPath, "changed_tests.json");
+    if (Files.exists(changedTestsPath)) {
+      System.out.println("Changed tests already exists, skipping ...");
+      return;
+    }
     var allChanges = IOUtils.readCsv(Path.of(args.outputPath, "changed_test_classes.csv").toString(),
             ChangedTestClass.class);
     var allSingleHunkTestChanges = new ArrayList<SingleHunkTestChange>();
@@ -45,7 +51,7 @@ public class CommandCompare {
     }
     var gson = IOUtils.createGsonInstance();
     var outputJson = gson.toJson(allSingleHunkTestChanges);
-    IOUtils.saveFile(Path.of(args.outputPath, "changed_tests.json"), outputJson);
+    IOUtils.saveFile(changedTestsPath, outputJson);
     System.out.printf("Found %d single-hunk changed tests%n", allSingleHunkTestChanges.size());
   }
 }

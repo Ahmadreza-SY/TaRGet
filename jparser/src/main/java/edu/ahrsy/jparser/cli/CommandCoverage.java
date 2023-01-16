@@ -9,16 +9,17 @@ import edu.ahrsy.jparser.entity.CommitChanges;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.spoon.Spoon;
-import edu.ahrsy.jparser.spoon.SpoonFactory;
+import edu.ahrsy.jparser.utils.GitAPI;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import spoon.reflect.declaration.CtMethod;
 
 import java.nio.file.Path;
-import java.util.*;
-import java.util.function.Function;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class CommandCoverage {
@@ -32,6 +33,9 @@ public class CommandCoverage {
   private static final Gson gson = IOUtils.createGsonInstance();
 
   public static void cCoverage(CommandCoverage args) {
+    var repoDir = Path.of(args.outputPath, "clone");
+    GitAPI.cleanupWorktrees(repoDir);
+
     var repairedTestsJSON = IOUtils.readFile(Path.of(args.outputPath, "repaired_tests.json"));
     List<SingleHunkTestChange> repairedTests = gson.fromJson(repairedTestsJSON,
             new TypeToken<ArrayList<SingleHunkTestChange>>() {
@@ -46,6 +50,7 @@ public class CommandCoverage {
   }
 
   private static void createCallGraphs(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
+    var repoDir = Path.of(args.outputPath, "clone");
     var repairedTestsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .setInitialMax(repairedTests.size())
@@ -55,8 +60,8 @@ public class CommandCoverage {
     for (var entry : repairedTestsMap.entrySet()) {
       var bCommit = entry.getKey();
       var commitRepairs = entry.getValue();
-      var srcPath = Path.of(args.outputPath, "commits", bCommit).toString();
-      var spoon = SpoonFactory.getOrCreateSpoon(srcPath, args.complianceLevel);
+      var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
+      var spoon = new Spoon(srcPath, args.complianceLevel);
       var names = commitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
       var paths = commitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
       var executables = spoon.getExecutablesByName(names, paths)
@@ -77,11 +82,13 @@ public class CommandCoverage {
         IOUtils.saveFile(graphFile, graphJSON);
         pb.step();
       }
+      GitAPI.removeWorktree(repoDir, bCommit);
     }
     pb.close();
   }
 
   private static void extractChanges(CommandCoverage args, List<CommitChangedClasses> changedSUTClasses) {
+    var repoDir = Path.of(args.outputPath, "clone");
     var SUTClassChanges = new ArrayList<CommitChanges>();
     var SUTExecutableChanges = new ArrayList<CommitChanges>();
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
@@ -90,10 +97,10 @@ public class CommandCoverage {
             .setTaskName("Extracting SUT changes")
             .build();
     for (var changedClasses : changedSUTClasses) {
-      var bSrcPath = Path.of(args.outputPath, "commits", changedClasses.bCommit).toString();
-      var aSrcPath = Path.of(args.outputPath, "commits", changedClasses.aCommit).toString();
-      var parser = new CommitDiffParser(SpoonFactory.getOrCreateSpoon(bSrcPath, args.complianceLevel),
-              SpoonFactory.getOrCreateSpoon(aSrcPath, args.complianceLevel));
+      var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
+      var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
+      var parser = new CommitDiffParser(new Spoon(bSrcPath, args.complianceLevel),
+              new Spoon(aSrcPath, args.complianceLevel));
       var commitClassChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
       var commitExecutableChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
       for (var changedClass : changedClasses.changedClasses) {
@@ -104,6 +111,8 @@ public class CommandCoverage {
       }
       SUTClassChanges.add(commitClassChanges);
       SUTExecutableChanges.add(commitExecutableChanges);
+      GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
+      GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
     }
     pb.close();
     IOUtils.saveFile(Path.of(args.outputPath, "sut_class_changes.json"), gson.toJson(SUTClassChanges));
