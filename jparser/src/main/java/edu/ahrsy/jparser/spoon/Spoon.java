@@ -191,7 +191,8 @@ public class Spoon {
         return typeFile.equals(file);
       }
     };
-    return spoon.getModel().getRootPackage().getElements(typeFileFilter).get(0);
+    var elements = spoon.getModel().getRootPackage().getElements(typeFileFilter);
+    return elements.isEmpty() ? null : elements.get(0);
   }
 
   public static Set<Integer> getCommentsLineNumbers(CtNamedElement element) {

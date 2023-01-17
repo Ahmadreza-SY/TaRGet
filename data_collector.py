@@ -93,7 +93,7 @@ class DataCollector:
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "testClasses" / a_commit / test_a_path
             broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
-            log_path = a_commit / original_file.stem / test_simple_name / test_a_path.parent
+            log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
             broken_log_path = self.output_path / "brokenExeLogs" / log_path
             executable_file = a_commit_path / test_a_path
             shutil.copyfile(str(broken_file), str(executable_file))

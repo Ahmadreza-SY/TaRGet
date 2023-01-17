@@ -13,13 +13,13 @@ import edu.ahrsy.jparser.utils.GitAPI;
 import edu.ahrsy.jparser.utils.IOUtils;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import spoon.reflect.declaration.CtMethod;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class CommandCoverage {
@@ -49,21 +49,40 @@ public class CommandCoverage {
     extractChanges(args, changedSUTClasses);
   }
 
+  private static Integer countNumberOfGraphFiles(Path graphsPath) {
+    try {
+      try (var files = Files.find(graphsPath,
+              Integer.MAX_VALUE,
+              (path, bfa) -> path.toString().endsWith("graph.json"))) {
+        return (int) files.count();
+      }
+    } catch (IOException e) {
+      return 0;
+    }
+  }
+
   private static void createCallGraphs(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
     var repoDir = Path.of(args.outputPath, "clone");
-    var repairedTestsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
+    var aCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.aCommit));
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .setInitialMax(repairedTests.size())
             .showSpeed()
             .setTaskName("Computing call graphs")
             .build();
-    for (var entry : repairedTestsMap.entrySet()) {
-      var bCommit = entry.getKey();
-      var commitRepairs = entry.getValue();
+    for (var aEntry : aCommitRepairsMap.entrySet()) {
+      var aCommit = aEntry.getKey();
+      var aCommitRepairs = aEntry.getValue();
+      var commitGraphsPath = Path.of(args.outputPath, "callGraphs", aCommit);
+      if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
+        pb.stepBy(aCommitRepairs.size());
+        continue;
+      }
+      // Each aCommit can only have exactly one bCommit
+      var bCommit = aCommitRepairs.get(0).bCommit;
+      var names = aCommitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
+      var paths = aCommitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
       var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
       var spoon = new Spoon(srcPath, args.complianceLevel);
-      var names = commitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
-      var paths = commitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
       var executables = spoon.getExecutablesByName(names, paths)
               .stream()
               .map(m -> (CtMethod<?>) m)
@@ -72,9 +91,7 @@ public class CommandCoverage {
         var callGraph = new CallGraph(executable, spoon);
         callGraph.createCallGraph();
         var graphJSON = callGraph.toJSON(srcPath);
-        var graphFile = Path.of(args.outputPath,
-                "callGraphs",
-                bCommit,
+        var graphFile = Path.of(commitGraphsPath.toString(),
                 executable.getTopLevelType().getSimpleName(),
                 executable.getSimpleName(),
                 Path.of(Spoon.getRelativePath(executable, srcPath)).getParent().toString(),
