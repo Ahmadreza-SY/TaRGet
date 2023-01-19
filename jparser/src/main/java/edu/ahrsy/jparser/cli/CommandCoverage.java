@@ -105,6 +105,13 @@ public class CommandCoverage {
   }
 
   private static void extractChanges(CommandCoverage args, List<CommitChangedClasses> changedSUTClasses) {
+    var SUTClassChangesPath = Path.of(args.outputPath, "sut_class_changes.json");
+    var SUTExecutableChangesPath = Path.of(args.outputPath, "sut_method_changes.json");
+    if (Files.exists(SUTClassChangesPath) && Files.exists(SUTExecutableChangesPath)) {
+      System.out.println("SUT class and method changes already exist, skipping ...");
+      return;
+    }
+    
     var repoDir = Path.of(args.outputPath, "clone");
     var SUTClassChanges = new ArrayList<CommitChanges>();
     var SUTExecutableChanges = new ArrayList<CommitChanges>();
@@ -132,7 +139,8 @@ public class CommandCoverage {
       GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
     }
     pb.close();
-    IOUtils.saveFile(Path.of(args.outputPath, "sut_class_changes.json"), gson.toJson(SUTClassChanges));
-    IOUtils.saveFile(Path.of(args.outputPath, "sut_method_changes.json"), gson.toJson(SUTExecutableChanges));
+    
+    IOUtils.saveFile(SUTClassChangesPath, gson.toJson(SUTClassChanges));
+    IOUtils.saveFile(SUTExecutableChangesPath, gson.toJson(SUTExecutableChanges));
   }
 }
