@@ -29,6 +29,9 @@ class TestVerdict:
     def is_valid(self):
         return self.status in [TestVerdict.SUCCESS, TestVerdict.FAILURE, TestVerdict.COMPILE_ERR]
 
+    def ran_to_completion(self):
+        return self.status in [TestVerdict.SUCCESS, TestVerdict.FAILURE]
+
 
 def find_parent_pom(file_path):
     current_dir = file_path.parent
