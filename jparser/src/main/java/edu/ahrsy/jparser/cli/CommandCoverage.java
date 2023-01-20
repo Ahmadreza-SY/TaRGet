@@ -87,6 +87,7 @@ public class CommandCoverage {
         var commitGraphsPath = Path.of(args.outputPath, "callGraphs", aCommit);
         if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
           pb.stepBy(aCommitRepairs.size());
+          latch.countDown();
           return;
         }
         // Each aCommit can only have exactly one bCommit
@@ -112,6 +113,7 @@ public class CommandCoverage {
           pb.step();
         }
         GitAPI.removeWorktree(repoDir, bCommit);
+        latch.countDown();
       });
     }
     try {
@@ -119,6 +121,7 @@ public class CommandCoverage {
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
+    executor.shutdown();
     pb.close();
   }
 
@@ -131,8 +134,8 @@ public class CommandCoverage {
     }
 
     var repoDir = Path.of(args.outputPath, "clone");
-    var SUTClassChanges = new ArrayList<CommitChanges>();
-    var SUTExecutableChanges = new ArrayList<CommitChanges>();
+    var SUTClassChanges = Collections.synchronizedList(new ArrayList<CommitChanges>());
+    var SUTExecutableChanges = Collections.synchronizedList(new ArrayList<CommitChanges>());
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .setInitialMax(changedSUTClasses.stream().mapToInt(c -> c.changedClasses.size()).sum())
             .showSpeed()
@@ -141,12 +144,11 @@ public class CommandCoverage {
     int procCnt = Runtime.getRuntime().availableProcessors();
     var executor = Executors.newFixedThreadPool(procCnt);
     var latch = new CountDownLatch(changedSUTClasses.size());
-    List<Future<ImmutablePair<CommitChanges, CommitChanges>>> futures = new ArrayList<>();
 
     for (var changedClasses : changedSUTClasses) {
       // WARN: rare race condition -> same bCommit for two aCommits
       // when one aCommit is analyzing code and second aCommit removes code
-      Future<ImmutablePair<CommitChanges, CommitChanges>> future = executor.submit(() -> {
+      executor.submit(() -> {
         var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
         var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
         var parser = new CommitDiffParser(new Spoon(bSrcPath, args.complianceLevel),
@@ -159,20 +161,16 @@ public class CommandCoverage {
           commitExecutableChanges.addChanges(parser.detectExecutablesChanges(changedClass));
           pb.step();
         }
+        SUTClassChanges.add(commitClassChanges);
+        SUTExecutableChanges.add(commitExecutableChanges);
         GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
         GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
-        return new ImmutablePair<>(commitClassChanges, commitExecutableChanges);
+        latch.countDown();
       });
-      futures.add(future);
     }
     try {
       latch.await();
-      for (var future : futures) {
-        var result = future.get();
-        SUTClassChanges.add(result.getLeft());
-        SUTExecutableChanges.add(result.getRight());
-      }
-    } catch (InterruptedException | ExecutionException e) {
+    } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
     executor.shutdown();
