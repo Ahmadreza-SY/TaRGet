@@ -6,6 +6,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import spoon.reflect.declaration.CtExecutable;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,7 +43,9 @@ public class CommitDiffParser {
   private String getExecutableLocalName(CtExecutable<?> executable) {
     var parentName = Spoon.getParentQualifiedName(executable);
     var items = parentName.split("\\$");
-    var simpleSignature = Spoon.getSimpleSignature(executable);
+    var signature = executable.getSignature();
+    var simpleSignature = Spoon.getSimpleSignature(executable)
+            .replaceFirst("\\(.*\\)", Matcher.quoteReplacement(signature.substring(signature.indexOf('('))));
     if (items.length == 1) return simpleSignature;
     return String.format("%s.%s", String.join(".", Arrays.copyOfRange(items, 1, items.length)), simpleSignature);
   }
@@ -114,10 +118,10 @@ public class CommitDiffParser {
     var bClass = bSpoon.getTopLevelTypeByFile(changedFile.getLeft());
     var aClass = aSpoon.getTopLevelTypeByFile(changedFile.getRight());
     if (bClass == null || aClass == null) {
-      var aCommit = aSpoon.srcPath.substring(aSpoon.srcPath.lastIndexOf("/") + 1);
+      /*var aCommit = aSpoon.srcPath.substring(aSpoon.srcPath.lastIndexOf("/") + 1);
       System.out.printf("%nCould not find top level type by file: aCommit %s ; file %s%n",
               aCommit,
-              changedFile.getLeft());
+              changedFile.getLeft());*/
       return null;
     }
 
