@@ -203,12 +203,45 @@ class DataCollector:
 
         changed_sut_classes_path.write_text(json.dumps(changed_classes, indent=2, sort_keys=False))
 
+    def remove_common_hunks(self, class_changes, method_changes):
+        def get_hunk_lines(hunk):
+            source_lines = set([c["lineNo"] for c in hunk.get("sourceChanges", [])])
+            target_lines = set([c["lineNo"] for c in hunk.get("targetChanges", [])])
+            return source_lines, target_lines
+
+        if len(method_changes) == 0:
+            return class_changes
+
+        result = []
+        for class_change in class_changes:
+            common_hunks_i = set()
+            for method_change in method_changes:
+                if class_change["filePath"] != method_change["filePath"]:
+                    continue
+                method_lines = [get_hunk_lines(h) for h in method_change["hunks"]]
+                method_source_lines = set.union(*[l[0] for l in method_lines])
+                method_target_lines = set.union(*[l[1] for l in method_lines])
+                class_hunk_lines = [get_hunk_lines(h) for h in class_change["hunks"]]
+                for i, lines in enumerate(class_hunk_lines):
+                    if (
+                        len(lines[0].intersection(method_source_lines)) > 0
+                        or len(lines[1].intersection(method_target_lines)) > 0
+                    ):
+                        common_hunks_i.add(i)
+
+            uncommon_hunks = [h for i, h in enumerate(class_change["hunks"]) if i not in common_hunks_i]
+            if len(uncommon_hunks) > 0:
+                class_change["hunks"] = uncommon_hunks
+                result.append(class_change)
+
+        return result
+
     def make_dataset(self, repaired_tests):
         class_change_repo = ClassChangesRepository(self.output_path)
         method_change_repo = MethodChangesRepository(self.output_path)
         zero_cov_cnt = 0
         dataset = []
-        for repair in repaired_tests:
+        for i, repair in enumerate(repaired_tests):
             _repair = copy.deepcopy(repair)
             covered_class_changes = class_change_repo.get_covered_changes(_repair)
             covered_method_changes = method_change_repo.get_covered_changes(_repair)
@@ -216,8 +249,10 @@ class DataCollector:
                 zero_cov_cnt += 1
                 continue
 
-            _repair["covered_class_changes"] = covered_class_changes
-            _repair["covered_method_changes"] = covered_method_changes
+            _repair["coveredClassChanges"] = self.remove_common_hunks(covered_class_changes, covered_method_changes)
+            _repair["coveredMethodChanges"] = covered_method_changes
+            _repair["aCommitTime"] = ghapi.get_commit_time(_repair["aCommit"], self.repo_name)
+            _repair["ID"] = f"{self.repo_name}:{i}"
             dataset.append(_repair)
 
         zero_cov_per = round(100 * zero_cov_cnt / len(repaired_tests), 1)

@@ -4,14 +4,26 @@ from pathlib import Path
 from encoders.encoders import BaseDataEncoder
 
 
+class Tokens:
+    BREAKAGE = "<breakage>"
+    TEST_CONTEXT = "<testContext>"
+    COVERED_CONTEXT = "<coveredContext>"
+    DELETE = "<del>"
+    ADD = "<add>"
+
+
 class TestRepairDataEncoder(BaseDataEncoder):
+    def __init__(self, args):
+        super().__init__(args)
+        self.tokenizer.add_tokens([Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD])
+
     def split_by_tag(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
         for project in projects:
-            project_ds = ds[ds["project"] == project].iloc[::-1].reset_index(drop=True)
+            project_ds = ds[ds["project"] == project].sort_values("aCommitTime").reset_index(drop=True)
 
-            dup_ind = project_ds[~project_ds["base_tag"].duplicated()].index.tolist()[1:]
+            dup_ind = project_ds[~project_ds["aCommit"].duplicated()].index.tolist()[1:]
             train_size = int(self.args.train_size * len(project_ds))
             train_dup_ind = [i for i in dup_ind if i <= (train_size - 1)]
             if len(train_dup_ind) == 0:
@@ -44,10 +56,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
         pass
 
     def preprocess(self, ds):
-        self.log(f"Preprocessing project {ds.iloc[0]['project']} ( original size {len(ds)} )")
-        before_len = len(ds)
-        ds = ds[ds["covered_changes"].map(len) > 0].reset_index(drop=True)
-        self.log(f"Removed {before_len - len(ds)} rows due to zero change coverage.")
         return ds
 
     def load_dataset(self):
@@ -69,7 +77,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
             for project_ds_path in ds_path.rglob("dataset.json"):
                 project_ds = pd.read_json(project_ds_path)
                 project_ds["project"] = project_ds_path.parent.name
-                project_ds["ID"] = [f"{i}:{r['project']}" for i, r in project_ds.iterrows()]
                 project_ds = self.preprocess(project_ds)
                 if len(project_ds) == 0:
                     continue
@@ -103,14 +110,3 @@ class TestRepairDataEncoder(BaseDataEncoder):
         self.log(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / ds_len, 1)} %)")
 
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
-
-
-class BodyDataEncoder(TestRepairDataEncoder):
-    def preprocess(self, ds):
-        ds = super().preprocess(ds)
-        ds["before_repair_body"] = ds["before_repair_body"].apply(lambda b: b[1:-1] if b.startswith("{") else b)
-        ds["after_repair_body"] = ds["after_repair_body"].apply(lambda b: b[1:-1] if b.startswith("{") else b)
-        before_len = len(ds)
-        ds = ds[ds["before_repair_body"] != ds["after_repair_body"]].reset_index(drop=True)
-        self.log(f"Removed {before_len - len(ds)} rows due to same test body before and after repair.")
-        return ds
