@@ -55,7 +55,7 @@ def main():
         type=str,
         choices=["repaired_body", "repair_changes_hsep", "repair_changes_stsep", "repair_changes_tok"],
     )
-    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em", "sr", "cr"])
+    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em", "sr"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
     parser.add_argument("-m", "--max_seq", required=True, type=int)
@@ -255,27 +255,24 @@ def train(gpu, args):
         # if args.rank == 0:
         #     save_model(model, optimizer, scheduler, valid_output_dir)
 
-        bleu_score, em, sr, cr = eval(model, args.valid_dataset, args, valid_output_dir, args.output_dir)
+        bleu_score, em, sr = eval(model, args.valid_dataset, args, valid_output_dir, args.output_dir)
         if args.scoring == "em":
             sel_score = em
         elif args.scoring == "bleu":
             sel_score = bleu_score
         elif args.scoring == "sr":
             sel_score = sr
-        elif args.scoring == "cr":
-            sel_score = cr
         if sel_score > args.best_checkpoint[0]:
             args.best_checkpoint = (sel_score, epoch)
             if args.rank == 0:
-                logger.info(f"Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em} ; SR {sr} ; CR {cr}")
-                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em, "sr": sr, "cr": cr}
+                logger.info(f"Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em} ; SR {sr}")
+                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em, "sr": sr}
                 save_model(model, optimizer, scheduler, args.output_dir / f"checkpoint-best")
 
         valid_time = datetime.now() - valid_start
         epoch_stats["bleu"] = bleu_score
         epoch_stats["em"] = em
         epoch_stats["sr"] = sr
-        epoch_stats["cr"] = cr
         epoch_stats["valid_duration"] = str(valid_time)
         args.stats["training_stats"]["epochs"].append(epoch_stats)
         elapsed_time += valid_time
@@ -306,12 +303,12 @@ def test(gpu, args):
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on validation set")
-    bleu_score, em, sr, cr = eval(model, args.valid_dataset, args, best_checkpoint_path, args.output_dir)
+    bleu_score, em, sr = eval(model, args.valid_dataset, args, best_checkpoint_path, args.output_dir)
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on test set")
-    bleu_score, em, sr, cr = eval(model, args.test_dataset, args, args.output_dir, args.output_dir)
-    args.stats["test_results"] = {"bleu": bleu_score, "em": em, "sr": sr, "cr": cr}
+    bleu_score, em, sr = eval(model, args.test_dataset, args, args.output_dir, args.output_dir)
+    args.stats["test_results"] = {"bleu": bleu_score, "em": em, "sr": sr}
 
     save_stats(args)
 
@@ -340,7 +337,8 @@ def plaus_score(predictions, base_output_dir, data_dir):
 
     git_dir = base_output_dir / "git"
 
-    runs_to_completion, successes = 0, 0
+    successes = 0
+    verdicts = []
 
     for i, obj in enumerate(test_objs):
         if not git_dir.exists() or not git_dir.stat().st_size > 0:
@@ -372,16 +370,16 @@ def plaus_score(predictions, base_output_dir, data_dir):
         )
         verdict = mvnp.compile_and_run_test(clone_dir, test_file, test_simple_name, log_path)
 
-        if verdict.ran_to_completion():
-            runs_to_completion += 1
-            if verdict.status == verdict.SUCCESS:
-                successes += 1
+        verdicts.append(verdict.status)
+
+        if verdict.status == verdict.SUCCESS:
+            successes += 1
 
         git_repo.git.reset('--hard')
 
     shutil.rmtree(base_output_dir / "testLogs")
 
-    return successes / len(test_objs), runs_to_completion / len(test_objs)
+    return successes / len(test_objs), verdicts
 
 
 def eval(model, dataset, args, output_dir, base_output_dir):
@@ -476,18 +474,20 @@ def eval(model, dataset, args, output_dir, base_output_dir):
 
         bleu_score, em = score(str(target_file), str(pred_file))
 
-        success_rate, completes_rate = plaus_score(str(target_file), base_output_dir, Path(args.dataset_dir))
+        success_rate, verdicts = plaus_score(str(target_file), base_output_dir, Path(args.dataset_dir))
+        verdicts_file = output_dir / f"verdicts.txt"
+        write_lines(verdicts_file, verdicts)
 
-        logger.info(f"*** BLEU: {bleu_score} ; EM: {em} ; SR: {success_rate} ; CR: {completes_rate} *** "
+        logger.info(f"*** BLEU: {bleu_score} ; EM: {em} ; SR: {success_rate} *** "
                     f"Eval completed in: {datetime.now() - start}")
 
-        scores = [bleu_score, em, success_rate, completes_rate]
+        scores = [bleu_score, em, success_rate]
     else:
         scores = [None, None, None, None]
 
     dist.broadcast_object_list(scores, src=0)
-    bleu_score, em, sr, cr = scores[0], scores[1], scores[2], scores[3]
-    return bleu_score, em, sr, cr
+    bleu_score, em, sr = scores[0], scores[1], scores[2]
+    return bleu_score, em, sr
 
 
 if __name__ == "__main__":
