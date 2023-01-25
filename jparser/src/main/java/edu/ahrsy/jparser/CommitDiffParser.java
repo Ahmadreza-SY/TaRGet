@@ -43,16 +43,18 @@ public class CommitDiffParser {
   private String getExecutableLocalName(CtExecutable<?> executable) {
     var parentName = Spoon.getParentQualifiedName(executable);
     var items = parentName.split("\\$");
-    var signature = executable.getSignature();
-    var simpleSignature = Spoon.getSimpleSignature(executable)
-            .replaceFirst("\\(.*\\)", Matcher.quoteReplacement(signature.substring(signature.indexOf('('))));
+    var simpleSignature = Spoon.getSimpleSignature(executable);
     if (items.length == 1) return simpleSignature;
     return String.format("%s.%s", String.join(".", Arrays.copyOfRange(items, 1, items.length)), simpleSignature);
   }
 
   private List<Change> getCommonExecutableChanges(List<CtExecutable<?>> bExecutables,
           List<CtExecutable<?>> aExecutables) {
-    var bExecutablesMap = bExecutables.stream().collect(Collectors.toMap(this::getExecutableLocalName, m -> m));
+    var bExecutablesMap = bExecutables.stream()
+            .collect(Collectors.toMap(this::getExecutableLocalName, m -> m, (m1, m2) -> {
+              System.out.printf("%nMerging %s and %s and selecting the first%n", m1.getSignature(), m2.getSignature());
+              return m1;
+            }));
     var changes = new ArrayList<Change>();
     for (var aExecutable : aExecutables) {
       var aExecutableName = getExecutableLocalName(aExecutable);
@@ -102,6 +104,7 @@ public class CommitDiffParser {
       var executableChange = new Change(missingExecutableFile, Spoon.getUniqueName(missingExecutable));
       // If the most similar executable has higher similarity than the threshold, it's matched
       if (maxSimilarity > SimilarityChecker.SIM_THRESHOLD) {
+        if (!Spoon.codeIsModified(missingExecutable, mostSimilarExecutable)) continue;
         executableChange.extractHunks(missingExecutable, mostSimilarExecutable);
       }
       // Otherwise, the missing executable is deleted

@@ -30,7 +30,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
         broken_code = self.get_broken_code(row)
-        test_repr = broken_code if broken_code != "" else row["source"]["code"]
+        test_repr = broken_code if broken_code != "" else row["bSource"]["code"]
         vectors = vectorizer.fit_transform([test_repr] + [c["doc"] for c in changes])
         dense = vectors.todense()
         cosine_sim = (dense * dense[0].T).T.tolist()[0]
@@ -45,12 +45,12 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return ds
 
     def create_input(self, row, covered_changes):
-        test_code = row["source"]["code"]
+        test_code = row["bSource"]["code"]
         if "sourceChanges" not in row["hunk"]:
             test_context = test_code
         else:
-            breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["source"]["startLine"]
-            breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["source"]["startLine"]
+            breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+            breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
             TEST_CONTEXT_SIZE = 10
             backward_offset = TEST_CONTEXT_SIZE // 2
             forward_offset = TEST_CONTEXT_SIZE // 2
@@ -122,7 +122,7 @@ class HunksDataEncoder(PrioritizedChangesDataEncoder):
             source_lines.insert(0, Tokens.DELETE)
         if len(target_lines) > 0:
             target_lines.insert(0, Tokens.ADD)
-        annotated_doc = " ".join(source_lines + target_lines)
+        annotated_doc = " ".join([Tokens.HUNK] + source_lines + target_lines)
 
         return doc, annotated_doc
 

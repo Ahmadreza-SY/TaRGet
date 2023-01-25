@@ -12,6 +12,8 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class IOUtils {
   public static void deleteDir(Path dir) {
@@ -78,5 +80,17 @@ public class IOUtils {
       throw new RuntimeException(e);
     }
     return lines;
+  }
+
+  public static void awaitTerminationAfterShutdown(ExecutorService executor) {
+    executor.shutdown();
+    try {
+      var success = executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+      if (!success)
+        executor.shutdownNow();
+    } catch (InterruptedException ex) {
+      executor.shutdownNow();
+      ex.printStackTrace();
+    }
   }
 }

@@ -10,12 +10,15 @@ class Tokens:
     COVERED_CONTEXT = "<coveredContext>"
     DELETE = "<del>"
     ADD = "<add>"
+    HUNK = "<hunk>"
 
 
 class TestRepairDataEncoder(BaseDataEncoder):
     def __init__(self, args):
         super().__init__(args)
-        self.tokenizer.add_tokens([Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD])
+        self.tokenizer.add_tokens(
+            [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
+        )
 
     def split_by_tag(self, ds):
         projects = ds["project"].unique().tolist()

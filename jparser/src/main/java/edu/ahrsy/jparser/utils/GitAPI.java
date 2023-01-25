@@ -1,32 +1,43 @@
 package edu.ahrsy.jparser.utils;
 
-import org.apache.commons.io.FileUtils;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 public class GitAPI {
 
-  public static void cleanupWorktrees(Path repoDir) {
+  private static final Map<String, Integer> acquiredWorktrees = new HashMap<>();
+
+  public synchronized static void cleanupWorktrees(Path repoDir) {
     var worktreesDir = repoDir.getParent().resolve("commits");
     IOUtils.deleteDir(worktreesDir);
     runCommand(repoDir, "git", "worktree", "prune");
+    acquiredWorktrees.clear();
   }
 
-  public static Path createWorktree(Path repoDir, String commit) {
+  public synchronized static Path createWorktree(Path repoDir, String commit) {
     var worktreeDir = getWorktreeDir(repoDir, commit);
     if (Files.exists(worktreeDir))
       return worktreeDir;
+    var acqCnt = acquiredWorktrees.getOrDefault(commit, 0);
+    acquiredWorktrees.put(commit, acqCnt + 1);
     runCommand(repoDir, "git", "worktree", "add", worktreeDir.toString(), commit);
     return worktreeDir;
   }
 
-  public static void removeWorktree(Path repoDir, String commit) {
+  public synchronized static void removeWorktree(Path repoDir, String commit) {
+    var acqCnt = acquiredWorktrees.getOrDefault(commit, 0);
+    if (acqCnt > 1) {
+      acquiredWorktrees.put(commit, acqCnt - 1);
+      return;
+    }
     var worktreeDir = getWorktreeDir(repoDir, commit);
     IOUtils.deleteDir(worktreeDir);
     runCommand(repoDir, "git", "worktree", "prune");
+    acquiredWorktrees.remove(commit);
   }
 
   private static Path getWorktreeDir(Path repoDir, String commit) {

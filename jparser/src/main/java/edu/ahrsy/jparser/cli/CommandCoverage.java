@@ -20,11 +20,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
+
+import static edu.ahrsy.jparser.utils.IOUtils.awaitTerminationAfterShutdown;
 
 public class CommandCoverage {
   @Parameter(names = {"-o", "--output-path"}, description = "The root output folder of the repo's collected data",
@@ -76,18 +75,14 @@ public class CommandCoverage {
 
     int procCnt = Runtime.getRuntime().availableProcessors();
     var executor = Executors.newFixedThreadPool(procCnt);
-    var latch = new CountDownLatch(aCommitRepairsMap.size());
 
     for (var aEntry : aCommitRepairsMap.entrySet()) {
-      // WARN: rare race condition -> same bCommit for two aCommits
-      // when one aCommit is analyzing code and second aCommit removes code
       executor.submit(() -> {
         var aCommit = aEntry.getKey();
         var aCommitRepairs = aEntry.getValue();
         var commitGraphsPath = Path.of(args.outputPath, "callGraphs", aCommit);
         if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
           pb.stepBy(aCommitRepairs.size());
-          latch.countDown();
           return;
         }
         // Each aCommit can only have exactly one bCommit
@@ -113,15 +108,10 @@ public class CommandCoverage {
           pb.step();
         }
         GitAPI.removeWorktree(repoDir, bCommit);
-        latch.countDown();
       });
     }
-    try {
-      latch.await();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-    executor.shutdown();
+
+    awaitTerminationAfterShutdown(executor);
     pb.close();
   }
 
@@ -143,11 +133,8 @@ public class CommandCoverage {
             .build();
     int procCnt = Runtime.getRuntime().availableProcessors();
     var executor = Executors.newFixedThreadPool(procCnt);
-    var latch = new CountDownLatch(changedSUTClasses.size());
 
     for (var changedClasses : changedSUTClasses) {
-      // WARN: rare race condition -> same bCommit for two aCommits
-      // when one aCommit is analyzing code and second aCommit removes code
       executor.submit(() -> {
         var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
         var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
@@ -165,15 +152,10 @@ public class CommandCoverage {
         SUTExecutableChanges.add(commitExecutableChanges);
         GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
         GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
-        latch.countDown();
       });
     }
-    try {
-      latch.await();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-    executor.shutdown();
+
+    awaitTerminationAfterShutdown(executor);
     pb.close();
 
     IOUtils.saveFile(SUTClassChangesPath, gson.toJson(SUTClassChanges));
