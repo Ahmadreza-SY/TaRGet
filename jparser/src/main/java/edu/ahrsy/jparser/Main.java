@@ -4,7 +4,7 @@ import com.beust.jcommander.JCommander;
 import edu.ahrsy.jparser.cli.*;
 import edu.ahrsy.jparser.utils.IOUtils;
 
-public class Application {
+public class Main {
   private static final String COMPARE_CMD = "compare";
   private static final String COVERAGE_CMD = "coverage";
 

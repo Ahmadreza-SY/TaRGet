@@ -26,8 +26,6 @@ import maven_parser as mvnp
 import git
 import shutil
 
-# TODO: Fix Tokenization
-
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
     datefmt="%m-%d-%Y %H:%M:%S",
@@ -154,6 +152,7 @@ def run(gpu, args):
 def load_data(args):
     data_encoder = args.data_encoder_class(args)
     args.train_dataset, args.valid_dataset, args.test_dataset = data_encoder.load_dataset()
+    args.tokenizer = data_encoder.tokenizer
 
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
@@ -172,6 +171,7 @@ def train(gpu, args):
     # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
 
     model = model_class.from_pretrained(args.model_name_or_path)
+    model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(gpu)
     logger.info(f"Using device " + torch.cuda.get_device_name(gpu))
 
@@ -298,6 +298,7 @@ def test(gpu, args):
         logger.info(f"Loading best checkpoint")
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = model_class.from_pretrained(best_checkpoint_path)
+    model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
 
@@ -318,6 +319,9 @@ def compute_single_bleus(targets, preds, output_dir):
     target_file = output_dir / "temp_target.txt"
     pred_file = output_dir / "temp_pred.txt"
     for target, pred in zip(targets, preds):
+        if len(target) == 0:
+            bleus.append(100.0 if len(pred) == 0 else 0.0)
+            continue
         if len(pred) == 0:
             bleus.append(0.0)
             continue
@@ -389,7 +393,7 @@ def eval(model, dataset, args, output_dir, base_output_dir):
 
     start = datetime.now()
 
-    tokenizer = args.model_tokenizer_class.from_pretrained(args.model_name_or_path)
+    tokenizer = args.tokenizer
     model.eval()
     model_module = model.module if hasattr(model, "module") else model
     loader = create_loader(dataset, args, True)

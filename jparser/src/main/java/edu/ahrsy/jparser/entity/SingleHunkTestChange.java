@@ -2,7 +2,8 @@ package edu.ahrsy.jparser.entity;
 
 public class SingleHunkTestChange {
   public String name;
-  public TestSource source;
+  public TestSource bSource;
+  public TestSource aSource;
   public String bPath;
   public String aPath;
   public String bCommit;
@@ -10,14 +11,16 @@ public class SingleHunkTestChange {
   public Hunk hunk;
 
   public SingleHunkTestChange(String name,
-          TestSource source,
+          TestSource bSource,
+          TestSource aSource,
           String bPath,
           String aPath,
           String bCommit,
           String aCommit,
           Hunk hunk) {
     this.name = name;
-    this.source = source;
+    this.bSource = bSource;
+    this.aSource = aSource;
     this.bPath = bPath;
     this.aPath = aPath;
     this.bCommit = bCommit;

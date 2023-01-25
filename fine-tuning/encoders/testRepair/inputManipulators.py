@@ -1,9 +1,8 @@
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from .testRepair import BodyDataEncoder
+from .testRepair import TestRepairDataEncoder, Tokens
 
 
-class PrioritizedChangesDataEncoder(BodyDataEncoder):
+class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def remove_duplicate_documents(self, changes):
         unique_lines = set()
         unique_changes = []
@@ -13,18 +12,26 @@ class PrioritizedChangesDataEncoder(BodyDataEncoder):
             unique_lines.add(change["doc"])
         return unique_changes
 
-    def get_change_documents(self, row):
+    def get_covered_change_documents(self, row):
         pass
 
     def get_sort_key(self, changed_doc):
-        return (changed_doc["depth"], -changed_doc["tfidf_sim"])
+        return (changed_doc["depth"], changed_doc["element"], -changed_doc["tfidf_sim"])
+
+    def get_broken_code(self, row):
+        broken_code = ""
+        if "sourceChanges" in row["hunk"]:
+            broken_code = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
+        return broken_code
 
     def prioritize_changed_documents(self, row):
-        changes = self.get_change_documents(row)
+        changes = self.get_covered_change_documents(row)
         changes = self.remove_duplicate_documents(changes)
 
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
-        vectors = vectorizer.fit_transform([row["before_repair"]] + [c["doc"] for c in changes])
+        broken_code = self.get_broken_code(row)
+        test_repr = broken_code if broken_code != "" else row["bSource"]["code"]
+        vectors = vectorizer.fit_transform([test_repr] + [c["doc"] for c in changes])
         dense = vectors.todense()
         cosine_sim = (dense * dense[0].T).T.tolist()[0]
         for i, c in enumerate(changes):
@@ -37,195 +44,101 @@ class PrioritizedChangesDataEncoder(BodyDataEncoder):
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
         return ds
 
-    def create_input(self, test_code, covered_changes):
-        SEP_TOKEN = self.tokenizer.sep_token
-        return " ".join([test_code] + [SEP_TOKEN] + covered_changes)
+    def create_input(self, row, covered_changes):
+        test_code = row["bSource"]["code"]
+        if "sourceChanges" not in row["hunk"]:
+            test_context = test_code
+        else:
+            breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+            breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+            TEST_CONTEXT_SIZE = 10
+            backward_offset = TEST_CONTEXT_SIZE // 2
+            forward_offset = TEST_CONTEXT_SIZE // 2
+            test_lines = test_code.split("\n")
+            if breakge_start < backward_offset:
+                forward_offset += backward_offset - breakge_start
+            if breakge_end > len(test_lines) - 1 - forward_offset:
+                backward_offset += breakge_end - (len(test_lines) - 1 - forward_offset)
+
+            context_start = max(0, breakge_start - backward_offset)
+            context_end = min(len(test_lines) - 1, breakge_end + forward_offset)
+            test_context = " ".join(test_lines[context_start : (context_end + 1)])
+
+        return " ".join(
+            [Tokens.BREAKAGE, self.get_broken_code(row)]
+            + [Tokens.TEST_CONTEXT, test_context]
+            + [Tokens.COVERED_CONTEXT]
+            + [cc["annotated_doc"] for cc in covered_changes]
+        )
 
     def create_output(self, row):
-        SEP_TOKEN = self.tokenizer.sep_token
-        if self.args.ground_truth == "repaired_body":
-            return row["after_repair_body"]
-        elif self.args.ground_truth == "repair_changes_hsep":
-            return SEP_TOKEN.join(
-                [
-                    " ".join(
-                        [c["line"] for c in h.get("sourceChanges", [])] + [c["line"] for c in h.get("targetChanges", [])]
-                    )
-                    for h in row["repair_changes"]
-                ]
-            )
-        elif self.args.ground_truth == "repair_changes_stsep":
-            hunk_changes = []
-            for h in row["repair_changes"]:
-                src_changes = [c["line"] for c in h.get("sourceChanges", [])]
-                tr_changes = [c["line"] for c in h.get("targetChanges", [])]
-                line_changes = []
-                if len(src_changes) > 0:
-                    line_changes.append(" ".join(src_changes))
-                if len(tr_changes) > 0:
-                    line_changes.append(" ".join(tr_changes))
-                hunk_changes.append(SEP_TOKEN.join(line_changes))
-
-            return SEP_TOKEN.join(hunk_changes)
-        elif self.args.ground_truth == "repair_changes_tok":
-            hunk_changes = []
-            for h in row["repair_changes"]:
-                src_changes = [c["line"] for c in h.get("sourceChanges", [])]
-                tr_changes = [c["line"] for c in h.get("targetChanges", [])]
-                line_changes = []
-                if len(src_changes) > 0:
-                    line_changes.append("DEL " + " ".join(src_changes))
-                if len(tr_changes) > 0:
-                    line_changes.append("ADD " + " ".join(tr_changes))
-                hunk_changes.append(" ".join(line_changes))
-
-            return " ".join(hunk_changes)
+        repaired_code = ""
+        if "targetChanges" in row["hunk"]:
+            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+        return repaired_code
 
     def create_inputs_and_outputs(self, ds):
         self.log("Prioritizing changed documents and creating inputs ...")
-        included_change_p = []
+        included_change_cnt = 0
+        all_change_cnt = 0
         inputs = []
         for _, r in ds.iterrows():
-            pr_changes = len(r["prioritized_changes"])
+            pr_changes_cnt = len(r["prioritized_changes"])
             selected_changes = []
-            for i in range(pr_changes):
-                new_selected_changes = selected_changes + [r["prioritized_changes"][i]["doc"]]
-                new_inp = self.create_input(r["before_repair_body"], new_selected_changes)
+            for i in range(pr_changes_cnt):
+                new_selected_changes = selected_changes + [r["prioritized_changes"][i]]
+                new_inp = self.create_input(r, new_selected_changes)
                 e_new_inp = self.tokenizer.encode(new_inp)
                 if len(e_new_inp) <= self.args.max_seq:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:
-                selected_changes = [r["prioritized_changes"][0]["doc"]]
-            inputs.append(self.create_input(r["before_repair_body"], selected_changes))
-            included_change_p.append(len(selected_changes) / pr_changes)
+                selected_changes = [r["prioritized_changes"][0]]
+            inputs.append(self.create_input(r, selected_changes))
 
-        self.log(
-            f"On average, {round(100 * np.mean(included_change_p), 1)} % of covered changed documents are included in the input."
-        )
+            included_change_cnt += len(selected_changes)
+            all_change_cnt += pr_changes_cnt
+
+        included_change_p = round(100 * included_change_cnt / all_change_cnt, 1)
+        self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
+
         ds["input"] = inputs
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
         return ds
 
 
-class TopLinesDataEncoder(PrioritizedChangesDataEncoder):
-    def get_change_documents(self, row):
-        changes = []
-        for change in row["covered_changes"]:
+class HunksDataEncoder(PrioritizedChangesDataEncoder):
+    def create_hunk_document(self, hunk):
+        source_lines = []
+        target_lines = []
+        if "sourceChanges" in hunk:
+            source_lines = [l["line"] for l in hunk["sourceChanges"]]
+        if "targetChanges" in hunk:
+            target_lines = [l["line"] for l in hunk["targetChanges"]]
+
+        doc = " ".join(source_lines + target_lines)
+
+        if len(source_lines) > 0:
+            source_lines.insert(0, Tokens.DELETE)
+        if len(target_lines) > 0:
+            target_lines.insert(0, Tokens.ADD)
+        annotated_doc = " ".join([Tokens.HUNK] + source_lines + target_lines)
+
+        return doc, annotated_doc
+
+    def create_documents(self, covered_changes, element):
+        change_docs = []
+        for change in covered_changes:
             depth = change["depth"]
             for hunk in change["hunks"]:
-                hunk_changes = []
-                if "targetChanges" in hunk:
-                    hunk_changes.extend(hunk["targetChanges"])
-                if "sourceChanges" in hunk:
-                    hunk_changes.extend(hunk["sourceChanges"])
+                doc, annotated_doc = self.create_hunk_document(hunk)
+                change_docs.append({"doc": doc, "annotated_doc": annotated_doc, "depth": depth, "element": element})
+        return change_docs
 
-                changes.extend(
-                    [
-                        {"doc": line_change["line"], "depth": depth, "change_type": line_change["type"]}
-                        for line_change in hunk_changes
-                    ]
-                )
-
-        return changes
+    def get_covered_change_documents(self, row):
+        method_docs = self.create_documents(row["coveredMethodChanges"], 0)
+        class_docs = self.create_documents(row["coveredClassChanges"], 1)
+        return method_docs + class_docs
 
 
-class TopAddedLinesDataEncoder(PrioritizedChangesDataEncoder):
-    def get_change_documents(self, row):
-        added_changes = []
-        deleted_changes = []
-        for change in row["covered_changes"]:
-            depth = change["depth"]
-            for hunk in change["hunks"]:
-                hunk_changes = []
-                if "targetChanges" in hunk:
-                    hunk_changes.extend(hunk["targetChanges"])
-                if "sourceChanges" in hunk:
-                    hunk_changes.extend(hunk["sourceChanges"])
-
-                added_changes.extend(
-                    [
-                        {"doc": line_change["line"], "depth": depth, "change_type": line_change["type"]}
-                        for line_change in hunk_changes
-                        if line_change["type"] == "ADD"
-                    ]
-                )
-                deleted_changes.extend(
-                    [
-                        {"doc": line_change["line"], "depth": depth, "change_type": line_change["type"]}
-                        for line_change in hunk_changes
-                        if line_change["type"] == "DELETE"
-                    ]
-                )
-
-        if len(added_changes) > 0:
-            return added_changes
-        else:
-            return deleted_changes
-
-
-class TopHunksDataEncoder(PrioritizedChangesDataEncoder):
-    def get_change_documents(self, row):
-        changes = []
-        for change in row["covered_changes"]:
-            depth = change["depth"]
-            for hunk in change["hunks"]:
-                doc_lines = []
-                if "targetChanges" in hunk:
-                    doc_lines.extend([line_change["line"] for line_change in hunk["targetChanges"]])
-                if "sourceChanges" in hunk:
-                    doc_lines.extend([line_change["line"] for line_change in hunk["sourceChanges"]])
-
-                changes.append({"doc": " ".join(doc_lines), "depth": depth, "change_type": hunk["type"]})
-
-        return changes
-
-
-class TopHunksSepDataEncoder(TopHunksDataEncoder):
-    def create_input(self, test_code, covered_changes):
-        SEP_TOKEN = self.tokenizer.sep_token
-        return test_code + SEP_TOKEN + SEP_TOKEN.join(covered_changes)
-
-
-class TopAddedHunksDataEncoder(PrioritizedChangesDataEncoder):
-    def get_change_documents(self, row):
-        added_changes = []
-        deleted_changes = []
-        for change in row["covered_changes"]:
-            depth = change["depth"]
-            for hunk in change["hunks"]:
-                added_doc_lines = []
-                deleted_doc_lines = []
-                if "targetChanges" in hunk:
-                    added_doc_lines.extend(
-                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == "ADD"]
-                    )
-                    deleted_doc_lines.extend(
-                        [line_change["line"] for line_change in hunk["targetChanges"] if line_change["type"] == "DELETE"]
-                    )
-                if "sourceChanges" in hunk:
-                    added_doc_lines.extend(
-                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == "ADD"]
-                    )
-                    deleted_doc_lines.extend(
-                        [line_change["line"] for line_change in hunk["sourceChanges"] if line_change["type"] == "DELETE"]
-                    )
-
-                if len(added_doc_lines) > 0:
-                    added_changes.append({"doc": " ".join(added_doc_lines), "depth": depth, "change_type": hunk["type"]})
-                if len(deleted_doc_lines) > 0:
-                    deleted_changes.append({"doc": " ".join(deleted_doc_lines), "depth": depth, "change_type": hunk["type"]})
-
-        if len(added_changes) > 0:
-            return added_changes
-        else:
-            return deleted_changes
-
-
-class TopAddedHunksSepDataEncoder(TopAddedHunksDataEncoder):
-    def create_input(self, test_code, covered_changes):
-        SEP_TOKEN = self.tokenizer.sep_token
-        return test_code + SEP_TOKEN + SEP_TOKEN.join(covered_changes)
-
-
-BEST_INPUT_MANIPULATOR = TopHunksDataEncoder
+BEST_INPUT_MANIPULATOR = HunksDataEncoder

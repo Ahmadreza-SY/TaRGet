@@ -68,3 +68,13 @@ def get_file_versions(file_diff, commit, repo_name):
 def get_short_commit(commit, repo_name):
     repo = get_repo(repo_name)
     return repo.git.rev_parse(commit.hexsha, short=True)
+
+
+def get_commit_time(commit, repo_name):
+    repo = get_repo(repo_name)
+    return repo.commit(commit).committed_date
+
+
+def get_commit(commit_sha, repo_name):
+    repo = get_repo(repo_name)
+    return repo.commit(commit_sha)

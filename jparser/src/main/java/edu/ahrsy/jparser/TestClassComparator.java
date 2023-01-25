@@ -74,13 +74,21 @@ public class TestClassComparator {
     return new ArrayList<>(changedTests.values());
   }
 
-  public TestSource getBeforeTestSource(String name) {
-    var method = bSpoon.getTests()
+  private TestSource getTestSource(String name, Spoon spoon) {
+    var method = spoon.getTests()
             .stream()
             .filter(tm -> Spoon.getUniqueName(tm).equals(name))
             .findFirst()
             .orElseThrow();
     return TestSource.from(method);
+  }
+
+  public TestSource getBeforeTestSource(String name) {
+    return getTestSource(name, bSpoon);
+  }
+
+  public TestSource getAfterTestSource(String name) {
+    return getTestSource(name, aSpoon);
   }
 
   public List<Change> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {
