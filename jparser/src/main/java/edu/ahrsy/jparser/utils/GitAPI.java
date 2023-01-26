@@ -19,11 +19,11 @@ public class GitAPI {
   }
 
   public synchronized static Path createWorktree(Path repoDir, String commit) {
+    var acqCnt = acquiredWorktrees.getOrDefault(commit, 0);
+    acquiredWorktrees.put(commit, acqCnt + 1);
     var worktreeDir = getWorktreeDir(repoDir, commit);
     if (Files.exists(worktreeDir))
       return worktreeDir;
-    var acqCnt = acquiredWorktrees.getOrDefault(commit, 0);
-    acquiredWorktrees.put(commit, acqCnt + 1);
     runCommand(repoDir, "git", "worktree", "add", worktreeDir.toString(), commit);
     return worktreeDir;
   }
