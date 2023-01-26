@@ -335,41 +335,66 @@ def compute_single_bleus(targets, preds, output_dir):
     return bleus
 
 
-def plaus_score(predictions, base_output_dir, data_dir):
+def plaus_score(predictions, base_output_dir):
     with open(f"{base_output_dir}/splits/test.json", 'r') as f:
-        test_objs = json.load(f)
+        test_objs = json.load(f)[:len(predictions)]
+
+    test_pairs = [(predictions[i], test_objs[i]) for i in range(len(predictions))]
+    test_pairs.sort(key=lambda a: a[1]['aCommit'])
 
     git_dir = base_output_dir / "git"
+    if not git_dir.exists() or not git_dir.stat().st_size > 0:
+        os.mkdir(git_dir)
 
     successes = 0
     verdicts = []
+    curr_commit = None
+    curr_repo = None
 
-    for i, obj in enumerate(test_objs):
-        if not git_dir.exists() or not git_dir.stat().st_size > 0:
-            os.mkdir(git_dir)
-
-        clone_dir = git_dir / "alibaba" / "arthas"
+    for p, t in test_pairs:
+        repo_path = t["ID"].split(':')[0]
+        clone_dir = git_dir / repo_path
         if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
-            git_repo = git.Repo.clone_from(f"https://github.com/alibaba/arthas.git", clone_dir)
+            git_repo = git.Repo.clone_from(f"https://github.com/{repo_path}.git", clone_dir)
         else:
             git_repo = git.Repo(clone_dir)
 
-        git_repo.git.checkout(obj['head_tag'])
+        commit = t['aCommit']
+        if commit != curr_commit or repo_path != curr_repo:
+            git_repo.git.checkout(commit)
+            curr_repo = repo_path
+            curr_commit = commit
 
-        test_file = clone_dir / obj['path']
-        pred = predictions[i]
+        test_file = clone_dir / t['aPath']
+
         with open(test_file, 'r') as orig_file:
             contents = orig_file.read()
 
-        contents.replace(obj['input'], pred)
+        if len(t['hunk']['targetChanges']) > 0:
+            contents = contents.split('\n')
+            target_line = t['hunk']['targetChanges'][0]['lineNo'] - 1
+            for tc in t['hunk']['targetChanges'][::-1]:
+                del contents[tc['lineNo'] - 1]
+            contents.insert(target_line, p)
+            contents = '\n'.join(contents)
+
+        else:
+            test_method = t['bSource']['code'].split('\n')
+            start_line = t['bSource']['startLine']
+            target_line = t['hunk']['sourceChanges'][0]['lineNo'] - start_line
+            for tc in t['hunk']['sourceChanges'][::-1]:
+                del test_method[tc['lineNo'] - start_line]
+            test_method.insert(target_line, p)
+            contents.replace(t['aSource']['code'], '\n'.join(test_method))
+
         with open(test_file, 'w') as orig_file:
             orig_file.write(contents)
 
-        test_simple_name = obj["name"].split(".")[-1].replace("()", "")
+        test_simple_name = t["name"].split(".")[-1].replace("()", "")
         log_path = (
                 base_output_dir
                 / "testLogs"
-                / obj['head_tag']
+                / t['aCommit']
                 / test_simple_name
         )
         verdict = mvnp.compile_and_run_test(clone_dir, test_file, test_simple_name, log_path)
@@ -478,7 +503,7 @@ def eval(model, dataset, args, output_dir, base_output_dir):
 
         bleu_score, em = score(str(target_file), str(pred_file))
 
-        success_rate, verdicts = plaus_score(str(target_file), base_output_dir, Path(args.dataset_dir))
+        success_rate, verdicts = plaus_score(str(target_file), base_output_dir)
         verdicts_file = output_dir / f"verdicts.txt"
         write_lines(verdicts_file, verdicts)
 
@@ -487,7 +512,7 @@ def eval(model, dataset, args, output_dir, base_output_dir):
 
         scores = [bleu_score, em, success_rate]
     else:
-        scores = [None, None, None, None]
+        scores = [None, None, None]
 
     dist.broadcast_object_list(scores, src=0)
     bleu_score, em, sr = scores[0], scores[1], scores[2]
