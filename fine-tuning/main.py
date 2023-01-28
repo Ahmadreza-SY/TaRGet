@@ -17,11 +17,13 @@ from datetime import datetime, timedelta
 import torch.distributed as dist
 import logging
 import os
-from bleu import score, _bleu
+import bleu as bleu_scoring
 from utils import write_lines
 from encoders import *
 import json
 import sys
+import pandas as pd
+from joblib import Parallel, delayed
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -301,10 +303,8 @@ def test(gpu, args):
     save_stats(args)
 
 
-def compute_single_bleus(targets, preds, output_dir):
+def compute_single_bleus(targets, preds):
     bleus = []
-    target_file = output_dir / "temp_target.txt"
-    pred_file = output_dir / "temp_pred.txt"
     for target, pred in zip(targets, preds):
         if len(target) == 0:
             bleus.append(100.0 if len(pred) == 0 else 0.0)
@@ -312,14 +312,31 @@ def compute_single_bleus(targets, preds, output_dir):
         if len(pred) == 0:
             bleus.append(0.0)
             continue
-        write_lines(str(target_file), [target])
-        write_lines(str(pred_file), [pred])
-        bleu = _bleu(str(target_file), str(pred_file))
+        bleu = bleu_scoring._bleu([target], [pred])
         bleus.append(bleu)
-
-    target_file.unlink()
-    pred_file.unlink()
     return bleus
+
+
+def compute_scores(targets, preds, ids):
+    df = pd.DataFrame({"target": targets, "pred": preds, "id": ids})
+    eval_size = df["id"].nunique()
+    em_size = 0
+    best_preds = []
+    best_targets = []
+    for _, beam_outputs in df.groupby("id"):
+        best_pred = beam_outputs.iloc[0]["pred"]
+        for _, output in beam_outputs.iterrows():
+            if output["pred"] == output["target"]:
+                em_size += 1
+                best_pred = output["pred"]
+                break
+        best_preds.append(best_pred)
+        best_targets.append(beam_outputs.iloc[0]["target"])
+
+    em = round(em_size / eval_size * 100, 2)
+    bleu_score = bleu_scoring._bleu(best_targets, best_preds)
+
+    return bleu_score, em
 
 
 def eval(model, dataset, args, output_dir):
@@ -341,7 +358,8 @@ def eval(model, dataset, args, output_dir):
     local_preds = []
     local_targets = []
     local_ids = []
-    for step, data in enumerate(loader, 1):
+
+    for _, data in enumerate(loader, 1):
         source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
         source_ids, source_mask = source_ids.to(args.gpu), source_mask.to(args.gpu)
         if args.eval_full_beam:
@@ -353,28 +371,16 @@ def eval(model, dataset, args, output_dir):
                 use_cache=True,
                 early_stopping=True,
                 num_return_sequences=args.beam_size,
-                output_scores=True,
-                return_dict_in_generate=True,
             )
             # For prediction certainty
             # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
             curr_batch_size = target_ids.shape[0]
-            batch_preds = outputs.sequences.view(curr_batch_size, args.beam_size, -1).cpu()
-            pred_ids = torch.zeros((curr_batch_size, batch_preds.shape[2]))
-            for i, preds in enumerate(batch_preds):
-                em_ind = -1
-                for j, seq in enumerate(preds):
-                    seq_code = tokenizer.decode(seq, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    target_code = tokenizer.decode(
-                        target_ids[i], skip_special_tokens=True, clean_up_tokenization_spaces=False
-                    )
-                    if seq_code == target_code:
-                        em_ind = j
-                        break
-                if em_ind == -1:
-                    pred_ids[i] = preds[0]
-                else:
-                    pred_ids[i] = preds[em_ind]
+            batch_preds = outputs.view(curr_batch_size, args.beam_size, -1).cpu().tolist()
+            for i, beam_preds in enumerate(batch_preds):
+                for pred in beam_preds:
+                    local_preds.append(pred)
+                    local_targets.append(target_ids[i])
+                    local_ids.append(data_ids[i])
         else:
             pred_ids = model_module.generate(
                 input_ids=source_ids,
@@ -384,10 +390,9 @@ def eval(model, dataset, args, output_dir):
                 use_cache=True,
                 early_stopping=True,
             )
-
-        local_preds.extend(list(pred_ids.cpu()))
-        local_targets.extend(target_ids)
-        local_ids.extend(data_ids)
+            local_preds.extend(pred_ids.cpu().tolist())
+            local_targets.extend(target_ids)
+            local_ids.extend(data_ids)
 
     dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
@@ -399,20 +404,22 @@ def eval(model, dataset, args, output_dir):
         all_preds = [pred for sub in global_preds for pred in sub]
         all_ids = [pred for sub in global_ids for pred in sub]
         logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
-        target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        all_bleus = compute_single_bleus(target_codes, pred_codes, output_dir)
+        def decode(tokens):
+            return tokenizer.decode(tokens, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
+        pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
+        all_bleus = compute_single_bleus(target_codes, pred_codes)
 
-        target_file = output_dir / f"fixed_targets.txt"
+        target_file = output_dir / f"targets.txt"
         write_lines(target_file, target_codes)
-        pred_file = output_dir / f"fixed_preds.txt"
+        pred_file = output_dir / f"preds.txt"
         write_lines(pred_file, pred_codes)
         ids_file = output_dir / f"ids.txt"
         write_lines(ids_file, all_ids)
         bleus_file = output_dir / f"bleus.txt"
         write_lines(bleus_file, [str(bleu) for bleu in all_bleus])
 
-        bleu_score, em = score(str(target_file), str(pred_file))
+        bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
 
         logger.info(f"*** BLEU: {bleu_score} ; EM: {em} *** Eval completed in: {datetime.now() - start}")
 

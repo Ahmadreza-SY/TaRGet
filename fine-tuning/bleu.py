@@ -104,14 +104,10 @@ def compute_bleu(reference_corpus, translation_corpus, max_order=4, smooth=False
     return (bleu, precisions, bp, ratio, translation_length, reference_length)
 
 
-def _bleu(ref_file, trans_file, subword_option=None):
+def _bleu(reference_text, translation_text, subword_option=None):
     max_order = 4
     smooth = True
-    ref_files = [ref_file]
-    reference_text = []
-    for reference_filename in ref_files:
-        with open(reference_filename) as fh:
-            reference_text.append(fh.readlines())
+    reference_text = [reference_text]
     per_segment_references = []
     for references in zip(*reference_text):
         reference_list = []
@@ -119,28 +115,8 @@ def _bleu(ref_file, trans_file, subword_option=None):
             reference_list.append(reference.strip().split())
         per_segment_references.append(reference_list)
     translations = []
-    with open(trans_file) as fh:
-        for line in fh:
-            translations.append(line.strip().split())
+    for tr in translation_text:
+        translations.append(tr.strip().split())
 
     bleu_score, _, _, _, _, _ = compute_bleu(per_segment_references, translations, max_order, smooth)
     return round(100 * bleu_score, 2)
-
-
-def score(references, predictions):
-    refs = [x.strip() for x in open(references, "r", encoding="utf-8").readlines()]
-    pres = [x.strip() for x in open(predictions, "r", encoding="utf-8").readlines()]
-
-    assert len(refs) == len(pres)
-
-    length = len(refs)
-    count = 0
-    for i in range(length):
-        r = refs[i]
-        p = pres[i]
-        if r == p:
-            count += 1
-
-    em = round(count / length * 100, 2)
-    bleu_score = round(_bleu(references, predictions), 2)
-    return bleu_score, em
