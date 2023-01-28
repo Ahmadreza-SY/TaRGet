@@ -17,8 +17,8 @@ class CloneProgress(RemoteProgress):
         self.pbar.refresh()
 
 
-def get_repo(repo):
-    clone_dir = Path(Config.get("output_path")) / "clone"
+def get_repo(repo, output_path=Config.get("output_path")):
+    clone_dir = Path(output_path) / "clone"
     if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
         print(f"Cloning {repo} into {clone_dir}")
         git_repo = git.Repo.clone_from(f"https://github.com/{repo}.git", clone_dir, progress=CloneProgress())
@@ -28,19 +28,19 @@ def get_repo(repo):
     return git_repo
 
 
-def cleanup_worktrees(repo_name):
-    worktrees_path = Path(Config.get("output_path")) / "commits"
+def cleanup_worktrees(repo_name, output_path=Config.get("output_path"), git_path=None):
+    worktrees_path = Path(output_path) / "commits"
     shutil.rmtree(str(worktrees_path), ignore_errors=True)
-    repo = get_repo(repo_name)
+    repo = get_repo(repo_name, output_path if not git_path else git_path)
     repo.git.worktree("prune")
 
 
-def copy_commit_code(repo_name, commit):
-    copy_path = Path(Config.get("output_path")) / "commits" / commit
+def copy_commit_code(repo_name, commit, output_path=Config.get("output_path"), git_path=None):
+    copy_path = output_path / "commits" / commit
     if copy_path.exists():
         return copy_path
 
-    repo = get_repo(repo_name)
+    repo = get_repo(repo_name, output_path if not git_path else git_path)
     repo.git.worktree("add", str(copy_path.absolute()), commit)
     return copy_path
 

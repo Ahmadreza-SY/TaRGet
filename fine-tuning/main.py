@@ -25,6 +25,7 @@ import sys
 import maven_parser as mvnp
 import git
 import shutil
+import git_api as ghapi
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -337,7 +338,7 @@ def compute_single_bleus(targets, preds, output_dir):
 
 def plaus_score(predictions, base_output_dir):
     with open(f"{base_output_dir}/splits/test.json", 'r') as f:
-        test_objs = json.load(f)[:len(predictions)]
+        test_objs = json.load(f)
 
     test_pairs = [(predictions[i], test_objs[i]) for i in range(len(predictions))]
     test_pairs.sort(key=lambda a: a[1]['aCommit'])
@@ -345,27 +346,32 @@ def plaus_score(predictions, base_output_dir):
     git_dir = base_output_dir / "git"
     if not git_dir.exists() or not git_dir.stat().st_size > 0:
         os.mkdir(git_dir)
+    worktree_dir = base_output_dir / "worktrees"
+    if not worktree_dir.exists() or not worktree_dir.stat().st_size > 0:
+        os.mkdir(worktree_dir)
 
     successes = 0
     verdicts = []
     curr_commit = None
     curr_repo = None
+    worktree = None
 
     for p, t in test_pairs:
         repo_path = t["ID"].split(':')[0]
         clone_dir = git_dir / repo_path
-        if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
-            git_repo = git.Repo.clone_from(f"https://github.com/{repo_path}.git", clone_dir)
-        else:
-            git_repo = git.Repo(clone_dir)
 
         commit = t['aCommit']
         if commit != curr_commit or repo_path != curr_repo:
-            git_repo.git.checkout(commit)
+            if curr_repo:
+                ghapi.cleanup_worktrees(curr_repo, worktree_dir / curr_repo, git_dir / curr_repo)
+
+            worktree_path = ghapi.copy_commit_code(repo_path, commit, worktree_dir / repo_path, clone_dir)
             curr_repo = repo_path
             curr_commit = commit
 
-        test_file = clone_dir / t['aPath']
+            worktree = git.Repo(worktree_path)
+
+        test_file = worktree_path / t['aPath']
 
         with open(test_file, 'r') as orig_file:
             contents = orig_file.read()
@@ -397,16 +403,21 @@ def plaus_score(predictions, base_output_dir):
                 / t['aCommit']
                 / test_simple_name
         )
-        verdict = mvnp.compile_and_run_test(clone_dir, test_file, test_simple_name, log_path)
+        verdict = mvnp.compile_and_run_test(worktree_path, test_file, test_simple_name, log_path)
 
         verdicts.append(verdict.status)
 
         if verdict.status == verdict.SUCCESS:
             successes += 1
 
-        git_repo.git.reset('--hard')
+        worktree.git.reset('--hard')
+
+    if curr_repo and clone_dir:
+        ghapi.cleanup_worktrees(curr_repo, worktree_dir / curr_repo, clone_dir)
 
     shutil.rmtree(base_output_dir / "testLogs")
+    shutil.rmtree(worktree_dir)
+    shutil.rmtree(git_dir)
 
     return successes / len(test_objs), verdicts
 
