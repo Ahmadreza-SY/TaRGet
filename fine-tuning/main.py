@@ -309,7 +309,7 @@ def test(gpu, args):
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on test set")
-    bleu_score, em, sr = eval(model, args.test_dataset, args, args.output_dir, args.output_dir)
+    bleu_score, em, sr = eval(model, args.test_dataset, args, args.output_dir, args.output_dir, plaus=True)
     args.stats["test_results"] = {"bleu": bleu_score, "em": em, "sr": sr}
 
     save_stats(args)
@@ -336,9 +336,11 @@ def compute_single_bleus(targets, preds, output_dir):
     return bleus
 
 
-def plaus_score(predictions, base_output_dir):
-    with open(f"{base_output_dir}/splits/test.json", 'r') as f:
+def plaus_score(prediction_file, base_output_dir, split_file="test.json"):
+    with open(f"{base_output_dir}/splits/{split_file}", 'r') as f:
         test_objs = json.load(f)
+    with open(prediction_file, 'r') as f:
+        predictions = f.readlines()
 
     test_pairs = [(predictions[i], test_objs[i]) for i in range(len(predictions))]
     test_pairs.sort(key=lambda a: a[1]['aCommit'])
@@ -422,7 +424,7 @@ def plaus_score(predictions, base_output_dir):
     return successes / len(test_objs), verdicts
 
 
-def eval(model, dataset, args, output_dir, base_output_dir):
+def eval(model, dataset, args, output_dir, base_output_dir, plaus=False):
     logger = logging.getLogger(args.pname)
     if args.rank == 0:
         logger.info(f"Eval data: {len(dataset)}")
@@ -514,9 +516,12 @@ def eval(model, dataset, args, output_dir, base_output_dir):
 
         bleu_score, em = score(str(target_file), str(pred_file))
 
-        success_rate, verdicts = plaus_score(str(target_file), base_output_dir)
-        verdicts_file = output_dir / f"verdicts.txt"
-        write_lines(verdicts_file, verdicts)
+        if plaus:
+            success_rate, verdicts = plaus_score(str(target_file), base_output_dir)
+            verdicts_file = output_dir / f"verdicts.txt"
+            write_lines(verdicts_file, verdicts)
+        else:
+            success_rate = None
 
         logger.info(f"*** BLEU: {bleu_score} ; EM: {em} ; SR: {success_rate} *** "
                     f"Eval completed in: {datetime.now() - start}")
