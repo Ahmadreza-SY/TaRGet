@@ -28,19 +28,19 @@ def get_repo(repo, output_path=Config.get("output_path")):
     return git_repo
 
 
-def cleanup_worktrees(repo_name, output_path=Config.get("output_path"), git_path=None):
+def cleanup_worktrees(repo_name, output_path=Config.get("output_path")):
     worktrees_path = Path(output_path) / "commits"
     shutil.rmtree(str(worktrees_path), ignore_errors=True)
-    repo = get_repo(repo_name, output_path if not git_path else git_path)
+    repo = get_repo(repo_name, output_path)
     repo.git.worktree("prune")
 
 
-def copy_commit_code(repo_name, commit, output_path=Config.get("output_path"), git_path=None):
+def copy_commit_code(repo_name, commit, output_path=Config.get("output_path")):
     copy_path = output_path / "commits" / commit
     if copy_path.exists():
         return copy_path
 
-    repo = get_repo(repo_name, output_path if not git_path else git_path)
+    repo = get_repo(repo_name, output_path)
     repo.git.worktree("add", str(copy_path.absolute()), commit)
     return copy_path
 

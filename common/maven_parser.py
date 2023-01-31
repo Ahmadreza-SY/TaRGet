@@ -1,11 +1,9 @@
 import subprocess
-from pathlib import Path
 import shlex
 import re
-from utils import auto_str
 from config import Config
 import os
-
+from common_utils import auto_str
 
 @auto_str
 class TestVerdict:
@@ -109,6 +107,8 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
     log_file = log_path / "test.log"
     rc_file = log_path / "returncode"
     test_path = project_path / test_rel_path
+    if not test_path.exists():
+        raise FileNotFoundError(f"Test file does not exist: {test_path}")
     test_class = test_path.stem
     if log_file.exists():
         returncode = int(rc_file.read_text())
