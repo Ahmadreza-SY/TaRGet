@@ -18,12 +18,16 @@ import torch.distributed as dist
 import logging
 import os
 import bleu as bleu_scoring
-from utils import write_lines
+from tuning_utils import write_lines
 from encoders import *
 import json
 import sys
 import pandas as pd
 from joblib import Parallel, delayed
+import maven_parser as mvnp
+import git
+import shutil
+import git_api as ghapi
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -45,7 +49,7 @@ def main():
     )
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
     parser.add_argument("-de", "--data_encoder", required=True, type=str)
-    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
+    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em", "sr"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
     parser.add_argument("-m", "--max_seq", required=True, type=int)
@@ -247,21 +251,24 @@ def train(gpu, args):
         # if args.rank == 0:
         #     save_model(model, optimizer, scheduler, valid_output_dir)
 
-        bleu_score, em = eval(model, args.valid_dataset, args, valid_output_dir)
+        bleu_score, em, sr = eval(model, args.valid_dataset, args, valid_output_dir, args.output_dir)
         if args.scoring == "em":
             sel_score = em
         elif args.scoring == "bleu":
             sel_score = bleu_score
+        elif args.scoring == "sr":
+            sel_score = sr
         if sel_score > args.best_checkpoint[0]:
             args.best_checkpoint = (sel_score, epoch)
             if args.rank == 0:
-                logger.info(f"Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em}")
-                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em}
+                logger.info(f"Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em} ; SR {sr}")
+                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em, "sr": sr}
                 save_model(model, optimizer, scheduler, args.output_dir / f"checkpoint-best")
 
         valid_time = datetime.now() - valid_start
         epoch_stats["bleu"] = bleu_score
         epoch_stats["em"] = em
+        epoch_stats["sr"] = sr
         epoch_stats["valid_duration"] = str(valid_time)
         args.stats["training_stats"]["epochs"].append(epoch_stats)
         elapsed_time += valid_time
@@ -293,12 +300,12 @@ def test(gpu, args):
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on validation set")
-    bleu_score, em = eval(model, args.valid_dataset, args, best_checkpoint_path)
+    bleu_score, em, sr = eval(model, args.valid_dataset, args, best_checkpoint_path, args.output_dir)
 
     if args.rank == 0:
         logger.info(f"Testing with best checkpoint on test set")
-    bleu_score, em = eval(model, args.test_dataset, args, args.output_dir)
-    args.stats["test_results"] = {"bleu": bleu_score, "em": em}
+    bleu_score, em, sr = eval(model, args.test_dataset, args, args.output_dir, args.output_dir, plaus=True)
+    args.stats["test_results"] = {"bleu": bleu_score, "em": em, "sr": sr}
 
     save_stats(args)
 
@@ -338,8 +345,95 @@ def compute_scores(targets, preds, ids):
 
     return bleu_score, em
 
+def plaus_score(prediction_file, base_output_dir, split_file="test.json"):
+    with open(f"{base_output_dir}/splits/{split_file}", 'r') as f:
+        test_objs = json.load(f)
+    with open(prediction_file, 'r') as f:
+        predictions = f.readlines()
 
-def eval(model, dataset, args, output_dir):
+    test_pairs = [(predictions[i], test_objs[i]) for i in range(len(predictions))]
+    test_pairs.sort(key=lambda a: a[1]['aCommit'])
+
+    git_dir = base_output_dir / "git"
+    if not git_dir.exists() or not git_dir.stat().st_size > 0:
+        os.mkdir(git_dir)
+    worktree_dir = base_output_dir / "worktrees"
+    if not worktree_dir.exists() or not worktree_dir.stat().st_size > 0:
+        os.mkdir(worktree_dir)
+
+    successes = 0
+    verdicts = []
+    curr_commit = None
+    curr_repo = None
+    worktree = None
+
+    for p, t in test_pairs:
+        repo_path = t["ID"].split(':')[0]
+        clone_dir = git_dir / repo_path
+
+        commit = t['aCommit']
+        if commit != curr_commit or repo_path != curr_repo:
+            if curr_repo:
+                ghapi.cleanup_worktrees(curr_repo, worktree_dir / curr_repo, git_dir / curr_repo)
+
+            worktree_path = ghapi.copy_commit_code(repo_path, commit, worktree_dir / repo_path, clone_dir)
+            curr_repo = repo_path
+            curr_commit = commit
+
+            worktree = git.Repo(worktree_path)
+
+        test_file = worktree_path / t['aPath']
+
+        with open(test_file, 'r') as orig_file:
+            contents = orig_file.read()
+
+        if len(t['hunk']['targetChanges']) > 0:
+            contents = contents.split('\n')
+            target_line = t['hunk']['targetChanges'][0]['lineNo'] - 1
+            for tc in t['hunk']['targetChanges'][::-1]:
+                del contents[tc['lineNo'] - 1]
+            contents.insert(target_line, p)
+            contents = '\n'.join(contents)
+
+        else:
+            test_method = t['bSource']['code'].split('\n')
+            start_line = t['bSource']['startLine']
+            target_line = t['hunk']['sourceChanges'][0]['lineNo'] - start_line
+            for tc in t['hunk']['sourceChanges'][::-1]:
+                del test_method[tc['lineNo'] - start_line]
+            test_method.insert(target_line, p)
+            contents.replace(t['aSource']['code'], '\n'.join(test_method))
+
+        with open(test_file, 'w') as orig_file:
+            orig_file.write(contents)
+
+        test_simple_name = t["name"].split(".")[-1].replace("()", "")
+        log_path = (
+                base_output_dir
+                / "testLogs"
+                / t['aCommit']
+                / test_simple_name
+        )
+        verdict = mvnp.compile_and_run_test(worktree_path, test_file, test_simple_name, log_path)
+
+        verdicts.append(verdict.status)
+
+        if verdict.status == verdict.SUCCESS:
+            successes += 1
+
+        worktree.git.reset('--hard')
+
+    if curr_repo and clone_dir:
+        ghapi.cleanup_worktrees(curr_repo, worktree_dir / curr_repo, clone_dir)
+
+    shutil.rmtree(base_output_dir / "testLogs")
+    shutil.rmtree(worktree_dir)
+    shutil.rmtree(git_dir)
+
+    return successes / len(test_objs), verdicts
+
+
+def eval(model, dataset, args, output_dir, base_output_dir, plaus=False):
     logger = logging.getLogger(args.pname)
     if args.rank == 0:
         logger.info(f"Eval data: {len(dataset)}")
@@ -421,15 +515,23 @@ def eval(model, dataset, args, output_dir):
 
         bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
 
-        logger.info(f"*** BLEU: {bleu_score} ; EM: {em} *** Eval completed in: {datetime.now() - start}")
+        if plaus:
+            success_rate, verdicts = plaus_score(str(target_file), base_output_dir)
+            verdicts_file = output_dir / f"verdicts.txt"
+            write_lines(verdicts_file, verdicts)
+        else:
+            success_rate = None
 
-        scores = [bleu_score, em]
+        logger.info(f"*** BLEU: {bleu_score} ; EM: {em} ; SR: {success_rate} *** "
+                    f"Eval completed in: {datetime.now() - start}")
+
+        scores = [bleu_score, em, success_rate]
     else:
-        scores = [None, None]
+        scores = [None, None, None]
 
     dist.broadcast_object_list(scores, src=0)
-    bleu_score, em = scores[0], scores[1]
-    return bleu_score, em
+    bleu_score, em, sr = scores[0], scores[1], scores[2]
+    return bleu_score, em, sr
 
 
 if __name__ == "__main__":

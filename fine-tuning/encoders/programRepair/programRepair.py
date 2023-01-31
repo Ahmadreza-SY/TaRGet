@@ -1,7 +1,7 @@
 from ..encoders import BaseDataEncoder
 import pandas as pd
 from pathlib import Path
-from utils import read_lines
+from tuning_utils import read_lines
 
 
 class ProgramRepairDataEncoder(BaseDataEncoder):
