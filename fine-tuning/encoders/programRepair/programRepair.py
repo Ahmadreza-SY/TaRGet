@@ -1,7 +1,11 @@
 from ..encoders import BaseDataEncoder
 import pandas as pd
 from pathlib import Path
-from tuning_utils import read_lines
+
+
+def read_lines(file):
+    with open(file) as f:
+        return [line.rstrip() for line in f]
 
 
 class ProgramRepairDataEncoder(BaseDataEncoder):

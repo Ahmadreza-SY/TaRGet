@@ -18,15 +18,14 @@ import torch.distributed as dist
 import logging
 import os
 import bleu as bleu_scoring
-from tuning_utils import write_lines
 from encoders import *
 import json
 import pandas as pd
 from joblib import Parallel, delayed
 import git
-import shutil
 from tqdm import tqdm
 import sys
+
 sys.path.append("../common")
 import maven_parser as mvnp
 import git_api as ghapi
@@ -349,19 +348,15 @@ def compute_scores(targets, preds, ids):
     return bleu_score, em
 
 
-def plaus_score(prediction_file, base_output_dir, split_file="test.json"):
-    with open(f"{base_output_dir}/splits/{split_file}", "r") as f:
-        test_objs = json.load(f)
-    with open(prediction_file, "r") as f:
-        predictions = f.readlines()
+def apply_and_run_preds(pred_df, output_dir, split):
+    test_ds = {row["ID"]: row for row in json.loads((output_dir / "splits" / f"{split}.json").read_text())}
 
-    test_pairs = [(predictions[i], test_objs[i]) for i in range(len(predictions))]
+    test_pairs = [(pred, test_ds[pred["id"]]) for _, pred in pred_df.iterrows()]
     test_pairs.sort(key=lambda a: a[1]["aCommit"])
 
-    git_dir = base_output_dir / "git"
+    git_dir = output_dir / "git"
     git_dir.mkdir(parents=True, exist_ok=True)
 
-    successes = 0
     verdicts = []
     curr_commit = None
     curr_repo = None
@@ -392,7 +387,7 @@ def plaus_score(prediction_file, base_output_dir, split_file="test.json"):
             target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
             for tc in test["hunk"]["targetChanges"][::-1]:
                 del contents[tc["lineNo"] - 1]
-            contents.insert(target_line, pred)
+            contents.insert(target_line, pred["pred"])
             contents = "\n".join(contents)
         else:
             test_method = test["bSource"]["code"].split("\n")
@@ -400,20 +395,24 @@ def plaus_score(prediction_file, base_output_dir, split_file="test.json"):
             target_line = test["hunk"]["sourceChanges"][0]["lineNo"] - start_line
             for tc in test["hunk"]["sourceChanges"][::-1]:
                 del test_method[tc["lineNo"] - start_line]
-            test_method.insert(target_line, pred)
+            test_method.insert(target_line, pred["pred"])
             contents.replace(test["aSource"]["code"], "\n".join(test_method))
 
         with open(test_file, "w") as orig_file:
             orig_file.write(contents)
 
         _, class_name, test_short_name = decompose_full_method_name(test["name"])
-        log_path = base_output_dir / "testLogs" / test["aCommit"] / class_name / test_short_name / test_rel_path.parent
+        log_path = (
+            output_dir
+            / "testLogs"
+            / test["aCommit"]
+            / class_name
+            / test_short_name
+            / test_rel_path.parent
+            / str(pred["rank"])
+        )
         verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path)
-
-        verdicts.append(verdict.status)
-
-        if verdict.status == verdict.SUCCESS:
-            successes += 1
+        verdicts.append(verdict)
 
         worktree.git.reset("--hard")
 
@@ -423,10 +422,10 @@ def plaus_score(prediction_file, base_output_dir, split_file="test.json"):
     # shutil.rmtree(base_output_dir / "testLogs")
     # shutil.rmtree(git_dir)
 
-    return successes / len(test_objs), verdicts
+    return verdicts
 
 
-def eval(model, split, args, output_dir):
+def eval(model, split, args, save_dir):
     logger = logging.getLogger(args.pname)
     if split == "valid":
         dataset = args.valid_dataset
@@ -489,8 +488,6 @@ def eval(model, split, args, output_dir):
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
     dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
     if args.rank == 0:
-        output_dir = output_dir / "outputs"
-        output_dir.mkdir(parents=True, exist_ok=True)
         all_targets = [target for sub in global_targets for target in sub]
         all_preds = [pred for sub in global_preds for pred in sub]
         all_ids = [pred for sub in global_ids for pred in sub]
@@ -503,25 +500,28 @@ def eval(model, split, args, output_dir):
         pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
         all_bleus = compute_single_bleus(target_codes, pred_codes)
 
-        target_file = output_dir / f"targets.txt"
-        write_lines(target_file, target_codes)
-        pred_file = output_dir / f"preds.txt"
-        write_lines(pred_file, pred_codes)
-        ids_file = output_dir / f"ids.txt"
-        write_lines(ids_file, all_ids)
-        bleus_file = output_dir / f"bleus.txt"
-        write_lines(bleus_file, [str(bleu) for bleu in all_bleus])
+        pred_df = pd.DataFrame(
+            {
+                "id": all_ids,
+                "pred": pred_codes,
+                "target": target_codes,
+                "rank": list(range(1, args.beam_size + 1)) * len(dataset),
+                "bleu": all_bleus,
+            }
+        )
 
-        bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)        
+        bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
         logger.info(f"*** BLEU: {bleu_score} ; EM: {em} *** Eval completed in: {datetime.now() - start}")
 
         success_rate = None
         if split == "test":
-            success_rate, verdicts = plaus_score(str(pred_file), args.output_dir)
-            verdicts_file = output_dir / f"verdicts.txt"
-            write_lines(verdicts_file, verdicts)
+            verdicts = apply_and_run_preds(pred_df, args.output_dir, split)
+            pred_df["verdict"] = [v.to_dict() for v in verdicts]
+            success_cnt = sum([1 if v.status == mvnp.TestVerdict.SUCCESS else 0 for v in verdicts])
+            success_rate = round(100 * success_cnt / len(verdicts), 1)
             logger.info(f"*** SR: {success_rate} *** ")
 
+        pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
         scores = [bleu_score, em, success_rate]
     else:
         scores = [None, None, None]
