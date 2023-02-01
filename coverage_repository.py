@@ -1,5 +1,5 @@
 import json
-from utils import decompose_full_method_name
+from common_utils import decompose_full_method_name
 from pathlib import Path
 import copy
 

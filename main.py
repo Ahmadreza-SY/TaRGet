@@ -1,5 +1,7 @@
-import argparse
+import sys
+sys.path.append("./common")
 from config import Config
+import argparse
 from data_collector import DataCollector
 
 
