@@ -72,6 +72,7 @@ def eval(model, split, args, save_dir):
         lm_loss_fct = CrossEntropyLoss(ignore_index=model_module.config.pad_token_id, label_smoothing=args.label_smoothing)
         loss = lm_loss_fct(lm_logits.view(-1, lm_logits.size(-1)), target_ids.view(-1))
         local_loss.append(loss.item())
+        target_ids = target_ids.to("cpu")
 
         if args.eval_full_beam:
             outputs = model_module.generate(
@@ -86,22 +87,26 @@ def eval(model, split, args, save_dir):
             # For prediction certainty
             # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
             curr_batch_size = target_ids.shape[0]
-            batch_preds = outputs.view(curr_batch_size, args.beam_size, -1).cpu().tolist()
-            for i, beam_preds in enumerate(batch_preds):
+            outputs = outputs.view(curr_batch_size, args.beam_size, -1).cpu().tolist()
+            for i, beam_preds in enumerate(outputs):
                 for pred in beam_preds:
                     local_preds.append(pred)
                     local_targets.append(target_ids[i])
                     local_ids.append(data_ids[i])
         else:
-            pred_ids = model_module.generate(
-                input_ids=source_ids,
-                attention_mask=source_mask,
-                num_beams=args.beam_size,
-                max_length=args.max_seq,
-                use_cache=True,
-                early_stopping=True,
+            pred_ids = (
+                model_module.generate(
+                    input_ids=source_ids,
+                    attention_mask=source_mask,
+                    num_beams=args.beam_size,
+                    max_length=args.max_seq,
+                    use_cache=True,
+                    early_stopping=True,
+                )
+                .cpu()
+                .tolist()
             )
-            local_preds.extend(pred_ids.cpu().tolist())
+            local_preds.extend(pred_ids)
             local_targets.extend(target_ids)
             local_ids.extend(data_ids)
 
