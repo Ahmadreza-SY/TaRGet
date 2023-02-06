@@ -141,6 +141,8 @@ def eval(model, split, args, save_dir):
         bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
         avg_loss = round(sum(all_loss) / len(all_loss), 3)
         logger.info(f"    * BLEU: {bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}")
+        save_dir.mkdir(parents=True, exist_ok=True)
+        pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
 
         success_rate = None
         if split == "test":
@@ -149,9 +151,7 @@ def eval(model, split, args, save_dir):
             success_cnt = sum([1 if v.status == mvnp.TestVerdict.SUCCESS else 0 for v in verdicts])
             success_rate = round(100 * success_cnt / len(verdicts), 1)
             logger.info(f"    * SR: {success_rate}")
-
-        save_dir.mkdir(parents=True, exist_ok=True)
-        pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
+            pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
         scores = [bleu_score, em, success_rate, avg_loss]
     else:
         scores = [None, None, None, None]
@@ -231,7 +231,7 @@ def apply_and_run_preds(pred_df, output_dir, split):
         with open(test_file, "r") as orig_file:
             contents = orig_file.read()
 
-        if len(test["hunk"]["targetChanges"]) > 0:
+        if "targetChanges" in test["hunk"] and len(test["hunk"]["targetChanges"]) > 0:
             contents = contents.split("\n")
             target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
             for tc in test["hunk"]["targetChanges"][::-1]:
@@ -245,7 +245,7 @@ def apply_and_run_preds(pred_df, output_dir, split):
             for tc in test["hunk"]["sourceChanges"][::-1]:
                 del test_method[tc["lineNo"] - start_line]
             test_method.insert(target_line, pred["pred"])
-            contents.replace(test["aSource"]["code"], "\n".join(test_method))
+            contents = contents.replace(test["aSource"]["code"], "\n".join(test_method))
 
         with open(test_file, "w") as orig_file:
             orig_file.write(contents)
