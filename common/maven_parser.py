@@ -5,6 +5,7 @@ from config import Config
 import os
 from common_utils import auto_str
 
+
 @auto_str
 class TestVerdict:
     # Valid results
@@ -12,6 +13,7 @@ class TestVerdict:
     FAILURE = "failure"
     COMPILE_ERR = "compile_error"
     # Invalid results
+    TEST_NOT_EXECUTED = "test_not_executed"
     UNRELATED_COMPILE_ERR = "unrelated_compile_error"
     EXPECTED_EXCEPTION_FAILURE = "expected_exception_failure"
     TEST_MATCH_FAILURE = "test_match_failure"
@@ -50,11 +52,11 @@ def find_parent_pom(file_path):
             return None
 
 
-def parse_compile_error(log, test_path):
+def parse_compile_error(log, test_rel_path):
     if "COMPILATION ERROR" not in log:
         return None
 
-    matches = re.compile(f"^\[ERROR\]\s*{str(test_path.absolute())}:\[(\d+),\d+\].*$", re.MULTILINE).findall(log)
+    matches = re.compile(f"^\[ERROR\]\s*/.+/{test_rel_path}:\[(\d+),\d+\].*$", re.MULTILINE).findall(log)
     if len(matches) == 0:
         return None
 
@@ -95,6 +97,15 @@ def parse_invalid_execution(log):
     return TestVerdict(TestVerdict.UNKNOWN, None)
 
 
+def parse_successful_execution(log):
+    matches = re.compile(f"^.*Tests run: (\d+), Failures: \d+, Errors: \d+, Skipped: (\d+).*$", re.MULTILINE).findall(log)
+    for match in matches:
+        runs, skips = (int(n) for n in match)
+        if runs == 0 or skips > 0:
+            return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
+    return TestVerdict(TestVerdict.SUCCESS, None)
+
+
 def run_cmd(cmd):
     java_home = Config.get("java_home")
     my_env = os.environ.copy()
@@ -119,7 +130,6 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             return TestVerdict(TestVerdict.POM_NOT_FOUND, None)
         cmd = [
             "mvn",
-            "clean",
             "test",
             f'-f {str(project_path / "pom.xml")}',
             f"-pl {str(pom_path.relative_to(project_path))}",
@@ -139,9 +149,9 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
         cmd_file.write_text(" ".join(cmd))
 
     if returncode == 0:
-        return TestVerdict(TestVerdict.SUCCESS, None)
+        return parse_successful_execution(log)
 
-    compile_error = parse_compile_error(log, test_path)
+    compile_error = parse_compile_error(log, test_rel_path)
     if compile_error is not None:
         return compile_error
 
