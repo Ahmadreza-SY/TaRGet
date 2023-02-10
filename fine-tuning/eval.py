@@ -15,6 +15,8 @@ import maven_parser as mvnp
 import git_api as ghapi
 from common_utils import decompose_full_method_name
 from utils import create_loader, save_stats
+import re
+from encoders.testRepair.testRepair import Tokens
 
 
 def test(gpu, args):
@@ -128,12 +130,13 @@ def eval(model, split, args, save_dir):
         pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
         all_bleus = compute_single_bleus(target_codes, pred_codes)
 
+        ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
         pred_df = pd.DataFrame(
             {
                 "id": all_ids,
                 "pred": pred_codes,
                 "target": target_codes,
-                "rank": list(range(1, args.beam_size + 1)) * len(dataset),
+                "rank": ranks * len(dataset),
                 "bleu": all_bleus,
             }
         )
@@ -197,6 +200,13 @@ def compute_scores(targets, preds, ids):
     return bleu_score, em
 
 
+def get_breakage_from_input(input):
+    matches = re.compile(f"^{Tokens.BREAKAGE} (.*) {Tokens.TEST_CONTEXT}.+$").findall(input)
+    if len(matches) != 1:
+        raise AssertionError(f"Expected exactly 1 match for breakage, found {len(matches)}! Input: {input}")
+    return matches[0]
+
+
 def apply_and_run_preds(pred_df, output_dir, split):
     test_ds = {row["ID"]: row for row in json.loads((output_dir / "splits" / f"{split}.json").read_text())}
 
@@ -212,58 +222,65 @@ def apply_and_run_preds(pred_df, output_dir, split):
     worktree = None
 
     for pred, test in tqdm(test_pairs, desc="Executing test patches"):
-        repo_name = test["ID"].split(":")[0]
-
-        commit = test["aCommit"]
-        if commit != curr_commit or repo_name != curr_repo:
-            if curr_repo:
-                ghapi.cleanup_worktrees(curr_repo, git_dir / curr_repo)
-
-            worktree_path = ghapi.copy_commit_code(repo_name, commit, git_dir / repo_name)
-            curr_repo = repo_name
-            curr_commit = commit
-
-            worktree = git.Repo(worktree_path)
-
-        test_rel_path = Path(test["aPath"])
-        test_file = worktree_path / test_rel_path
-
-        with open(test_file, "r") as orig_file:
-            contents = orig_file.read()
-
-        if "targetChanges" in test["hunk"] and len(test["hunk"]["targetChanges"]) > 0:
-            contents = contents.split("\n")
-            target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
-            for tc in test["hunk"]["targetChanges"][::-1]:
-                del contents[tc["lineNo"] - 1]
-            contents.insert(target_line, pred["pred"])
-            contents = "\n".join(contents)
+        breakage_code = get_breakage_from_input(test["input"])
+        pred_code = pred["pred"]
+        target_code = pred["target"]
+        if pred_code == breakage_code:
+            verdict = test["verdict"]
+        elif pred_code == target_code:
+            verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None)
         else:
-            test_method = test["bSource"]["code"].split("\n")
-            start_line = test["bSource"]["startLine"]
-            target_line = test["hunk"]["sourceChanges"][0]["lineNo"] - start_line
-            for tc in test["hunk"]["sourceChanges"][::-1]:
-                del test_method[tc["lineNo"] - start_line]
-            test_method.insert(target_line, pred["pred"])
-            contents = contents.replace(test["aSource"]["code"], "\n".join(test_method))
+            repo_name = test["ID"].split(":")[0]
+            commit = test["aCommit"]
+            if commit != curr_commit or repo_name != curr_repo:
+                if curr_repo:
+                    ghapi.cleanup_worktrees(curr_repo, git_dir / curr_repo)
 
-        with open(test_file, "w") as orig_file:
-            orig_file.write(contents)
+                worktree_path = ghapi.copy_commit_code(repo_name, commit, git_dir / repo_name)
+                curr_repo = repo_name
+                curr_commit = commit
 
-        _, class_name, test_short_name = decompose_full_method_name(test["name"])
-        log_path = (
-            output_dir
-            / "testLogs"
-            / test["aCommit"]
-            / class_name
-            / test_short_name
-            / test_rel_path.parent
-            / str(pred["rank"])
-        )
-        verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path)
+                worktree = git.Repo(worktree_path)
+
+            test_rel_path = Path(test["aPath"])
+            test_file = worktree_path / test_rel_path
+
+            with open(test_file, "r") as orig_file:
+                contents = orig_file.read()
+
+            if "targetChanges" in test["hunk"] and len(test["hunk"]["targetChanges"]) > 0:
+                contents = contents.split("\n")
+                target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
+                for tc in test["hunk"]["targetChanges"][::-1]:
+                    del contents[tc["lineNo"] - 1]
+                contents.insert(target_line, pred_code)
+                contents = "\n".join(contents)
+            else:
+                test_method = test["bSource"]["code"].split("\n")
+                start_line = test["bSource"]["startLine"]
+                target_line = test["hunk"]["sourceChanges"][0]["lineNo"] - start_line
+                for tc in test["hunk"]["sourceChanges"][::-1]:
+                    del test_method[tc["lineNo"] - start_line]
+                test_method.insert(target_line, pred_code)
+                contents = contents.replace(test["aSource"]["code"], "\n".join(test_method))
+
+            with open(test_file, "w") as orig_file:
+                orig_file.write(contents)
+
+            _, class_name, test_short_name = decompose_full_method_name(test["name"])
+            log_path = (
+                output_dir
+                / "testLogs"
+                / test["aCommit"]
+                / class_name
+                / test_short_name
+                / test_rel_path.parent
+                / str(pred["rank"])
+            )
+            verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path)
+            worktree.git.reset("--hard")
+
         verdicts.append(verdict)
-
-        worktree.git.reset("--hard")
 
     if curr_repo:
         ghapi.cleanup_worktrees(curr_repo, git_dir / curr_repo)
