@@ -13,10 +13,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.nn import CrossEntropyLoss
 import maven_parser as mvnp
 import git_api as ghapi
-from common_utils import decompose_full_method_name
 from utils import create_loader, save_stats
-import re
-from encoders.testRepair.testRepair import Tokens
 
 
 def test(gpu, args):
@@ -31,12 +28,12 @@ def test(gpu, args):
 
     if args.rank == 0:
         logger.info(f"    Testing with best checkpoint on Valid set")
-    bleu_score, em, sr, _ = eval(model, "valid", args, best_checkpoint_path)
+    bleu_score, em, _ = eval(model, "valid", args, best_checkpoint_path)
 
     if args.rank == 0:
         logger.info(f"    Testing with best checkpoint on Test set")
-    bleu_score, em, sr, test_loss = eval(model, "test", args, args.output_dir)
-    args.stats["test_results"] = {"bleu": bleu_score, "em": em, "sr": sr, "loss": test_loss}
+    bleu_score, em, test_loss = eval(model, "test", args, args.output_dir)
+    args.stats["test_results"] = {"bleu": bleu_score, "em": em, "loss": test_loss}
 
     save_stats(args)
 
@@ -147,21 +144,13 @@ def eval(model, split, args, save_dir):
         save_dir.mkdir(parents=True, exist_ok=True)
         pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
 
-        success_rate = None
-        if split == "test":
-            verdicts = apply_and_run_preds(pred_df, args.output_dir, split)
-            pred_df["verdict"] = [v.to_dict() for v in verdicts]
-            success_cnt = sum([1 if v.status == mvnp.TestVerdict.SUCCESS else 0 for v in verdicts])
-            success_rate = round(100 * success_cnt / len(verdicts), 1)
-            logger.info(f"    * SR: {success_rate}")
-            pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
-        scores = [bleu_score, em, success_rate, avg_loss]
+        scores = [bleu_score, em, avg_loss]
     else:
-        scores = [None, None, None, None]
+        scores = [None, None, None]
 
     dist.broadcast_object_list(scores, src=0)
-    bleu_score, em, sr, loss = scores[0], scores[1], scores[2], scores[3]
-    return bleu_score, em, sr, loss
+    bleu_score, em, loss = scores[0], scores[1], scores[2]
+    return bleu_score, em, loss
 
 
 def compute_single_bleus(targets, preds):
@@ -198,94 +187,3 @@ def compute_scores(targets, preds, ids):
     bleu_score = bleu_scoring._bleu(best_targets, best_preds)
 
     return bleu_score, em
-
-
-def get_breakage_from_input(input):
-    matches = re.compile(f"^{Tokens.BREAKAGE} (.*) {Tokens.TEST_CONTEXT}.+$").findall(input)
-    if len(matches) != 1:
-        raise AssertionError(f"Expected exactly 1 match for breakage, found {len(matches)}! Input: {input}")
-    return matches[0]
-
-
-def apply_and_run_preds(pred_df, output_dir, split):
-    test_ds = {row["ID"]: row for row in json.loads((output_dir / "splits" / f"{split}.json").read_text())}
-
-    test_pairs = [(pred, test_ds[pred["id"]]) for _, pred in pred_df.iterrows()]
-    test_pairs.sort(key=lambda a: a[1]["aCommit"])
-
-    git_dir = output_dir / "git"
-    git_dir.mkdir(parents=True, exist_ok=True)
-
-    verdicts = []
-    curr_commit = None
-    curr_repo = None
-    worktree = None
-
-    for pred, test in tqdm(test_pairs, desc="Executing test patches"):
-        breakage_code = get_breakage_from_input(test["input"])
-        pred_code = pred["pred"]
-        target_code = pred["target"]
-        if pred_code == breakage_code:
-            verdict = test["verdict"]
-        elif pred_code == target_code:
-            verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None)
-        else:
-            repo_name = test["ID"].split(":")[0]
-            commit = test["aCommit"]
-            if commit != curr_commit or repo_name != curr_repo:
-                if curr_repo:
-                    ghapi.cleanup_worktrees(curr_repo, git_dir / curr_repo)
-
-                worktree_path = ghapi.copy_commit_code(repo_name, commit, git_dir / repo_name)
-                curr_repo = repo_name
-                curr_commit = commit
-
-                worktree = git.Repo(worktree_path)
-
-            test_rel_path = Path(test["aPath"])
-            test_file = worktree_path / test_rel_path
-
-            with open(test_file, "r") as orig_file:
-                contents = orig_file.read()
-
-            if "targetChanges" in test["hunk"] and len(test["hunk"]["targetChanges"]) > 0:
-                contents = contents.split("\n")
-                target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
-                for tc in test["hunk"]["targetChanges"][::-1]:
-                    del contents[tc["lineNo"] - 1]
-                contents.insert(target_line, pred_code)
-                contents = "\n".join(contents)
-            else:
-                test_method = test["bSource"]["code"].split("\n")
-                start_line = test["bSource"]["startLine"]
-                target_line = test["hunk"]["sourceChanges"][0]["lineNo"] - start_line
-                for tc in test["hunk"]["sourceChanges"][::-1]:
-                    del test_method[tc["lineNo"] - start_line]
-                test_method.insert(target_line, pred_code)
-                contents = contents.replace(test["aSource"]["code"], "\n".join(test_method))
-
-            with open(test_file, "w") as orig_file:
-                orig_file.write(contents)
-
-            _, class_name, test_short_name = decompose_full_method_name(test["name"])
-            log_path = (
-                output_dir
-                / "testLogs"
-                / test["aCommit"]
-                / class_name
-                / test_short_name
-                / test_rel_path.parent
-                / str(pred["rank"])
-            )
-            verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path)
-            worktree.git.reset("--hard")
-
-        verdicts.append(verdict)
-
-    if curr_repo:
-        ghapi.cleanup_worktrees(curr_repo, git_dir / curr_repo)
-
-    # shutil.rmtree(base_output_dir / "testLogs")
-    # shutil.rmtree(git_dir)
-
-    return verdicts

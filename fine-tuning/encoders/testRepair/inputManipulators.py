@@ -47,7 +47,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def create_input(self, row, covered_changes):
         test_code = row["bSource"]["code"]
         if "sourceChanges" not in row["hunk"]:
-            test_context = test_code
+            test_context = " ".join([l.strip() for l in test_code.split("\n")])
         else:
             breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
             breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]

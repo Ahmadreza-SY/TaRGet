@@ -105,24 +105,21 @@ def train(gpu, args):
         # if args.rank == 0:
         #     save_model(model, optimizer, scheduler, valid_output_dir)
 
-        bleu_score, em, sr, loss = eval(model, "valid", args, valid_output_dir)
+        bleu_score, em, loss = eval(model, "valid", args, valid_output_dir)
         if args.scoring == "em":
             sel_score = em
         elif args.scoring == "bleu":
             sel_score = bleu_score
-        elif args.scoring == "sr":
-            sel_score = sr
         if sel_score > args.best_checkpoint[0]:
             args.best_checkpoint = (sel_score, epoch)
             if args.rank == 0:
                 logger.info(f"    # Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em}")
-                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em, "sr": sr}
+                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em}
                 save_model(model, optimizer, scheduler, args.output_dir / f"checkpoint-best")
 
         valid_time = datetime.now() - valid_start
         epoch_stats["bleu"] = bleu_score
         epoch_stats["em"] = em
-        epoch_stats["sr"] = sr
         epoch_stats["valid_loss"] = loss
         epoch_stats["valid_duration"] = str(valid_time)
         args.stats["training_stats"]["epochs"].append(epoch_stats)

@@ -31,7 +31,7 @@ def main():
     )
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
     parser.add_argument("-de", "--data_encoder", required=True, type=str)
-    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em", "sr"])
+    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
     parser.add_argument("-m", "--max_seq", required=True, type=int)
