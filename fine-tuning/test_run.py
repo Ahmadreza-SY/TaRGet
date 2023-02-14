@@ -39,10 +39,19 @@ def main():
         type=str,
         help="The directory where predictions are saved and tests will be executed",
     )
+    parser.add_argument(
+        "-j",
+        "--java-home",
+        help="The home of Java for executing test cases of the repository. If not passed, Maven's default java home will be used.",
+        type=str,
+        required=False,
+        default=None,
+    )
     logger = logging.getLogger("MAIN")
     args = parser.parse_args()
     args.output_path = Path(args.output_path)
     Config.set("output_path", args.output_path)
+    Config.set("java_home", args.java_home)
 
     pred_file = args.output_path / "test_predictions.json"
     pred_df = pd.read_json(pred_file)
