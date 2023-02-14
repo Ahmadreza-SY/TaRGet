@@ -16,9 +16,14 @@ class CloneProgress(RemoteProgress):
         self.pbar.n = cur_count
         self.pbar.refresh()
 
+def get_working_path():
+    repo_path = Config.get("repo_path")
+    if repo_path is not None:
+        return repo_path
+    return Config.get("output_path")
 
 def get_repo(repo):
-    output_path = Config.get("output_path")
+    output_path = get_working_path()
     clone_dir = Path(output_path) / "clone"
     if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
         print(f"Cloning {repo} into {clone_dir}")
@@ -30,7 +35,7 @@ def get_repo(repo):
 
 
 def cleanup_worktrees(repo_name):
-    output_path = Config.get("output_path")
+    output_path = get_working_path()
     worktrees_path = Path(output_path) / "commits"
     shutil.rmtree(str(worktrees_path), ignore_errors=True)
     repo = get_repo(repo_name)
@@ -38,7 +43,7 @@ def cleanup_worktrees(repo_name):
 
 
 def copy_commit_code(repo_name, commit):
-    output_path = Config.get("output_path")
+    output_path = get_working_path()
     base_path = Path(output_path) / "commits"
     max_id = 0
     copy_paths = list(base_path.glob(f"{commit}-*"))

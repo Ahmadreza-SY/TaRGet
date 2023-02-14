@@ -37,7 +37,14 @@ def main():
         "--output-path",
         required=True,
         type=str,
-        help="The directory where predictions are saved and tests will be executed",
+        help="The directory where predictions are saved and execution results will be saved.",
+    )
+    parser.add_argument(
+        "-r",
+        "--repo-path",
+        required=False,
+        type=str,
+        help="The directory where tests will be executed.",
     )
     parser.add_argument(
         "-j",
@@ -51,6 +58,7 @@ def main():
     args = parser.parse_args()
     args.output_path = Path(args.output_path)
     Config.set("output_path", args.output_path)
+    Config.set("repo_path", args.repo_path)
     Config.set("java_home", args.java_home)
 
     pred_file = args.output_path / "test_predictions.json"

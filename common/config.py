@@ -2,11 +2,12 @@ class Config:
     __conf = {
         "repo": None,
         "output_path": None,
+        "repo_path": None,
         "java_home": None,
         "jparser_path": "assets/jparser.jar",
     }
 
-    __setters = ["repo", "output_path", "java_home", "jparser_path"]
+    __setters = ["repo", "output_path", "repo_path", "java_home", "jparser_path"]
 
     @staticmethod
     def get(name):
