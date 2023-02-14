@@ -1,4 +1,5 @@
 import subprocess
+from subprocess import TimeoutExpired
 import shlex
 import re
 from config import Config
@@ -13,6 +14,7 @@ class TestVerdict:
     FAILURE = "failure"
     COMPILE_ERR = "compile_error"
     # Invalid results
+    TIMEOUT = "timeout"
     TEST_NOT_EXECUTED = "test_not_executed"
     UNRELATED_COMPILE_ERR = "unrelated_compile_error"
     EXPECTED_EXCEPTION_FAILURE = "expected_exception_failure"
@@ -111,7 +113,19 @@ def run_cmd(cmd):
     my_env = os.environ.copy()
     if java_home is not None:
         my_env["JAVA_HOME"] = java_home
-    return subprocess.run(shlex.split(" ".join(cmd)), capture_output=True, text=True, env=my_env)
+
+    retries = 0
+    while True:
+        proc = subprocess.Popen(shlex.split(" ".join(cmd)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env)
+        try:
+            stdout, stderr = proc.communicate(timeout=15 * 60)
+            return proc.returncode, stdout.decode("utf-8")
+        except TimeoutExpired as e:
+            proc.kill()
+            if retries < 1:
+                retries += 1
+                continue
+            return 124, e.stdout.decode("utf-8")
 
 
 def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
@@ -138,10 +152,9 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             f'-Dtest="{test_class}#{test_method}"',
             "-Dcheckstyle.skip",
             "--batch-mode",
+            f"--threads 4"
         ]
-        result = run_cmd(cmd)
-        returncode = result.returncode
-        log = result.stdout
+        returncode, log = run_cmd(cmd)
         log_path.mkdir(parents=True, exist_ok=True)
         rc_file.write_text(str(returncode))
         log_file.write_text(log)
@@ -150,6 +163,9 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
 
     if returncode == 0:
         return parse_successful_execution(log)
+
+    if returncode == 124:
+        return TestVerdict(TestVerdict.TIMEOUT, None)
 
     compile_error = parse_compile_error(log, test_rel_path)
     if compile_error is not None:

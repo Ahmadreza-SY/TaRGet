@@ -126,7 +126,7 @@ class DataCollector:
             )
 
         lock.acquire()
-        ghapi.remove_commit_code(self.repo_name, a_commit)
+        ghapi.remove_commit_code(self.repo_name, a_commit_path)
         lock.release()
 
         return changed_tests_verdicts, repaired_tests

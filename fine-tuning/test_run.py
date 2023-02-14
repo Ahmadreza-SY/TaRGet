@@ -47,8 +47,7 @@ def main():
     pred_file = args.output_path / "test_predictions.json"
     pred_df = pd.read_json(pred_file)
     test_ds = {row["ID"]: row for row in json.loads((args.output_path / "splits" / f"test.json").read_text())}
-    pred_df["aCommit"] = pred_df.apply(lambda r: test_ds[r["id"]]["aCommit"], axis=1)
-    pred_groups = list(pred_df.groupby("aCommit"))
+    pred_groups = list(pred_df.groupby("id"))
     args.repo_name = next(iter(test_ds)).split(":")[0]
     gapi.cleanup_worktrees(args.repo_name)
     logger.info(f"Starting to execute {len(pred_df)} candidate repair patches")
@@ -111,7 +110,9 @@ def apply_patch(patch, test, test_file):
 
 
 def apply_and_run_preds(pred_group):
-    (a_commit, preds) = pred_group
+    (pred_id, preds) = pred_group
+    test = test_ds[pred_id]
+    a_commit = test['aCommit']
 
     lock.acquire()
     worktree_path = gapi.copy_commit_code(args.repo_name, a_commit)
@@ -148,7 +149,7 @@ def apply_and_run_preds(pred_group):
         verdicts.append((verdict, pred["id"], pred["rank"]))
 
     lock.acquire()
-    gapi.remove_commit_code(args.repo_name, a_commit)
+    gapi.remove_commit_code(args.repo_name, worktree_path)
     lock.release()
 
     return verdicts

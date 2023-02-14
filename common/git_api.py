@@ -39,17 +39,22 @@ def cleanup_worktrees(repo_name):
 
 def copy_commit_code(repo_name, commit):
     output_path = Config.get("output_path")
-    copy_path = Path(output_path) / "commits" / commit
-    if copy_path.exists():
-        return copy_path
+    base_path = Path(output_path) / "commits"
+    max_id = 0
+    copy_paths = list(base_path.glob(f"{commit}-*"))
+    for p in copy_paths:
+        pid = int(p.name.split("-")[-1])
+        if pid > max_id:
+            max_id = pid
+    id = max_id + 1
+    copy_path = base_path / f"{commit}-{id}"
 
     repo = get_repo(repo_name)
     repo.git.worktree("add", str(copy_path.absolute()), commit)
     return copy_path
 
 
-def remove_commit_code(repo_name, commit):
-    code_path = Path(Config.get("output_path")) / "commits" / commit
+def remove_commit_code(repo_name, code_path):
     shutil.rmtree(str(code_path), ignore_errors=True)
     repo = get_repo(repo_name)
     repo.git.worktree("prune")
