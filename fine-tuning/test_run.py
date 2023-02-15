@@ -54,6 +54,14 @@ def main():
         required=False,
         default=None,
     )
+    parser.add_argument(
+        "-i",
+        "--test-index",
+        help="The index of the row to execute from the test split. If not provided, all rows from test split will be executed",
+        type=int,
+        required=False,
+        default=None,
+    )
     logger = logging.getLogger("MAIN")
     args = parser.parse_args()
     args.output_path = Path(args.output_path)
@@ -63,11 +71,21 @@ def main():
 
     pred_file = args.output_path / "test_predictions.json"
     pred_df = pd.read_json(pred_file)
-    test_ds = {row["ID"]: row for row in json.loads((args.output_path / "splits" / f"test.json").read_text())}
+    test_rows = json.loads((args.output_path / "splits" / "test.json").read_text())
+    test_ds = {row["ID"]: row for row in test_rows}
+    if args.test_index is not None:
+        selected_test = test_rows[args.test_index]
+        pred_df = pred_df[pred_df["id"] == selected_test["ID"]].reset_index(drop=True)
+
     pred_groups = list(pred_df.groupby("id"))
-    args.repo_name = next(iter(test_ds)).split(":")[0]
-    gapi.cleanup_worktrees(args.repo_name)
-    logger.info(f"Starting to execute {len(pred_df)} candidate repair patches")
+    repos = set([t["ID"].split(":")[0] for t in test_rows])
+    for repo in repos:
+        gapi.cleanup_worktrees(repo)
+    logger.info(
+        f"Starting to execute {len(pred_df)} candidate repair patches" + f" - single ID {selected_test['ID']}"
+        if args.test_index is not None
+        else ""
+    )
     results = []
     proc_cnt = round(mp.cpu_count() / 4) if mp.cpu_count() > 2 else 1
     with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(), test_ds, args)) as pool:
@@ -84,7 +102,7 @@ def main():
     logger.info("Verdict stats:")
     for v, cnt in vs_df["verdict"].value_counts().items():
         print(f"    {v} -> {round(100*cnt/len(vs_df), 1)}% ({cnt})")
-    
+
     verdict_df = pd.DataFrame(
         {"verdict": [r[0] for r in results], "id": [r[1] for r in results], "rank": [r[2] for r in results]}
     )
@@ -92,7 +110,11 @@ def main():
     success_cnt = verdict_df.groupby("id").filter(lambda g: g["success"].sum() >= 1)["id"].nunique()
     success_rate = round(100 * success_cnt / verdict_df["id"].nunique(), 1)
     logger.info(f"Success Rate: {success_rate} %")
-    verdict_df.to_json(args.output_path / "test_verdicts.json", orient="records", indent=2)
+    verdicts_file = args.output_path / "test_verdicts.json"
+    if args.test_index is not None:
+        verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
+        verdicts_file.parent.mkdir(exist_ok=True, parents=True)
+    verdict_df.to_json(verdicts_file, orient="records", indent=2)
 
 
 def get_breakage_from_input(input):
@@ -129,10 +151,11 @@ def apply_patch(patch, test, test_file):
 def apply_and_run_preds(pred_group):
     (pred_id, preds) = pred_group
     test = test_ds[pred_id]
-    a_commit = test['aCommit']
+    repo_name = test["ID"].split(":")[0]
+    a_commit = test["aCommit"]
 
     lock.acquire()
-    worktree_path = gapi.copy_commit_code(args.repo_name, a_commit)
+    worktree_path = gapi.copy_commit_code(repo_name, a_commit)
     lock.release()
     worktree = git.Repo(worktree_path)
 
@@ -166,7 +189,7 @@ def apply_and_run_preds(pred_group):
         verdicts.append((verdict, pred["id"], pred["rank"]))
 
     lock.acquire()
-    gapi.remove_commit_code(args.repo_name, worktree_path)
+    gapi.remove_commit_code(repo_name, worktree_path)
     lock.release()
 
     return verdicts
