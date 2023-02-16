@@ -152,7 +152,6 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             f'-Dtest="{test_class}#{test_method}"',
             "-Dcheckstyle.skip",
             "--batch-mode",
-            f"--threads 4"
         ]
         returncode, log = run_cmd(cmd)
         log_path.mkdir(parents=True, exist_ok=True)
