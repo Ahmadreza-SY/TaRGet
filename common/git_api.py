@@ -42,17 +42,12 @@ def cleanup_worktrees(repo_name):
     repo.git.worktree("prune")
 
 
-def copy_commit_code(repo_name, commit):
+def copy_commit_code(repo_name, commit, id):
     output_path = get_working_path()
     base_path = Path(output_path) / "commits"
-    max_id = 0
-    copy_paths = list(base_path.glob(f"{commit}-*"))
-    for p in copy_paths:
-        pid = int(p.name.split("-")[-1])
-        if pid > max_id:
-            max_id = pid
-    id = max_id + 1
     copy_path = base_path / f"{commit}-{id}"
+    if copy_path.exists():
+        return copy_path
 
     repo = get_repo(repo_name)
     repo.git.worktree("add", str(copy_path.absolute()), commit)

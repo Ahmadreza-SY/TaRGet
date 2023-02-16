@@ -89,7 +89,7 @@ class DataCollector:
         (a_commit, changes) = change_group
 
         lock.acquire()
-        a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit)
+        a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
         lock.release()
 
         for _, change in changes.iterrows():

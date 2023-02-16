@@ -21,7 +21,7 @@ logging.basicConfig(
     datefmt="%m-%d-%Y %H:%M:%S",
     level=logging.INFO,
 )
-
+logger = logging.getLogger("MAIN")
 
 def pool_init(_lock, _test_ds, _args):
     global lock, test_ds, args
@@ -62,7 +62,6 @@ def main():
         required=False,
         default=None,
     )
-    logger = logging.getLogger("MAIN")
     args = parser.parse_args()
     args.output_path = Path(args.output_path)
     Config.set("output_path", args.output_path)
@@ -78,9 +77,6 @@ def main():
         pred_df = pred_df[pred_df["id"] == selected_test["ID"]].reset_index(drop=True)
 
     pred_groups = list(pred_df.groupby("id"))
-    repos = set([t["ID"].split(":")[0] for t in test_rows])
-    for repo in repos:
-        gapi.cleanup_worktrees(repo)
     logger.info(
         f"Starting to execute {len(pred_df)} candidate repair patches" + f" - single ID {selected_test['ID']}"
         if args.test_index is not None
@@ -98,24 +94,28 @@ def main():
             results.extend(res)
 
     logger.info(f"Execution finished!")
-    vs_df = pd.DataFrame({"verdict": [r[0]["status"] for r in results]})
-    logger.info("Verdict stats:")
-    for v, cnt in vs_df["verdict"].value_counts().items():
-        print(f"    {v} -> {round(100*cnt/len(vs_df), 1)}% ({cnt})")
-
-    verdict_df = pd.DataFrame(
-        {"verdict": [r[0] for r in results], "id": [r[1] for r in results], "rank": [r[2] for r in results]}
-    )
-    verdict_df["success"] = verdict_df["verdict"].apply(lambda v: 1 if v["status"] == mvnp.TestVerdict.SUCCESS else 0)
-    success_cnt = verdict_df.groupby("id").filter(lambda g: g["success"].sum() >= 1)["id"].nunique()
-    success_rate = round(100 * success_cnt / verdict_df["id"].nunique(), 1)
-    logger.info(f"Success Rate: {success_rate} %")
+    verdict_df = analyze_verdicts(results)
     verdicts_file = args.output_path / "test_verdicts.json"
     if args.test_index is not None:
         verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
         verdicts_file.parent.mkdir(exist_ok=True, parents=True)
     verdict_df.to_json(verdicts_file, orient="records", indent=2)
 
+def analyze_verdicts(verdicts):
+    vs_df = pd.DataFrame({"verdict": [r[0]["status"] for r in verdicts]})
+    logger.info("Verdict stats:")
+    for v, cnt in vs_df["verdict"].value_counts().items():
+        print(f"    {v} -> {round(100*cnt/len(vs_df), 1)}% ({cnt})")
+
+    verdict_df = pd.DataFrame(
+        {"verdict": [r[0] for r in verdicts], "id": [r[1] for r in verdicts], "rank": [r[2] for r in verdicts]}
+    )
+    verdict_df["success"] = verdict_df["verdict"].apply(lambda v: 1 if v["status"] == mvnp.TestVerdict.SUCCESS else 0)
+    success_cnt = verdict_df.groupby("id").filter(lambda g: g["success"].sum() >= 1)["id"].nunique()
+    success_rate = round(100 * success_cnt / verdict_df["id"].nunique(), 1)
+    logger.info(f"Success Rate: {success_rate} %")
+
+    return verdict_df
 
 def get_breakage_from_input(input):
     matches = re.compile(f"^{Tokens.BREAKAGE} (.*) {Tokens.TEST_CONTEXT}.+$", re.MULTILINE).findall(input)
@@ -125,6 +125,8 @@ def get_breakage_from_input(input):
 
 
 def apply_patch(patch, test, test_file):
+    with open(test_file, "r") as orig_file:
+        original_contents = orig_file.read()
     with open(test_file, "r") as orig_file:
         contents = orig_file.read()
 
@@ -147,6 +149,8 @@ def apply_patch(patch, test, test_file):
     with open(test_file, "w") as orig_file:
         orig_file.write(contents)
 
+    return original_contents
+
 
 def apply_and_run_preds(pred_group):
     (pred_id, preds) = pred_group
@@ -155,9 +159,8 @@ def apply_and_run_preds(pred_group):
     a_commit = test["aCommit"]
 
     lock.acquire()
-    worktree_path = gapi.copy_commit_code(repo_name, a_commit)
+    worktree_path = gapi.copy_commit_code(repo_name, a_commit, test["ID"].split(":")[-1])
     lock.release()
-    worktree = git.Repo(worktree_path)
 
     verdicts = []
     for _, pred in preds.iterrows():
@@ -172,7 +175,7 @@ def apply_and_run_preds(pred_group):
         else:
             test_rel_path = Path(test["aPath"])
             test_file = worktree_path / test_rel_path
-            apply_patch(pred_code, test, test_file)
+            original_contents = apply_patch(pred_code, test, test_file)
             _, class_name, test_short_name = decompose_full_method_name(test["name"])
             log_path = (
                 args.output_path
@@ -184,7 +187,8 @@ def apply_and_run_preds(pred_group):
                 / str(pred["rank"])
             )
             verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path).to_dict()
-            worktree.git.reset("--hard")
+            with open(test_file, "w") as orig_file:
+                orig_file.write(original_contents)
 
         verdicts.append((verdict, pred["id"], pred["rank"]))
 
