@@ -84,6 +84,8 @@ def main():
     )
     results = []
     proc_cnt = round(mp.cpu_count() / 4) if mp.cpu_count() > 2 else 1
+    if args.test_index is not None:
+        proc_cnt = 1
     with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(), test_ds, args)) as pool:
         for res in tqdm(
             pool.imap_unordered(apply_and_run_preds, pred_groups),
