@@ -30,7 +30,7 @@ def main():
     if len(verdict_paths) == 0:
         logger.info("No verdict files found! Aborting ...")
         return
-    test_ds = json.loads((args.output_path / "splits" / "test.json"))
+    test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
     if len(verdict_paths) != len(test_ds):
         logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}! Aborting ...")
         return
