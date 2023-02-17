@@ -128,7 +128,7 @@ def run_cmd(cmd):
             return 124, e.stdout.decode("utf-8")
 
 
-def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
+def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True):
     log_file = log_path / "test.log"
     rc_file = log_path / "returncode"
     test_path = project_path / test_rel_path
@@ -154,11 +154,12 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path):
             "--batch-mode",
         ]
         returncode, log = run_cmd(cmd)
-        log_path.mkdir(parents=True, exist_ok=True)
-        rc_file.write_text(str(returncode))
-        log_file.write_text(log)
-        cmd_file = log_path / "command"
-        cmd_file.write_text(" ".join(cmd))
+        if save_logs:
+            log_path.mkdir(parents=True, exist_ok=True)
+            rc_file.write_text(str(returncode))
+            log_file.write_text(log)
+            cmd_file = log_path / "command"
+            cmd_file.write_text(" ".join(cmd))
 
     if returncode == 0:
         return parse_successful_execution(log)

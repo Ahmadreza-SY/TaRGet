@@ -62,6 +62,8 @@ def main():
         required=False,
         default=None,
     )
+    parser.add_argument("-do", "--discard-logs", dest="discard_logs", action="store_true")
+    parser.set_defaults(discard_logs=False)
     args = parser.parse_args()
     args.output_path = Path(args.output_path)
     Config.set("output_path", args.output_path)
@@ -188,7 +190,8 @@ def apply_and_run_preds(pred_group):
                 / test_rel_path.parent
                 / str(pred["rank"])
             )
-            verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path).to_dict()
+            verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs)
+            verdict = verdict.to_dict()
             with open(test_file, "w") as orig_file:
                 orig_file.write(original_contents)
 
