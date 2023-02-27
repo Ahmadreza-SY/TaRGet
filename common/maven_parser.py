@@ -118,7 +118,7 @@ def run_cmd(cmd):
     while True:
         proc = subprocess.Popen(shlex.split(" ".join(cmd)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env)
         try:
-            stdout, stderr = proc.communicate(timeout=15 * 60)
+            stdout, stderr = proc.communicate(timeout=30 * 60)
             return proc.returncode, stdout.decode("utf-8")
         except TimeoutExpired as e:
             proc.kill()
