@@ -18,3 +18,8 @@ def compare_test_classes(output_path):
 def extract_covered_changes_info(output_path):
     cmd = ["java", "-jar", Config.get("jparser_path"), "coverage", "-o", str(output_path)]
     run_command(cmd)
+
+
+def categorize_repair_diffs(output_path):
+    cmd = ["java", "-jar", Config.get("jparser_path"), "diff", "-o", str(output_path)]
+    run_command(cmd)

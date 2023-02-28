@@ -22,12 +22,12 @@ def get_working_path():
         return repo_path
     return Config.get("output_path")
 
-def get_repo(repo):
+def get_repo(repo_name):
     output_path = get_working_path()
     clone_dir = Path(output_path) / "clone"
     if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
-        print(f"Cloning {repo} into {clone_dir}")
-        git_repo = git.Repo.clone_from(f"https://github.com/{repo}.git", clone_dir, progress=CloneProgress())
+        print(f"Cloning {repo_name} into {clone_dir}")
+        git_repo = git.Repo.clone_from(f"https://github.com/{repo_name}.git", clone_dir, progress=CloneProgress())
     else:
         git_repo = git.Repo(clone_dir)
 
@@ -67,11 +67,13 @@ def get_all_commits(repo_name):
 
 
 def get_file_versions(file_diff, commit, repo_name):
-    repo = get_repo(repo_name)
-    before = repo.git.show(f"{commit.parents[0].hexsha}:{file_diff.b_path}")
-    after = repo.git.show(f"{commit.hexsha}:{file_diff.a_path}")
+    before = get_file_version(commit.parents[0].hexsha, file_diff.b_path, repo_name)
+    after = get_file_version(commit.hexsha, file_diff.a_path, repo_name)
     return before, after
 
+def get_file_version(commit_hex, file_path, repo_name):
+    repo = get_repo(repo_name)
+    return repo.git.show(f"{commit_hex}:{file_path}")
 
 def get_short_commit(commit, repo_name):
     repo = get_repo(repo_name)

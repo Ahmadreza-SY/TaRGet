@@ -15,6 +15,7 @@ import spoon.reflect.visitor.ImportConflictDetector;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -34,9 +35,9 @@ public class Spoon {
     spoon.getFactory().getEnvironment().setPrettyPrinterCreator(() -> {
       var printer = new CustomJavaPrettyPrinter(spoon.getFactory().getEnvironment());
       List<Processor<CtElement>> preprocessors = List.of(new ForceImportProcessor(),
-              new ImportCleaner().setCanAddImports(false),
-              new ImportConflictDetector(),
-              new ImportCleaner().setImportComparator(new DefaultImportComparator()));
+          new ImportCleaner().setCanAddImports(false),
+          new ImportConflictDetector(),
+          new ImportCleaner().setImportComparator(new DefaultImportComparator()));
       printer.setIgnoreImplicit(false);
       printer.setPreprocessors(preprocessors);
       return printer;
@@ -93,7 +94,7 @@ public class Spoon {
 
   public static boolean isMethodOrConstructor(CtExecutable<?> executable) {
     return ((executable instanceof CtMethod) || (executable instanceof CtConstructor)) &&
-            executable.getPosition().isValidPosition();
+        executable.getPosition().isValidPosition();
   }
 
   public static boolean codeIsModified(CtNamedElement src, CtNamedElement dst) {
@@ -107,8 +108,8 @@ public class Spoon {
     if (this.testMethods != null) return this.testMethods;
 
     var refs = Stream.of("org.junit.Test", "org.junit.jupiter.api.Test")
-            .map(refName -> spoon.getFactory().Type().createReference(refName))
-            .toArray(CtTypeReference[]::new);
+        .map(refName -> spoon.getFactory().Type().createReference(refName))
+        .toArray(CtTypeReference[]::new);
     this.testMethods = new ArrayList<>();
     for (var type : spoon.getModel().getAllTypes()) {
       this.testMethods.addAll(type.getMethodsAnnotatedWith(refs));
@@ -175,9 +176,9 @@ public class Spoon {
   private static Integer getPositionLine(CtElement element, Integer position) {
     var lineSepPos = element.getPosition().getCompilationUnit().getLineSeparatorPositions();
     return IntStream.range(0, lineSepPos.length)
-            .filter(i -> position < lineSepPos[i])
-            .findFirst()
-            .orElse(lineSepPos.length) + 1;
+        .filter(i -> position < lineSepPos[i])
+        .findFirst()
+        .orElse(lineSepPos.length) + 1;
   }
 
   public CtType<?> getTopLevelTypeByFile(String file) {
@@ -195,6 +196,19 @@ public class Spoon {
     return elements.isEmpty() ? null : elements.get(0);
   }
 
+  public CtType<?> getTopLevelType() {
+    TypeFilter<CtType<?>> typeFileFilter = new TypeFilter<>(CtType.class) {
+      @Override
+      public boolean matches(CtType<?> ctType) {
+        if (!super.matches(ctType)) return false;
+        if (!ctType.getPosition().isValidPosition()) return false;
+        return ctType.isTopLevel();
+      }
+    };
+    var elements = spoon.getModel().getRootPackage().getElements(typeFileFilter);
+    return elements.isEmpty() ? null : elements.get(0);
+  }
+
   public static Set<Integer> getCommentsLineNumbers(CtNamedElement element) {
     if (element == null) return Collections.emptySet();
     List<CtComment> comments = element.getElements(new TypeFilter<>(CtComment.class));
@@ -203,8 +217,8 @@ public class Spoon {
     var commentsLineNumbers = new HashSet<Integer>();
     for (var comment : comments) {
       var commentLines = IntStream.rangeClosed(getStartLine(comment), getEndLine(comment))
-              .boxed()
-              .collect(Collectors.toList());
+          .boxed()
+          .collect(Collectors.toList());
       commentsLineNumbers.addAll(commentLines);
     }
     return commentsLineNumbers;

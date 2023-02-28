@@ -52,9 +52,9 @@ public class IOUtils {
 
   public static Gson createGsonInstance() {
     return new GsonBuilder().disableHtmlEscaping()
-            .setPrettyPrinting()
-            .registerTypeAdapter(ImmutablePair.class, new ImmutablePairDeserializer())
-            .create();
+        .setPrettyPrinting()
+        .registerTypeAdapter(ImmutablePair.class, new ImmutablePairDeserializer())
+        .create();
   }
 
   public static void disableReflectionWarning() {
