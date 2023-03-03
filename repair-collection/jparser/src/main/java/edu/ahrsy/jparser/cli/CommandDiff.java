@@ -39,7 +39,8 @@ public class CommandDiff {
       executor.submit(() -> {
         repairPatch.beforePath = Path.of(args.outputPath, repairPatch.beforePath).toString();
         repairPatch.afterPath = Path.of(args.outputPath, repairPatch.afterPath).toString();
-        repairTypes.add(GumTreeUtils.getRepairType(repairPatch, args.complianceLevel));
+        var repairType = GumTreeUtils.getRepairType(repairPatch, args.complianceLevel);
+        repairTypes.add(repairType);
         pb.step();
       });
     }

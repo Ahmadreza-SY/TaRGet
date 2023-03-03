@@ -1,5 +1,7 @@
 package edu.ahrsy.jparser.gumtree;
 
+import com.github.gumtreediff.tree.Tree;
+import edu.ahrsy.jparser.cli.CommandDiff;
 import edu.ahrsy.jparser.spoon.Spoon;
 import gumtree.spoon.AstComparator;
 
@@ -21,7 +23,14 @@ public class GumTreeUtils {
           .getParents()
           .stream().map(p -> p.getType().name)
           .collect(Collectors.toList());
-      repairType.addAction(actionType, nodeType, parents);
+
+      var action = new Action(actionType, nodeType, parents);
+      if (op.getSrcNode() != null && op.getSrcNode().getMetadata("gtnode") != null)
+        action.srcNode = Node.from((Tree) op.getSrcNode().getMetadata("gtnode"));
+      if (op.getDstNode() != null && op.getDstNode().getMetadata("gtnode") != null)
+        action.dstNode = Node.from((Tree) op.getDstNode().getMetadata("gtnode"));
+
+      repairType.actions.add(action);
     }
     return repairType;
   }
