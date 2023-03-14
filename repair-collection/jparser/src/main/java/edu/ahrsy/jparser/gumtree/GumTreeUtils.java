@@ -15,7 +15,8 @@ public class GumTreeUtils {
     var aType = aSpoon.getTopLevelType();
     var diff = new AstComparator().compare(bType, aType);
     var repairType = new RepairType(repairPatch.repairId);
-    for (var op : diff.getRootOperations()) {
+    var rootOperations = diff.getRootOperations();
+    for (var op : rootOperations) {
       var actionType = op.getAction().getClass().getSimpleName();
       var nodeType = op.getAction().getNode().getType().name;
       var parents = op.getAction()
@@ -30,6 +31,8 @@ public class GumTreeUtils {
       if (op.getDstNode() != null && op.getDstNode().getMetadata("gtnode") != null)
         action.dstNode = Node.from((Tree) op.getDstNode().getMetadata("gtnode"));
 
+      if (action.srcNode == null && action.dstNode == null && rootOperations.size() > 1)
+        continue;
       repairType.actions.add(action);
     }
     return repairType;
