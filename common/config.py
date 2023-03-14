@@ -1,10 +1,13 @@
+import os
+import sys
+
 class Config:
     __conf = {
         "repo": None,
         "output_path": None,
         "repo_path": None,
         "java_home": None,
-        "jparser_path": "assets/jparser.jar",
+        "jparser_path": os.path.join(os.path.dirname(sys.path[0]), "repair-collection/assets/jparser.jar"),
     }
 
     __setters = ["repo", "output_path", "repo_path", "java_home", "jparser_path"]

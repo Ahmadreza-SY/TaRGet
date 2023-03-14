@@ -1,5 +1,6 @@
 import sys
-sys.path.append("../common")
+import os
+sys.path.append(os.path.join(os.path.dirname(sys.path[0]),'common'))
 from config import Config
 import argparse
 from data_collector import DataCollector
