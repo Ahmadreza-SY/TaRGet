@@ -5,7 +5,6 @@ import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.TestClassComparator;
 import edu.ahrsy.jparser.utils.IOUtils;
-import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
 
@@ -14,7 +13,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 import static edu.ahrsy.jparser.utils.IOUtils.awaitTerminationAfterShutdown;
 
@@ -33,13 +31,13 @@ public class CommandCompare {
     }
 
     var allChanges = IOUtils.readCsv(Path.of(args.outputPath, "changed_test_classes.csv").toString(),
-            ChangedTestClass.class);
+        ChangedTestClass.class);
     var allSingleHunkTestChanges = Collections.synchronizedList(new ArrayList<SingleHunkTestChange>());
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
-            .setInitialMax(allChanges.size())
-            .showSpeed()
-            .setTaskName("Extracting test method changes")
-            .build();
+        .setInitialMax(allChanges.size())
+        .showSpeed()
+        .setTaskName("Extracting test method changes")
+        .build();
     int procCnt = Runtime.getRuntime().availableProcessors();
     var executor = Executors.newFixedThreadPool(procCnt);
 
@@ -48,17 +46,7 @@ public class CommandCompare {
         var bPath = Path.of(args.outputPath, "testClasses", changedTestClass.beforeCommit, changedTestClass.beforePath);
         var aPath = Path.of(args.outputPath, "testClasses", changedTestClass.afterCommit, changedTestClass.afterPath);
         var classComparator = new TestClassComparator(bPath.toString(), aPath.toString(), args.complianceLevel);
-        var testChanges = classComparator.getSingleHunkMethodChanges(changedTestClass, args.outputPath)
-                .stream()
-                .map(mc -> new SingleHunkTestChange(mc.getName(),
-                        classComparator.getBeforeTestSource(mc.getName()),
-                        classComparator.getAfterTestSource(mc.getName()),
-                        changedTestClass.beforePath,
-                        changedTestClass.afterPath,
-                        changedTestClass.beforeCommit,
-                        changedTestClass.afterCommit,
-                        mc.getHunks().get(0)))
-                .collect(Collectors.toList());
+        var testChanges = classComparator.getSingleHunkTestChanges(changedTestClass, args.outputPath);
         allSingleHunkTestChanges.addAll(testChanges);
         pb.step();
       });

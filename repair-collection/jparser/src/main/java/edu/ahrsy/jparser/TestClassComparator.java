@@ -2,7 +2,9 @@ package edu.ahrsy.jparser;
 
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.Change;
+import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.entity.TestSource;
+import edu.ahrsy.jparser.gumtree.GumTreeUtils;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import gumtree.spoon.AstComparator;
@@ -63,7 +65,7 @@ public class TestClassComparator {
     return changedSrcFile.replace(changedStart, changedEnd + 1, originalSrc).toString();
   }
 
-  public List<Pair<CtMethod<?>, CtMethod<?>>> getChangedTests() {
+  private List<Pair<CtMethod<?>, CtMethod<?>>> getChangedTests() {
     var changedTests = new HashMap<String, Pair<CtMethod<?>, CtMethod<?>>>();
     var bTests = bSpoon.getTests().stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
     for (var aTest : aSpoon.getTests()) {
@@ -76,10 +78,10 @@ public class TestClassComparator {
 
   private TestSource getTestSource(String name, Spoon spoon) {
     var method = spoon.getTests()
-            .stream()
-            .filter(tm -> Spoon.getUniqueName(tm).equals(name))
-            .findFirst()
-            .orElseThrow();
+        .stream()
+        .filter(tm -> Spoon.getUniqueName(tm).equals(name))
+        .findFirst()
+        .orElseThrow();
     return TestSource.from(method);
   }
 
@@ -91,26 +93,35 @@ public class TestClassComparator {
     return getTestSource(name, aSpoon);
   }
 
-  public List<Change> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {
+  public List<SingleHunkTestChange> getSingleHunkTestChanges(ChangedTestClass changedTestClass, String outputPath) {
     var changedTests = getChangedTests();
     if (changedTests.isEmpty()) return Collections.emptyList();
     // TODO this condition can be removed
     if (!onlyTestsChanged()) return Collections.emptyList();
 
-    var testChanges = new ArrayList<Change>();
+    var testChanges = new ArrayList<SingleHunkTestChange>();
     for (var test : changedTests) {
       var name = Spoon.getUniqueName(test.getLeft());
       var change = new Change(changedTestClass.beforePath, name);
       change.extractHunks(test.getLeft(), test.getRight());
       if (change.getHunks().size() == 1) {
-        testChanges.add(change);
+        var singleHunkChange = new SingleHunkTestChange(change.getName(),
+            getBeforeTestSource(change.getName()),
+            getAfterTestSource(change.getName()),
+            changedTestClass.beforePath,
+            changedTestClass.afterPath,
+            changedTestClass.beforeCommit,
+            changedTestClass.afterCommit,
+            change.getHunks().get(0),
+            GumTreeUtils.getASTActions(test.getLeft(), test.getRight()));
+        testChanges.add(singleHunkChange);
         var brokenPatch = replaceChangedTestWithOriginal(test.getLeft(), test.getRight());
         var outputFile = Path.of(outputPath,
-                "brokenPatches",
-                changedTestClass.afterCommit,
-                test.getLeft().getTopLevelType().getSimpleName(),
-                test.getLeft().getSimpleName(),
-                changedTestClass.afterPath);
+            "brokenPatches",
+            changedTestClass.afterCommit,
+            test.getLeft().getTopLevelType().getSimpleName(),
+            test.getLeft().getSimpleName(),
+            changedTestClass.afterPath);
         IOUtils.saveFile(outputFile, brokenPatch);
       }
     }
