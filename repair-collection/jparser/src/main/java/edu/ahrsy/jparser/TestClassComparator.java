@@ -119,6 +119,7 @@ public class TestClassComparator {
         testChanges.add(singleHunkChange);
         var brokenPatch = replaceChangedTestWithOriginal(test.getLeft(), test.getRight());
         var outputFile = Path.of(outputPath,
+            "codeMining",
             "brokenPatches",
             testClass.afterCommit,
             test.getLeft().getTopLevelType().getSimpleName(),

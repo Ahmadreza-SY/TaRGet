@@ -34,18 +34,19 @@ public class CommandCoverage {
   public Integer complianceLevel = 10;
 
   private static final Gson gson = IOUtils.createGsonInstance();
+  private static Path repoDir = null;
 
   public static void cCoverage(CommandCoverage args) {
-    var repoDir = Path.of(args.outputPath, "clone");
+    repoDir = Path.of(args.outputPath, "codeMining", "clone");
     GitAPI.cleanupWorktrees(repoDir);
 
-    var repairedTestsJSON = IOUtils.readFile(Path.of(args.outputPath, "repaired_tests.json"));
+    var repairedTestsJSON = IOUtils.readFile(Path.of(args.outputPath, "codeMining", "repaired_tests.json"));
     List<SingleHunkTestChange> repairedTests = gson.fromJson(repairedTestsJSON,
             new TypeToken<ArrayList<SingleHunkTestChange>>() {
             }.getType());
     createCallGraphs(args, repairedTests);
 
-    var changedSUTClassesJSON = IOUtils.readFile(Path.of(args.outputPath, "changed_sut_classes.json"));
+    var changedSUTClassesJSON = IOUtils.readFile(Path.of(args.outputPath, "codeMining", "changed_sut_classes.json"));
     List<CommitChangedClasses> changedSUTClasses = gson.fromJson(changedSUTClassesJSON,
             new TypeToken<List<CommitChangedClasses>>() {
             }.getType());
@@ -65,7 +66,6 @@ public class CommandCoverage {
   }
 
   private static void createCallGraphs(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
-    var repoDir = Path.of(args.outputPath, "clone");
     var aCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.aCommit));
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
             .setInitialMax(repairedTests.size())
@@ -80,7 +80,7 @@ public class CommandCoverage {
       executor.submit(() -> {
         var aCommit = aEntry.getKey();
         var aCommitRepairs = aEntry.getValue();
-        var commitGraphsPath = Path.of(args.outputPath, "callGraphs", aCommit);
+        var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", aCommit);
         if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
           pb.stepBy(aCommitRepairs.size());
           return;
@@ -116,14 +116,13 @@ public class CommandCoverage {
   }
 
   private static void extractChanges(CommandCoverage args, List<CommitChangedClasses> changedSUTClasses) {
-    var SUTClassChangesPath = Path.of(args.outputPath, "sut_class_changes.json");
-    var SUTExecutableChangesPath = Path.of(args.outputPath, "sut_method_changes.json");
+    var SUTClassChangesPath = Path.of(args.outputPath, "codeMining", "sut_class_changes.json");
+    var SUTExecutableChangesPath = Path.of(args.outputPath, "codeMining", "sut_method_changes.json");
     if (Files.exists(SUTClassChangesPath) && Files.exists(SUTExecutableChangesPath)) {
       System.out.println("SUT class and method changes already exist, skipping ...");
       return;
     }
 
-    var repoDir = Path.of(args.outputPath, "clone");
     var SUTClassChanges = Collections.synchronizedList(new ArrayList<CommitChanges>());
     var SUTExecutableChanges = Collections.synchronizedList(new ArrayList<CommitChanges>());
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)

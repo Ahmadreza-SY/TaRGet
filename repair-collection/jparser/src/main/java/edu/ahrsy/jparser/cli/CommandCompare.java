@@ -24,13 +24,13 @@ public class CommandCompare {
   public Integer complianceLevel = 10;
 
   public static void cCompare(CommandCompare args) {
-    var changedTestsPath = Path.of(args.outputPath, "changed_tests.json");
+    var changedTestsPath = Path.of(args.outputPath, "codeMining", "changed_tests.json");
     if (Files.exists(changedTestsPath)) {
       System.out.println("Changed tests already exists, skipping ...");
       return;
     }
 
-    var allChanges = IOUtils.readCsv(Path.of(args.outputPath, "changed_test_classes.csv").toString(),
+    var allChanges = IOUtils.readCsv(Path.of(args.outputPath, "codeMining", "changed_test_classes.csv").toString(),
         ChangedTestClass.class);
     var allSingleHunkTestChanges = Collections.synchronizedList(new ArrayList<SingleHunkTestChange>());
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
@@ -43,8 +43,8 @@ public class CommandCompare {
 
     for (ChangedTestClass changedTestClass : allChanges) {
       executor.submit(() -> {
-        var bPath = Path.of(args.outputPath, "testClasses", changedTestClass.beforeCommit, changedTestClass.beforePath);
-        var aPath = Path.of(args.outputPath, "testClasses", changedTestClass.afterCommit, changedTestClass.afterPath);
+        var bPath = Path.of(args.outputPath, "codeMining", "testClasses", changedTestClass.beforeCommit, changedTestClass.beforePath);
+        var aPath = Path.of(args.outputPath, "codeMining", "testClasses", changedTestClass.afterCommit, changedTestClass.afterPath);
         var classComparator = new TestClassComparator(bPath.toString(), aPath.toString(), args.complianceLevel);
         var testChanges = classComparator.getSingleHunkTestChanges(changedTestClass, args.outputPath);
         allSingleHunkTestChanges.addAll(testChanges);

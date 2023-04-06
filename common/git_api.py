@@ -26,7 +26,7 @@ def get_working_path():
 
 def get_repo(repo_name):
     output_path = get_working_path()
-    clone_dir = Path(output_path) / "clone"
+    clone_dir = Path(output_path) / "codeMining" / "clone"
     if not clone_dir.exists() or not clone_dir.stat().st_size > 0:
         print(f"Cloning {repo_name} into {clone_dir}")
         git_repo = git.Repo.clone_from(f"https://github.com/{repo_name}.git", clone_dir, progress=CloneProgress())
@@ -38,7 +38,7 @@ def get_repo(repo_name):
 
 def cleanup_worktrees(repo_name):
     output_path = get_working_path()
-    worktrees_path = Path(output_path) / "commits"
+    worktrees_path = Path(output_path) / "codeMining" / "commits"
     shutil.rmtree(str(worktrees_path), ignore_errors=True)
     repo = get_repo(repo_name)
     repo.git.worktree("prune")
@@ -46,7 +46,7 @@ def cleanup_worktrees(repo_name):
 
 def copy_commit_code(repo_name, commit, id):
     output_path = get_working_path()
-    base_path = Path(output_path) / "commits"
+    base_path = Path(output_path) / "codeMining" / "commits"
     copy_path = base_path / f"{commit}-{id}"
     if copy_path.exists():
         return copy_path
