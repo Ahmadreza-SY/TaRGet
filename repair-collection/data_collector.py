@@ -10,6 +10,7 @@ import shutil
 import maven_parser as mvnp
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
+from jacoco_utils import configure_pom, parse_jacoco_report
 
 
 def pool_init(_lock):
@@ -83,13 +84,41 @@ class DataCollector:
         changed_test_classes = pd.DataFrame(changed_test_classes)
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
+    def extract_covered_lines(self, project_path, change):
+        configure_pom(project_path)
+
+        test_name = change["name"]
+        b_commit = change["bCommit"]
+        test_b_path = Path(change["bPath"])
+        test_method_name = test_name.split(".")[-1].replace("()", "")
+        log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
+        original_log_path = self.output_path / "originalExeLogs" / log_path
+        verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
+        if verdict.succeeded():
+            report_path = mvnp.find_parent_pom(project_path / test_b_path).parent / "target/site"
+            covered_lines = parse_jacoco_report(report_path, project_path)
+            lock.acquire()
+            coverage = {}
+            coverage_path = self.output_path / "coverage.json"
+            if coverage_path.exists():
+                coverage = json.loads(coverage_path.read_text())
+            coverage.setdefault(b_commit, {})
+            coverage[b_commit].setdefault(test_name, {})
+            coverage[b_commit][test_name] = covered_lines
+            coverage_path.write_text(json.dumps(coverage, indent=2, sort_keys=False))
+            lock.release()
+
+        return verdict
+
     def run_changed_tests(self, change_group):
         changed_tests_verdicts = []
         repaired_tests = []
         (a_commit, changes) = change_group
+        b_commit = changes.iloc[0]["bCommit"]
 
         lock.acquire()
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
+        b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
         lock.release()
 
         for _, change in changes.iterrows():
@@ -98,17 +127,23 @@ class DataCollector:
             original_file = self.output_path / "testClasses" / a_commit / test_a_path
             broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
             log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
+
+            # Running T on P to trace test coverage
+            original_verdict = self.extract_covered_lines(b_commit_path, change)
+            if not original_verdict.succeeded():
+                continue
+
             broken_log_path = self.output_path / "brokenExeLogs" / log_path
             executable_file = a_commit_path / test_a_path
             shutil.copyfile(str(broken_file), str(executable_file))
-            # To detect whether the test case is broken (needs repair)
+            # Running T on P' to detect whether the test case is broken (needs repair)
             before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, broken_log_path)
             shutil.copyfile(str(original_file), str(executable_file))
 
             after_verdict = None
             repaired_log_path = self.output_path / "repairedExeLogs" / log_path
             if before_verdict.is_broken():
-                # To detect whether test case is correctly repaired
+                # Running T' on P' to detect whether test case is correctly repaired
                 after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, repaired_log_path)
                 if after_verdict.succeeded():
                     change_obj = change.to_dict()
@@ -127,6 +162,7 @@ class DataCollector:
 
         lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
+        ghapi.remove_commit_code(self.repo_name, b_commit_path)
         lock.release()
 
         return changed_tests_verdicts, repaired_tests
@@ -160,6 +196,7 @@ class DataCollector:
 
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
         print(f"Executed {changed_tests_cnt} test cases!")
+        print(f"{changed_tests_cnt - len(changed_tests_verdicts)} test cases were originaly unsuccessful (T1 failed on P1)!")
 
         verdict_df = pd.DataFrame(
             {
