@@ -9,14 +9,19 @@ import org.eclipse.jgit.lib.Repository;
 import org.refactoringminer.api.*;
 import org.refactoringminer.rm1.GitHistoryRefactoringMinerImpl;
 import org.refactoringminer.util.GitServiceImpl;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.LocationAwareLogger;
 
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.LogManager;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class RefactoringMinerAPI {
   private static String generateMethodSignature(UMLOperation operation) {
@@ -205,5 +210,49 @@ public class RefactoringMinerAPI {
       throw new RuntimeException(e);
     }
     return methodRefactorings;
+  }
+
+  public static List<RefactoringInfo> mineCommitRefactorings(String commit, String projectPath) {
+    var commitRefactorings = new ArrayList<RefactoringInfo>();
+
+    try {
+      var miner = new GitHistoryRefactoringMinerImpl();
+      var gitService = new GitServiceImpl();
+      var repo = gitService.cloneIfNotExists(projectPath, null);
+      disableLogs();
+
+      miner.detectAtCommit(repo, commit, new RefactoringHandler() {
+        @Override
+        public void handle(String commitId, List<Refactoring> refactorings) {
+          for (Refactoring refactoring : refactorings) {
+            var widestCR = refactoring.leftSide().get(0);
+            for (CodeRange cr : refactoring.leftSide())
+              if (cr.getStartLine() < widestCR.getStartLine() || cr.getEndLine() > widestCR.getEndLine())
+                widestCR = cr;
+            var lines = IntStream.rangeClosed(widestCR.getStartLine(), widestCR.getEndLine())
+                .boxed()
+                .collect(Collectors.toList());
+            var type = refactoring.getRefactoringType().toString();
+            var info = new RefactoringInfo(widestCR.getFilePath(), type, lines);
+            commitRefactorings.add(info);
+          }
+        }
+      });
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    return commitRefactorings;
+  }
+
+  private static void disableLogs() {
+    try {
+      Logger l = LoggerFactory.getLogger("org.refactoringminer.rm1.GitHistoryRefactoringMinerImpl");
+      Field f = l.getClass().getDeclaredField("currentLogLevel");
+      f.setAccessible(true);
+      f.set(l, LocationAwareLogger.WARN_INT);
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

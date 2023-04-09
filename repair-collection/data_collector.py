@@ -11,6 +11,7 @@ import maven_parser as mvnp
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
 from jacoco_utils import configure_pom, parse_jacoco_report
+from trivial_detector import TrivialDetector
 
 
 def pool_init(_lock):
@@ -125,7 +126,15 @@ class DataCollector:
             test_simple_name = change["name"].split(".")[-1].replace("()", "")
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "codeMining" / "testClasses" / a_commit / test_a_path
-            broken_file = self.output_path / "codeMining" / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
+            broken_file = (
+                self.output_path
+                / "codeMining"
+                / "brokenPatches"
+                / a_commit
+                / original_file.stem
+                / test_simple_name
+                / test_a_path
+            )
             log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
 
             # Running T on P to trace test coverage
@@ -277,6 +286,7 @@ class DataCollector:
     def make_dataset(self, repaired_tests):
         class_change_repo = ClassChangesRepository(self.output_path)
         method_change_repo = MethodChangesRepository(self.output_path)
+        trivial_detector = TrivialDetector(self.output_path)
         zero_cov_cnt = 0
         dup_cnt = 0
         dataset = {}
@@ -294,6 +304,9 @@ class DataCollector:
 
             _repair["aCommitTime"] = ghapi.get_commit_time(_repair["aCommit"], self.repo_name)
             _repair["ID"] = f"{self.repo_name}:{i}"
+            _repair["trivial"] = trivial_detector.detect_trivial_repair(
+                _repair["name"], _repair["aCommit"], _repair["bCommit"]
+            )
             repair_key = (
                 _repair["name"]
                 + "||"
