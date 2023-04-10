@@ -32,13 +32,15 @@ class DataCollector:
         repaired_tests = self.detect_repaired_tests()
         print()
 
-        print("Phase #3: Identifying and extracting covered changes")
-        repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
-        self.find_changed_sut_classes(repair_commits)
-        jparser.extract_covered_changes_info(self.output_path)
-        print()
-
-        self.make_dataset(repaired_tests)
+        if len(repaired_tests) > 0:
+            print("Phase #3: Identifying and extracting covered changes")
+            repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
+            self.find_changed_sut_classes(repair_commits)
+            jparser.extract_covered_changes_info(self.output_path)
+            print()
+            self.make_dataset(repaired_tests)
+        else:
+            print("No repaired tests found")
 
     def get_commit_changed_test_classes(self, commit_sha):
         commit = ghapi.get_commit(commit_sha, self.repo_name)
@@ -93,37 +95,40 @@ class DataCollector:
         lock.release()
 
         for _, change in changes.iterrows():
-            test_simple_name = change["name"].split(".")[-1].replace("()", "")
-            test_a_path = Path(change["aPath"])
-            original_file = self.output_path / "testClasses" / a_commit / test_a_path
-            broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
-            log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
-            broken_log_path = self.output_path / "brokenExeLogs" / log_path
-            executable_file = a_commit_path / test_a_path
-            shutil.copyfile(str(broken_file), str(executable_file))
-            # To detect whether the test case is broken (needs repair)
-            before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, broken_log_path)
-            shutil.copyfile(str(original_file), str(executable_file))
+            try:
+                test_simple_name = change["name"].split(".")[-1].replace("()", "")
+                test_a_path = Path(change["aPath"])
+                original_file = self.output_path / "testClasses" / a_commit / test_a_path
+                broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
+                log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
+                broken_log_path = self.output_path / "brokenExeLogs" / log_path
+                executable_file = a_commit_path / test_a_path
+                shutil.copyfile(str(broken_file), str(executable_file))
+                # To detect whether the test case is broken (needs repair)
+                before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, broken_log_path)
+                shutil.copyfile(str(original_file), str(executable_file))
 
-            after_verdict = None
-            repaired_log_path = self.output_path / "repairedExeLogs" / log_path
-            if before_verdict.is_broken():
-                # To detect whether test case is correctly repaired
-                after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, repaired_log_path)
-                if after_verdict.succeeded():
-                    change_obj = change.to_dict()
-                    change_obj["verdict"] = before_verdict.to_dict()
-                    repaired_tests.append(change_obj)
+                after_verdict = None
+                repaired_log_path = self.output_path / "repairedExeLogs" / log_path
+                if before_verdict.is_broken():
+                    # To detect whether test case is correctly repaired
+                    after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, repaired_log_path)
+                    if after_verdict.succeeded():
+                        change_obj = change.to_dict()
+                        change_obj["verdict"] = before_verdict.to_dict()
+                        repaired_tests.append(change_obj)
 
-            changed_tests_verdicts.append(
-                {
-                    "name": change["name"],
-                    "aCommit": change["aCommit"],
-                    "verdict": before_verdict.to_dict(),
-                    "broken": before_verdict.is_broken(),
-                    "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
-                }
-            )
+                changed_tests_verdicts.append(
+                    {
+                        "name": change["name"],
+                        "aCommit": change["aCommit"],
+                        "verdict": before_verdict.to_dict(),
+                        "broken": before_verdict.is_broken(),
+                        "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
+                    }
+                )
+            except FileNotFoundError:
+                print(f"File Not Found, Skipping Test. Test: {change['name']}, Broken File: {broken_file}, Original File: {original_file}")
 
         lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
@@ -139,6 +144,10 @@ class DataCollector:
             return json.loads(repaired_tests_path.read_text())
 
         changed_tests = pd.read_json(self.output_path / "changed_tests.json")
+
+        if changed_tests.empty:
+            print("No Changed Tests Found")
+            return []
         change_groups = list(changed_tests.groupby("aCommit"))
         changed_tests_cnt = sum([len(g[1]) for g in change_groups])
 

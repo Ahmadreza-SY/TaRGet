@@ -34,7 +34,7 @@ class ChangesRepository:
         for commit_changes in all_changes:
             self.changes[commit_changes["aCommit"]] = commit_changes["changes"]
 
-        return self.changes[commit]
+        return [] if len(self.changes) == 0 else self.changes[commit]
 
     def get_covered_changes(self, repair):
         changes = self.get_changes(repair["aCommit"])
