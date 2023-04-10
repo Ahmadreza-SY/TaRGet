@@ -149,7 +149,8 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
             f'-Dtest="{test_class}#{test_method}"',
-            "-Dcheckstyle.skip",
+            "-Dcheckstyle.skip=true",
+            "-Dspotless.apply.skip=true",
             "--batch-mode",
         ]
         original_cwd = os.getcwd()
