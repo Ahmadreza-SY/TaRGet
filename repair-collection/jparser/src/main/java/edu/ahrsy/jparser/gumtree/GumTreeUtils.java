@@ -4,7 +4,10 @@ import com.github.gumtreediff.tree.Tree;
 import edu.ahrsy.jparser.cli.CommandDiff;
 import edu.ahrsy.jparser.spoon.Spoon;
 import gumtree.spoon.AstComparator;
+import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class GumTreeUtils {
@@ -13,9 +16,17 @@ public class GumTreeUtils {
     var aSpoon = new Spoon(repairPatch.afterPath, complianceLevel);
     var bType = bSpoon.getTopLevelType();
     var aType = aSpoon.getTopLevelType();
-    var diff = new AstComparator().compare(bType, aType);
+    var astActions = getASTActions(bType, aType);
     var repairType = new RepairType(repairPatch.repairId);
-    for (var op : diff.getRootOperations()) {
+    repairType.actions.addAll(astActions);
+    return repairType;
+  }
+
+  public static List<Action> getASTActions(CtElement before, CtElement after) {
+    var diff = new AstComparator().compare(before, after);
+    var rootOperations = diff.getRootOperations();
+    var actions = new ArrayList<Action>();
+    for (var op : rootOperations) {
       var actionType = op.getAction().getClass().getSimpleName();
       var nodeType = op.getAction().getNode().getType().name;
       var parents = op.getAction()
@@ -30,8 +41,10 @@ public class GumTreeUtils {
       if (op.getDstNode() != null && op.getDstNode().getMetadata("gtnode") != null)
         action.dstNode = Node.from((Tree) op.getDstNode().getMetadata("gtnode"));
 
-      repairType.actions.add(action);
+      if (action.srcNode == null && action.dstNode == null && rootOperations.size() > 1)
+        continue;
+      actions.add(action);
     }
-    return repairType;
+    return actions;
   }
 }

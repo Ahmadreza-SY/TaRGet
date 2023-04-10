@@ -145,15 +145,18 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         cmd = [
             "mvn",
             "test",
-            f'-f {str(project_path / "pom.xml")}',
             f"-pl {str(pom_path.relative_to(project_path))}",
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
             f'-Dtest="{test_class}#{test_method}"',
-            "-Dcheckstyle.skip",
+            "-Dcheckstyle.skip=true",
+            "-Dspotless.apply.skip=true",
             "--batch-mode",
         ]
+        original_cwd = os.getcwd()
+        os.chdir(str(project_path.absolute()))
         returncode, log = run_cmd(cmd)
+        os.chdir(original_cwd)
         if save_logs:
             log_path.mkdir(parents=True, exist_ok=True)
             rc_file.write_text(str(returncode))

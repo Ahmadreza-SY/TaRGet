@@ -10,6 +10,8 @@ import shutil
 import maven_parser as mvnp
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
+from jacoco_utils import configure_pom, parse_jacoco_report
+from trivial_detector import TrivialDetector
 
 
 def pool_init(_lock):
@@ -57,15 +59,15 @@ class DataCollector:
                 commit_changed_test_classes.append(
                     {"b_path": diff.b_path, "a_path": diff.a_path, "b_commit": b_commit, "a_commit": a_commit}
                 )
-                b_copy_path = self.output_path / "testClasses" / b_commit / diff.b_path
-                a_copy_path = self.output_path / "testClasses" / a_commit / diff.a_path
+                b_copy_path = self.output_path / "codeMining" / "testClasses" / b_commit / diff.b_path
+                a_copy_path = self.output_path / "codeMining" / "testClasses" / a_commit / diff.a_path
                 save_file(before, b_copy_path)
                 save_file(after, a_copy_path)
 
         return commit_changed_test_classes
 
     def identify_changed_test_classes(self):
-        changed_test_classes_path = self.output_path / "changed_test_classes.csv"
+        changed_test_classes_path = self.output_path / "codeMining" / "changed_test_classes.csv"
         if changed_test_classes_path.exists():
             print("Changed tests classes already exists, skipping ...")
             return
@@ -85,33 +87,75 @@ class DataCollector:
         changed_test_classes = pd.DataFrame(changed_test_classes)
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
+    def extract_covered_lines(self, project_path, change):
+        configure_pom(project_path)
+
+        test_name = change["name"]
+        b_commit = change["bCommit"]
+        test_b_path = Path(change["bPath"])
+        test_method_name = test_name.split(".")[-1].replace("()", "")
+        log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
+        original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
+        verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
+        if verdict.succeeded():
+            report_path = mvnp.find_parent_pom(project_path / test_b_path).parent / "target/site"
+            covered_lines = parse_jacoco_report(report_path, project_path)
+            lock.acquire()
+            coverage = {}
+            coverage_path = self.output_path / "testExecution" / "coverage.json"
+            if coverage_path.exists():
+                coverage = json.loads(coverage_path.read_text())
+            coverage.setdefault(b_commit, {})
+            coverage[b_commit].setdefault(test_name, {})
+            coverage[b_commit][test_name] = covered_lines
+            coverage_path.write_text(json.dumps(coverage, indent=2, sort_keys=False))
+            lock.release()
+
+        return verdict
+
     def run_changed_tests(self, change_group):
         changed_tests_verdicts = []
         repaired_tests = []
         (a_commit, changes) = change_group
+        b_commit = changes.iloc[0]["bCommit"]
 
         lock.acquire()
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
+        b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
         lock.release()
 
         for _, change in changes.iterrows():
             try:
                 test_simple_name = change["name"].split(".")[-1].replace("()", "")
                 test_a_path = Path(change["aPath"])
-                original_file = self.output_path / "testClasses" / a_commit / test_a_path
-                broken_file = self.output_path / "brokenPatches" / a_commit / original_file.stem / test_simple_name / test_a_path
+                original_file = self.output_path / "codeMining" / "testClasses" / a_commit / test_a_path
+                broken_file = (
+                    self.output_path
+                    / "codeMining"
+                    / "brokenPatches"
+                    / a_commit
+                    / original_file.stem
+                    / test_simple_name
+                    / test_a_path
+                )
                 log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
-                broken_log_path = self.output_path / "brokenExeLogs" / log_path
+
+                # Running T on P to trace test coverage
+                original_verdict = self.extract_covered_lines(b_commit_path, change)
+                if not original_verdict.succeeded():
+                    continue
+
+                broken_log_path = self.output_path / "testExecution" / "brokenExeLogs" / log_path
                 executable_file = a_commit_path / test_a_path
                 shutil.copyfile(str(broken_file), str(executable_file))
-                # To detect whether the test case is broken (needs repair)
+                # Running T on P' to detect whether the test case is broken (needs repair)
                 before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, broken_log_path)
                 shutil.copyfile(str(original_file), str(executable_file))
 
                 after_verdict = None
-                repaired_log_path = self.output_path / "repairedExeLogs" / log_path
+                repaired_log_path = self.output_path / "testExecution" / "repairedExeLogs" / log_path
                 if before_verdict.is_broken():
-                    # To detect whether test case is correctly repaired
+                    # Running T' on P' to detect whether test case is correctly repaired
                     after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, repaired_log_path)
                     if after_verdict.succeeded():
                         change_obj = change.to_dict()
@@ -132,22 +176,23 @@ class DataCollector:
 
         lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
+        ghapi.remove_commit_code(self.repo_name, b_commit_path)
         lock.release()
 
         return changed_tests_verdicts, repaired_tests
 
     def detect_repaired_tests(self):
-        changed_tests_verdicts_path = self.output_path / "changed_tests_verdicts.json"
-        repaired_tests_path = self.output_path / "repaired_tests.json"
+        changed_tests_verdicts_path = self.output_path / "testExecution" / "changed_tests_verdicts.json"
+        repaired_tests_path = self.output_path / "codeMining" / "repaired_tests.json"
         if changed_tests_verdicts_path.exists() and repaired_tests_path.exists():
             print("Tests have been already executed, skipping ...")
             return json.loads(repaired_tests_path.read_text())
 
-        changed_tests = pd.read_json(self.output_path / "changed_tests.json")
-
+        changed_tests = pd.read_json(self.output_path / "codeMining" / "changed_tests.json")
         if changed_tests.empty:
             print("No Changed Tests Found")
             return []
+
         change_groups = list(changed_tests.groupby("aCommit"))
         changed_tests_cnt = sum([len(g[1]) for g in change_groups])
 
@@ -169,6 +214,7 @@ class DataCollector:
 
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
         print(f"Executed {changed_tests_cnt} test cases!")
+        print(f"{changed_tests_cnt - len(changed_tests_verdicts)} test cases were originaly unsuccessful (T1 failed on P1)!")
 
         verdict_df = pd.DataFrame(
             {
@@ -194,13 +240,13 @@ class DataCollector:
         return repaired_tests
 
     def find_changed_sut_classes(self, commits):
-        changed_sut_classes_path = self.output_path / "changed_sut_classes.json"
+        changed_sut_classes_path = self.output_path / "codeMining" / "changed_sut_classes.json"
         if changed_sut_classes_path.exists():
             print("Changed SUT classes already exists, skipping ...")
             return
 
         repo = ghapi.get_repo(self.repo_name)
-        changed_test_classes = pd.read_csv(self.output_path / "changed_test_classes.csv")
+        changed_test_classes = pd.read_csv(self.output_path / "codeMining" / "changed_test_classes.csv")
         changed_test_class_paths = set(
             changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist()
         )
@@ -249,6 +295,7 @@ class DataCollector:
     def make_dataset(self, repaired_tests):
         class_change_repo = ClassChangesRepository(self.output_path)
         method_change_repo = MethodChangesRepository(self.output_path)
+        trivial_detector = TrivialDetector(self.output_path)
         zero_cov_cnt = 0
         dup_cnt = 0
         dataset = {}
@@ -266,6 +313,9 @@ class DataCollector:
 
             _repair["aCommitTime"] = ghapi.get_commit_time(_repair["aCommit"], self.repo_name)
             _repair["ID"] = f"{self.repo_name}:{i}"
+            _repair["trivial"] = trivial_detector.detect_trivial_repair(
+                _repair["name"], _repair["aCommit"], _repair["bCommit"]
+            )
             repair_key = (
                 _repair["name"]
                 + "||"

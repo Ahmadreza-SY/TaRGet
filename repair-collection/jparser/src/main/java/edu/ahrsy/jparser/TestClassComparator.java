@@ -2,7 +2,10 @@ package edu.ahrsy.jparser;
 
 import edu.ahrsy.jparser.entity.ChangedTestClass;
 import edu.ahrsy.jparser.entity.Change;
+import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.entity.TestSource;
+import edu.ahrsy.jparser.gumtree.GumTreeUtils;
+import edu.ahrsy.jparser.refactoringminer.RefactoringMinerAPI;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.IOUtils;
 import gumtree.spoon.AstComparator;
@@ -10,14 +13,12 @@ import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.operations.Operation;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.refactoringminer.api.RefactoringType;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtMethod;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class TestClassComparator {
@@ -63,7 +64,7 @@ public class TestClassComparator {
     return changedSrcFile.replace(changedStart, changedEnd + 1, originalSrc).toString();
   }
 
-  public List<Pair<CtMethod<?>, CtMethod<?>>> getChangedTests() {
+  private List<Pair<CtMethod<?>, CtMethod<?>>> getChangedTests() {
     var changedTests = new HashMap<String, Pair<CtMethod<?>, CtMethod<?>>>();
     var bTests = bSpoon.getTests().stream().collect(Collectors.toMap(Spoon::getUniqueName, m -> m));
     for (var aTest : aSpoon.getTests()) {
@@ -76,10 +77,10 @@ public class TestClassComparator {
 
   private TestSource getTestSource(String name, Spoon spoon) {
     var method = spoon.getTests()
-            .stream()
-            .filter(tm -> Spoon.getUniqueName(tm).equals(name))
-            .findFirst()
-            .orElseThrow();
+        .stream()
+        .filter(tm -> Spoon.getUniqueName(tm).equals(name))
+        .findFirst()
+        .orElseThrow();
     return TestSource.from(method);
   }
 
@@ -91,26 +92,39 @@ public class TestClassComparator {
     return getTestSource(name, aSpoon);
   }
 
-  public List<Change> getSingleHunkMethodChanges(ChangedTestClass changedTestClass, String outputPath) {
+  public List<SingleHunkTestChange> getSingleHunkTestChanges(ChangedTestClass testClass, String outputPath) {
     var changedTests = getChangedTests();
     if (changedTests.isEmpty()) return Collections.emptyList();
     // TODO this condition can be removed
     if (!onlyTestsChanged()) return Collections.emptyList();
 
-    var testChanges = new ArrayList<Change>();
+    Map<String, List<RefactoringType>> refactorings = RefactoringMinerAPI.mineMethodRefactorings(bSpoon.srcPath,
+        aSpoon.srcPath);
+    var testChanges = new ArrayList<SingleHunkTestChange>();
     for (var test : changedTests) {
-      var name = Spoon.getUniqueName(test.getLeft());
-      var change = new Change(changedTestClass.beforePath, name);
+      var testName = Spoon.getUniqueName(test.getLeft());
+      var change = new Change(testClass.beforePath, testName);
       change.extractHunks(test.getLeft(), test.getRight());
       if (change.getHunks().size() == 1) {
-        testChanges.add(change);
+        var singleHunkChange = new SingleHunkTestChange(testName,
+            getBeforeTestSource(testName),
+            getAfterTestSource(testName),
+            testClass.beforePath,
+            testClass.afterPath,
+            testClass.beforeCommit,
+            testClass.afterCommit,
+            change.getHunks().get(0),
+            GumTreeUtils.getASTActions(test.getLeft(), test.getRight()),
+            refactorings.getOrDefault(testName, Collections.emptyList()));
+        testChanges.add(singleHunkChange);
         var brokenPatch = replaceChangedTestWithOriginal(test.getLeft(), test.getRight());
         var outputFile = Path.of(outputPath,
-                "brokenPatches",
-                changedTestClass.afterCommit,
-                test.getLeft().getTopLevelType().getSimpleName(),
-                test.getLeft().getSimpleName(),
-                changedTestClass.afterPath);
+            "codeMining",
+            "brokenPatches",
+            testClass.afterCommit,
+            test.getLeft().getTopLevelType().getSimpleName(),
+            test.getLeft().getSimpleName(),
+            testClass.afterPath);
         IOUtils.saveFile(outputFile, brokenPatch);
       }
     }

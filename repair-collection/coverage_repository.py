@@ -16,7 +16,16 @@ class ChangesRepository:
 
         _, class_name, test_short_name = decompose_full_method_name(test_name)
         test_directory = Path(test_path).parent
-        graph_path = self.output_path / "callGraphs" / commit / class_name / test_short_name / test_directory / "graph.json"
+        graph_path = (
+            self.output_path
+            / "codeMining"
+            / "callGraphs"
+            / commit
+            / class_name
+            / test_short_name
+            / test_directory
+            / "graph.json"
+        )
         graph = json.loads(graph_path.read_text())
 
         if commit not in self.call_graphs:
@@ -57,7 +66,7 @@ class ChangesRepository:
 
 class ClassChangesRepository(ChangesRepository):
     def get_changes_path(self):
-        return self.output_path / "sut_class_changes.json"
+        return self.output_path / "codeMining" / "sut_class_changes.json"
 
     def get_covered_elements(self, call_graph):
         covered_classes = {}
@@ -74,7 +83,7 @@ class ClassChangesRepository(ChangesRepository):
 
 class MethodChangesRepository(ChangesRepository):
     def get_changes_path(self):
-        return self.output_path / "sut_method_changes.json"
+        return self.output_path / "codeMining" / "sut_method_changes.json"
 
     def get_covered_elements(self, call_graph):
         covered_methods = {}
