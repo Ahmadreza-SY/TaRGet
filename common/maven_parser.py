@@ -153,6 +153,9 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "-Dspotless.apply.skip=true",
             "--batch-mode",
         ]
+        m2_path = Config.get("m2_path")
+        if m2_path is not None:
+            cmd.append(f"-Dmaven.repo.local={m2_path}")
         original_cwd = os.getcwd()
         os.chdir(str(project_path.absolute()))
         returncode, log = run_cmd(cmd)

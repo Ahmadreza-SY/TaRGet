@@ -38,11 +38,20 @@ def main():
         required=False,
         default=None,
     )
+    parser.add_argument(
+        "-m2",
+        "--m2-path",
+        help="Custom path for maven local repository",
+        type=str,
+        required=False,
+        default=None,
+    )
 
     args = parser.parse_args()
     Config.set("repo", args.repository)
     Config.set("output_path", args.output_path)
     Config.set("java_home", args.java_home)
+    Config.set("m2_path", args.m2_path)
     args.func(args)
 
 

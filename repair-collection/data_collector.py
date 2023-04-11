@@ -192,7 +192,7 @@ class DataCollector:
         changed_tests_verdicts = []
         repaired_tests = []
 
-        proc_cnt = round(mp.cpu_count() / 4) if mp.cpu_count() > 2 else 1
+        proc_cnt = round(mp.cpu_count() / 2) if mp.cpu_count() > 2 else 1
         with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for verdicts, repaired in tqdm(
                 pool.imap_unordered(self.run_changed_tests, change_groups),
