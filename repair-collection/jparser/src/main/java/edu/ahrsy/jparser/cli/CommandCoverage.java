@@ -82,36 +82,40 @@ public class CommandCoverage {
 
     for (var aEntry : aCommitRepairsMap.entrySet()) {
       executor.submit(() -> {
-        var aCommit = aEntry.getKey();
-        var aCommitRepairs = aEntry.getValue();
-        var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", aCommit);
-        if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
-          pb.stepBy(aCommitRepairs.size());
-          return;
+        try {
+          var aCommit = aEntry.getKey();
+          var aCommitRepairs = aEntry.getValue();
+          var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", aCommit);
+          if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
+            pb.stepBy(aCommitRepairs.size());
+            return;
+          }
+          // Each aCommit can only have exactly one bCommit
+          var bCommit = aCommitRepairs.get(0).bCommit;
+          var names = aCommitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
+          var paths = aCommitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
+          var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
+          var spoon = new Spoon(srcPath, args.complianceLevel);
+          var executables = spoon.getExecutablesByName(names, paths)
+              .stream()
+              .map(m -> (CtMethod<?>) m)
+              .collect(Collectors.toList());
+          for (var executable : executables) {
+            var callGraph = new CallGraph(executable, spoon);
+            callGraph.createCallGraph();
+            var graphJSON = callGraph.toJSON(srcPath);
+            var graphFile = Path.of(commitGraphsPath.toString(),
+                executable.getTopLevelType().getSimpleName(),
+                executable.getSimpleName(),
+                Path.of(Spoon.getRelativePath(executable, srcPath)).getParent().toString(),
+                "graph.json");
+            IOUtils.saveFile(graphFile, graphJSON);
+            pb.step();
+          }
+          GitAPI.removeWorktree(repoDir, bCommit);
+        } catch (Exception e) {
+          e.printStackTrace();
         }
-        // Each aCommit can only have exactly one bCommit
-        var bCommit = aCommitRepairs.get(0).bCommit;
-        var names = aCommitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
-        var paths = aCommitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
-        var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
-        var spoon = new Spoon(srcPath, args.complianceLevel);
-        var executables = spoon.getExecutablesByName(names, paths)
-            .stream()
-            .map(m -> (CtMethod<?>) m)
-            .collect(Collectors.toList());
-        for (var executable : executables) {
-          var callGraph = new CallGraph(executable, spoon);
-          callGraph.createCallGraph();
-          var graphJSON = callGraph.toJSON(srcPath);
-          var graphFile = Path.of(commitGraphsPath.toString(),
-              executable.getTopLevelType().getSimpleName(),
-              executable.getSimpleName(),
-              Path.of(Spoon.getRelativePath(executable, srcPath)).getParent().toString(),
-              "graph.json");
-          IOUtils.saveFile(graphFile, graphJSON);
-          pb.step();
-        }
-        GitAPI.removeWorktree(repoDir, bCommit);
       });
     }
 
@@ -159,22 +163,26 @@ public class CommandCoverage {
 
     for (var changedClasses : changedSUTClasses) {
       executor.submit(() -> {
-        var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
-        var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
-        var parser = new CommitDiffParser(new Spoon(bSrcPath, args.complianceLevel),
-            new Spoon(aSrcPath, args.complianceLevel));
-        var commitClassChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
-        var commitExecutableChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
-        for (var changedClass : changedClasses.changedClasses) {
-          var classChanges = parser.detectClassChanges(changedClass);
-          if (classChanges != null) commitClassChanges.addChanges(Collections.singletonList(classChanges));
-          commitExecutableChanges.addChanges(parser.detectExecutablesChanges(changedClass));
-          pb.step();
+        try {
+          var bSrcPath = GitAPI.createWorktree(repoDir, changedClasses.bCommit).toString();
+          var aSrcPath = GitAPI.createWorktree(repoDir, changedClasses.aCommit).toString();
+          var parser = new CommitDiffParser(new Spoon(bSrcPath, args.complianceLevel),
+              new Spoon(aSrcPath, args.complianceLevel));
+          var commitClassChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
+          var commitExecutableChanges = new CommitChanges(changedClasses.bCommit, changedClasses.aCommit);
+          for (var changedClass : changedClasses.changedClasses) {
+            var classChanges = parser.detectClassChanges(changedClass);
+            if (classChanges != null) commitClassChanges.addChanges(Collections.singletonList(classChanges));
+            commitExecutableChanges.addChanges(parser.detectExecutablesChanges(changedClass));
+            pb.step();
+          }
+          SUTClassChanges.add(commitClassChanges);
+          SUTExecutableChanges.add(commitExecutableChanges);
+          GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
+          GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
+        } catch (Exception e) {
+          e.printStackTrace();
         }
-        SUTClassChanges.add(commitClassChanges);
-        SUTExecutableChanges.add(commitExecutableChanges);
-        GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
-        GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
       });
     }
 
