@@ -12,7 +12,7 @@ public class GitAPI {
   private static final Map<String, Integer> acquiredWorktrees = new HashMap<>();
 
   public synchronized static void cleanupWorktrees(Path repoDir) {
-    var worktreesDir = repoDir.getParent().resolve("codeMining").resolve("commits");
+    var worktreesDir = repoDir.getParent().resolve("commits");
     IOUtils.deleteDir(worktreesDir);
     runCommand(repoDir, "git", "worktree", "prune");
     acquiredWorktrees.clear();
@@ -41,7 +41,7 @@ public class GitAPI {
   }
 
   private static Path getWorktreeDir(Path repoDir, String commit) {
-    return repoDir.getParent().resolve("codeMining").resolve("commits").resolve(commit).toAbsolutePath();
+    return repoDir.getParent().resolve("commits").resolve(commit).toAbsolutePath();
   }
 
   private synchronized static void runCommand(Path dir, String... command) {
