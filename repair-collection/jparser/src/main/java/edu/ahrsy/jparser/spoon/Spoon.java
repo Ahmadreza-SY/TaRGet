@@ -80,7 +80,7 @@ public class Spoon {
     try {
       return element.toString();
     } catch (Exception e) {
-      System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", element.getSimpleName(), e.getMessage());
+      // System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", element.getSimpleName(), e.getMessage());
     }
     return element.getSimpleName();
   }
