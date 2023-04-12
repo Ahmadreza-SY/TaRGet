@@ -101,6 +101,8 @@ def parse_invalid_execution(log):
 
 def parse_successful_execution(log):
     matches = re.compile(f"^.*Tests run: (\d+), Failures: \d+, Errors: \d+, Skipped: (\d+).*$", re.MULTILINE).findall(log)
+    if len(matches) == 0:
+        return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
     for match in matches:
         runs, skips = (int(n) for n in match)
         if runs == 0 or skips > 0:
