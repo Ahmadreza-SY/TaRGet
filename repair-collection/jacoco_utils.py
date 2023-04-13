@@ -20,7 +20,10 @@ def extract_covered_lines(packages, covered_lines):
 
 def parse_jacoco_report(report_path, project_path):
     covered_lines = {}
-    main_tree = ET.parse(str(report_path / "jacoco/jacoco.xml"))
+    report_file = report_path / "jacoco/jacoco.xml"
+    if not report_file.exists():
+        return {}
+    main_tree = ET.parse(str(report_file))
     extract_covered_lines(main_tree.getroot().findall("package"), covered_lines)
 
     agg_file = report_path / "jacoco-aggregate/jacoco.xml"

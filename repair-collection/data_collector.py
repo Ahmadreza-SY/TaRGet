@@ -14,9 +14,10 @@ from jacoco_utils import configure_pom, parse_jacoco_report
 from trivial_detector import TrivialDetector
 
 
-def pool_init(_lock):
-    global lock
+def pool_init(_lock, _existing_coverage):
+    global lock, existing_coverage
     lock = _lock
+    existing_coverage = _existing_coverage
 
 
 class DataCollector:
@@ -94,10 +95,17 @@ class DataCollector:
         test_method_name = test_name.split(".")[-1].replace("()", "")
         log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
+        
+        if b_commit in existing_coverage and test_name in existing_coverage[b_commit]:
+            return mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None)
+        
         verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
         if verdict.succeeded():
             report_path = mvnp.find_parent_pom(project_path / test_b_path).parent / "target/site"
             covered_lines = parse_jacoco_report(report_path, project_path)
+            if len(covered_lines) == 0:
+                print(f"\nNo jacoco.xml find found! {b_commit} {test_name}")
+                return verdict
             lock.acquire()
             coverage = {}
             coverage_path = self.output_path / "testExecution" / "coverage.json"
@@ -189,12 +197,18 @@ class DataCollector:
 
         ghapi.cleanup_worktrees(self.repo_name)
 
+        
+        coverage = {}
+        coverage_path = self.output_path / "testExecution" / "coverage.json"
+        if coverage_path.exists():
+            coverage = json.loads(coverage_path.read_text())
+        
         changed_tests_verdicts = []
         repaired_tests = []
 
         proc_cnt = round(mp.cpu_count() / 2) if mp.cpu_count() > 2 else 1
         proc_cnt = min(proc_cnt, len(change_groups))
-        with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
+        with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(), coverage)) as pool:
             for verdicts, repaired in tqdm(
                 pool.imap_unordered(self.run_changed_tests, change_groups),
                 total=len(change_groups),
