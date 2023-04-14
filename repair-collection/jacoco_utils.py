@@ -76,9 +76,12 @@ def save_pom(root, output_path):
 
 def configure_pom(project_path):
     pom_path = project_path / "pom.xml"
+    if not pom_path.exists():
+        return None
     pom_tree = ET.parse(str(pom_path))
     root = pom_tree.getroot()
 
     add_jacoco_plugin(root)
     update_surefire_config(root)
     save_pom(root, pom_path)
+    return pom_path

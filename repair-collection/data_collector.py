@@ -87,7 +87,9 @@ class DataCollector:
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
     def extract_covered_lines(self, project_path, change):
-        configure_pom(project_path)
+        pom_path = configure_pom(project_path)
+        if pom_path is None:
+            return mvnp.TestVerdict(mvnp.TestVerdict.POM_NOT_FOUND, None)
 
         test_name = change["name"]
         b_commit = change["bCommit"]
@@ -95,17 +97,30 @@ class DataCollector:
         test_method_name = test_name.split(".")[-1].replace("()", "")
         log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
-        
+
         if b_commit in existing_coverage and test_name in existing_coverage[b_commit]:
             return mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None)
-        
+
         verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
         if verdict.succeeded():
-            report_path = mvnp.find_parent_pom(project_path / test_b_path).parent / "target/site"
-            covered_lines = parse_jacoco_report(report_path, project_path)
-            if len(covered_lines) == 0:
-                print(f"\nNo jacoco.xml find found! {b_commit} {test_name}")
+            module_path = mvnp.find_parent_pom(project_path / test_b_path).parent
+            rel_report_file = "target/site/jacoco/jacoco.xml"
+            rel_agg_file = "target/site/jacoco-aggregate/jacoco.xml"
+            rel_exe_file = "target/jacoco.exec"
+            if (module_path / rel_report_file).exists():
+                (original_log_path / rel_report_file).parent.mkdir(parents=True, exist_ok=True)
+                (original_log_path / rel_agg_file).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(str(module_path / rel_report_file), str(original_log_path / rel_report_file))
+                shutil.copyfile(str(module_path / rel_agg_file), str(original_log_path / rel_agg_file))
+                shutil.copyfile(str(module_path / rel_exe_file), str(original_log_path / rel_exe_file))
+            elif not (original_log_path / rel_report_file).exists():
+                print(f"\nNo jacoco.xml file found! {test_name} {b_commit} {module_path}")
                 return verdict
+
+            covered_lines = parse_jacoco_report(original_log_path / "target/site", project_path)
+            if len(covered_lines) == 0:
+                return verdict
+
             lock.acquire()
             coverage = {}
             coverage_path = self.output_path / "testExecution" / "coverage.json"
@@ -125,10 +140,8 @@ class DataCollector:
         (a_commit, changes) = change_group
         b_commit = changes.iloc[0]["bCommit"]
 
-        lock.acquire()
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
         b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
-        lock.release()
 
         for _, change in changes.iterrows():
             test_simple_name = change["name"].split(".")[-1].replace("()", "")
@@ -148,6 +161,13 @@ class DataCollector:
             # Running T on P to trace test coverage
             original_verdict = self.extract_covered_lines(b_commit_path, change)
             if not original_verdict.succeeded():
+                changed_tests_verdicts.append(
+                    {
+                        "name": change["name"],
+                        "aCommit": change["aCommit"],
+                        "original_verdict": original_verdict.to_dict(),
+                    }
+                )
                 continue
 
             broken_log_path = self.output_path / "testExecution" / "brokenExeLogs" / log_path
@@ -177,12 +197,40 @@ class DataCollector:
                 }
             )
 
-        lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
         ghapi.remove_commit_code(self.repo_name, b_commit_path)
-        lock.release()
 
         return changed_tests_verdicts, repaired_tests
+
+    def print_execution_stats(self, changed_tests_verdicts, repaired_tests, changed_tests_cnt):
+        print(f"Executed {changed_tests_cnt} test cases!")
+        print(f"Found {len(repaired_tests)} repaired tests")
+        repair_per = round(100 * len(repaired_tests) / changed_tests_cnt, 1)
+        print(
+            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correclty repaired!"
+        )
+        verdict_df = pd.DataFrame(
+            {
+                "verdict": [v["verdict"]["status"] for v in changed_tests_verdicts if "verdict" in v],
+                "correctly_repaired": [v["correctly_repaired"] for v in changed_tests_verdicts if "verdict" in v],
+            }
+        )
+        print("Verdict stats:")
+        for v, cnt in verdict_df["verdict"].value_counts().items():
+            print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
+
+        print("Correctly repaired stats:")
+        for v, cnt in verdict_df["correctly_repaired"].value_counts(dropna=False).items():
+            print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
+        og_verdict_df = pd.DataFrame(
+            {
+                "verdict": [v["original_verdict"]["status"] for v in changed_tests_verdicts if "original_verdict" in v],
+            }
+        )
+        print(f"{len(og_verdict_df)} test cases were originaly unsuccessful (T1 failed on P1)!")
+        print("Originally unsuccessful stats:")
+        for v, cnt in og_verdict_df["verdict"].value_counts().items():
+            print(f"  {v} -> {round(100*cnt/len(og_verdict_df), 1)}% ({cnt})")
 
     def detect_repaired_tests(self):
         changed_tests_verdicts_path = self.output_path / "testExecution" / "changed_tests_verdicts.json"
@@ -197,12 +245,11 @@ class DataCollector:
 
         ghapi.cleanup_worktrees(self.repo_name)
 
-        
         coverage = {}
         coverage_path = self.output_path / "testExecution" / "coverage.json"
         if coverage_path.exists():
             coverage = json.loads(coverage_path.read_text())
-        
+
         changed_tests_verdicts = []
         repaired_tests = []
 
@@ -218,31 +265,11 @@ class DataCollector:
                 changed_tests_verdicts.extend(verdicts)
                 repaired_tests.extend(repaired)
 
+        ghapi.cleanup_worktrees(self.repo_name)
+
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
-        print(f"Executed {changed_tests_cnt} test cases!")
-        print(f"{changed_tests_cnt - len(changed_tests_verdicts)} test cases were originaly unsuccessful (T1 failed on P1)!")
-
-        verdict_df = pd.DataFrame(
-            {
-                "verdict": [v["verdict"]["status"] for v in changed_tests_verdicts],
-                "correctly_repaired": [v["correctly_repaired"] for v in changed_tests_verdicts],
-            }
-        )
-        print("Verdict stats:")
-        for v, cnt in verdict_df["verdict"].value_counts().items():
-            print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
-
-        print("Correctly repaired stats:")
-        for v, cnt in verdict_df["correctly_repaired"].value_counts(dropna=False).items():
-            print(f"  {v} -> {round(100*cnt/len(verdict_df), 1)}% ({cnt})")
-
-        repair_per = round(100 * len(repaired_tests) / changed_tests_cnt, 1)
-        print(
-            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correclty repaired!"
-        )
-        print(f"Found {len(repaired_tests)} repaired tests")
         repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
-
+        self.print_execution_stats(changed_tests_verdicts, repaired_tests, changed_tests_cnt)
         return repaired_tests
 
     def find_changed_sut_classes(self, commits):
