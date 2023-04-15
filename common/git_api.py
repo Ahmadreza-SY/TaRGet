@@ -4,7 +4,8 @@ from tqdm.auto import tqdm
 from config import Config
 import git
 from git import RemoteProgress
-
+from git.exc import GitCommandError
+import time
 
 class CloneProgress(RemoteProgress):
     def __init__(self):
@@ -52,7 +53,18 @@ def copy_commit_code(repo_name, commit, id):
         return copy_path
 
     repo = get_repo(repo_name)
-    repo.git.worktree("add", str(copy_path.absolute()), commit)
+    attempt = 0
+    while True:
+        try:
+            repo.git.worktree("add", str(copy_path.absolute()), commit)
+            break
+        except GitCommandError as e:
+            if attempt == 3:
+                raise e
+            print("\nRetrying due to error in worktree add:", str(e))
+            attempt += 1
+            time.sleep(3)
+            continue
     return copy_path
 
 
