@@ -225,6 +225,8 @@ public class RefactoringMinerAPI {
         @Override
         public void handle(String commitId, List<Refactoring> refactorings) {
           for (Refactoring refactoring : refactorings) {
+            if (refactoring.leftSide().isEmpty())
+              continue;
             var widestCR = refactoring.leftSide().get(0);
             for (CodeRange cr : refactoring.leftSide())
               if (cr.getStartLine() < widestCR.getStartLine() || cr.getEndLine() > widestCR.getEndLine())

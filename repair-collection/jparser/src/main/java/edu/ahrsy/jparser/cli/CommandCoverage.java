@@ -130,15 +130,24 @@ public class CommandCoverage {
       System.out.println("Refactorings already mined, skipping ...");
       return;
     }
-    var commitRefactorings = new HashMap<String, List<RefactoringInfo>>();
+    var commitRefactorings = Collections.synchronizedMap(new HashMap<String, List<RefactoringInfo>>());
     var aCommits = repairedTests.stream().map(r -> r.aCommit).distinct().collect(Collectors.toList());
-    var pbb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
+    var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
+        .setInitialMax(aCommits.size())
         .showSpeed()
-        .setTaskName("Mining refactorings");
-    for (String aCommit : ProgressBar.wrap(aCommits, pbb)) {
-      var refactorings = RefactoringMinerAPI.mineCommitRefactorings(aCommit, projectPath);
-      commitRefactorings.put(aCommit, refactorings);
+        .setTaskName("Mining refactorings")
+        .build();
+    int procCnt = Runtime.getRuntime().availableProcessors();
+    var executor = Executors.newFixedThreadPool(procCnt);
+    for (String aCommit : aCommits) {
+      executor.submit(() -> {
+        var refactorings = RefactoringMinerAPI.mineCommitRefactorings(aCommit, projectPath);
+        commitRefactorings.put(aCommit, refactorings);
+        pb.step();
+      });
     }
+    awaitTerminationAfterShutdown(executor);
+    pb.close();
 
     IOUtils.saveFile(refactoringsPath, gson.toJson(commitRefactorings));
   }
