@@ -36,6 +36,8 @@ def parse_jacoco_report(report_path, project_path):
     final_covered_lines = {}
     for k, v in covered_lines.items():
         src_path = next(project_path.glob(f"**/{k}"), None)
+        if src_path is None:
+            continue
         src_path = src_path.relative_to(project_path)
         final_covered_lines[str(src_path)] = v
 

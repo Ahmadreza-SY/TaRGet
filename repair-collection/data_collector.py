@@ -140,10 +140,8 @@ class DataCollector:
         (a_commit, changes) = change_group
         b_commit = changes.iloc[0]["bCommit"]
 
-        lock.acquire()
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
         b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
-        lock.release()
 
         for _, change in changes.iterrows():
             test_simple_name = change["name"].split(".")[-1].replace("()", "")
@@ -199,10 +197,8 @@ class DataCollector:
                 }
             )
 
-        lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
         ghapi.remove_commit_code(self.repo_name, b_commit_path)
-        lock.release()
 
         return changed_tests_verdicts, repaired_tests
 
