@@ -259,7 +259,7 @@ class DataCollector:
             coverage.setdefault(b_commit, {})
             coverage[b_commit].setdefault(test_name, {})
             coverage[b_commit][test_name] = covered_lines
-        
+
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
         coverage_path.write_text(json.dumps(coverage, indent=2, sort_keys=False))
         repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
@@ -299,7 +299,7 @@ class DataCollector:
         for class_change in covered_class_changes:
             common_hunks_i = set()
             for method_change in covered_method_changes:
-                if class_change["filePath"] != method_change["filePath"]:
+                if class_change["filePath"] != method_change["filePath"] or len(method_change["hunks"]) == 0:
                     continue
                 method_lines = [get_hunk_lines(h) for h in method_change["hunks"]]
                 method_source_lines = set.union(*[l[0] for l in method_lines])
