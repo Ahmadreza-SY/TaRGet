@@ -5,8 +5,6 @@ class TrivialDetector:
     TRIVIAL_REFACTORING_TYPES = [
         "RENAME_CLASS",
         "RENAME_METHOD",
-        "MOVE_OPERATION",
-        "MOVE_AND_RENAME_OPERATION",
         "MOVE_RENAME_CLASS",
     ]
 
