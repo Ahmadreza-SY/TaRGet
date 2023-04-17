@@ -14,10 +14,9 @@ from jacoco_utils import configure_pom, parse_jacoco_report
 from trivial_detector import TrivialDetector
 
 
-def pool_init(_lock, _existing_coverage):
-    global lock, existing_coverage
+def pool_init(_lock):
+    global lock
     lock = _lock
-    existing_coverage = _existing_coverage
 
 
 class DataCollector:
@@ -89,7 +88,7 @@ class DataCollector:
     def extract_covered_lines(self, project_path, change):
         pom_path = configure_pom(project_path)
         if pom_path is None:
-            return mvnp.TestVerdict(mvnp.TestVerdict.POM_NOT_FOUND, None)
+            return mvnp.TestVerdict(mvnp.TestVerdict.POM_NOT_FOUND, None), None
 
         test_name = change["name"]
         b_commit = change["bCommit"]
@@ -98,10 +97,8 @@ class DataCollector:
         log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
 
-        if b_commit in existing_coverage and test_name in existing_coverage[b_commit]:
-            return mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None)
-
         verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
+        covered_lines = None
         if verdict.succeeded():
             module_path = mvnp.find_parent_pom(project_path / test_b_path).parent
             rel_report_file = "target/site/jacoco/jacoco.xml"
@@ -115,28 +112,16 @@ class DataCollector:
                 shutil.copyfile(str(module_path / rel_exe_file), str(original_log_path / rel_exe_file))
             elif not (original_log_path / rel_report_file).exists():
                 print(f"\nNo jacoco.xml file found! {test_name} {b_commit} {module_path}")
-                return verdict
+                return verdict, None
 
             covered_lines = parse_jacoco_report(original_log_path / "target/site", project_path)
-            if len(covered_lines) == 0:
-                return verdict
 
-            lock.acquire()
-            coverage = {}
-            coverage_path = self.output_path / "testExecution" / "coverage.json"
-            if coverage_path.exists():
-                coverage = json.loads(coverage_path.read_text())
-            coverage.setdefault(b_commit, {})
-            coverage[b_commit].setdefault(test_name, {})
-            coverage[b_commit][test_name] = covered_lines
-            coverage_path.write_text(json.dumps(coverage, indent=2, sort_keys=False))
-            lock.release()
-
-        return verdict
+        return verdict, covered_lines
 
     def run_changed_tests(self, change_group):
         changed_tests_verdicts = []
         repaired_tests = []
+        tests_coverage = []
         (a_commit, changes) = change_group
         b_commit = changes.iloc[0]["bCommit"]
 
@@ -144,7 +129,8 @@ class DataCollector:
         b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
 
         for _, change in changes.iterrows():
-            test_simple_name = change["name"].split(".")[-1].replace("()", "")
+            test_name = change["name"]
+            test_method_name = test_name.split(".")[-1].replace("()", "")
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "codeMining" / "testClasses" / a_commit / test_a_path
             broken_file = (
@@ -153,35 +139,37 @@ class DataCollector:
                 / "brokenPatches"
                 / a_commit
                 / original_file.stem
-                / test_simple_name
+                / test_method_name
                 / test_a_path
             )
-            log_path = Path(a_commit) / original_file.stem / test_simple_name / test_a_path.parent
+            log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
 
             # Running T on P to trace test coverage
-            original_verdict = self.extract_covered_lines(b_commit_path, change)
+            original_verdict, covered_lines = self.extract_covered_lines(b_commit_path, change)
             if not original_verdict.succeeded():
                 changed_tests_verdicts.append(
                     {
-                        "name": change["name"],
-                        "aCommit": change["aCommit"],
+                        "name": test_name,
+                        "aCommit": a_commit,
                         "original_verdict": original_verdict.to_dict(),
                     }
                 )
                 continue
+            if covered_lines is not None:
+                tests_coverage.append((b_commit, test_name, covered_lines))
 
             broken_log_path = self.output_path / "testExecution" / "brokenExeLogs" / log_path
             executable_file = a_commit_path / test_a_path
             shutil.copyfile(str(broken_file), str(executable_file))
             # Running T on P' to detect whether the test case is broken (needs repair)
-            before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, broken_log_path)
+            before_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_method_name, broken_log_path)
             shutil.copyfile(str(original_file), str(executable_file))
 
             after_verdict = None
             repaired_log_path = self.output_path / "testExecution" / "repairedExeLogs" / log_path
             if before_verdict.is_broken():
                 # Running T' on P' to detect whether test case is correctly repaired
-                after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_simple_name, repaired_log_path)
+                after_verdict = mvnp.compile_and_run_test(a_commit_path, test_a_path, test_method_name, repaired_log_path)
                 if after_verdict.succeeded():
                     change_obj = change.to_dict()
                     change_obj["verdict"] = before_verdict.to_dict()
@@ -189,8 +177,8 @@ class DataCollector:
 
             changed_tests_verdicts.append(
                 {
-                    "name": change["name"],
-                    "aCommit": change["aCommit"],
+                    "name": test_name,
+                    "aCommit": a_commit,
                     "verdict": before_verdict.to_dict(),
                     "broken": before_verdict.is_broken(),
                     "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
@@ -200,7 +188,7 @@ class DataCollector:
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
         ghapi.remove_commit_code(self.repo_name, b_commit_path)
 
-        return changed_tests_verdicts, repaired_tests
+        return changed_tests_verdicts, repaired_tests, tests_coverage
 
     def print_execution_stats(self, changed_tests_verdicts, repaired_tests, changed_tests_cnt):
         print(f"Executed {changed_tests_cnt} test cases!")
@@ -234,8 +222,9 @@ class DataCollector:
 
     def detect_repaired_tests(self):
         changed_tests_verdicts_path = self.output_path / "testExecution" / "changed_tests_verdicts.json"
+        coverage_path = self.output_path / "testExecution" / "coverage.json"
         repaired_tests_path = self.output_path / "codeMining" / "repaired_tests.json"
-        if changed_tests_verdicts_path.exists() and repaired_tests_path.exists():
+        if changed_tests_verdicts_path.exists() and repaired_tests_path.exists() and coverage_path.exists():
             print("Tests have been already executed, skipping ...")
             return json.loads(repaired_tests_path.read_text())
 
@@ -245,18 +234,14 @@ class DataCollector:
 
         ghapi.cleanup_worktrees(self.repo_name)
 
-        coverage = {}
-        coverage_path = self.output_path / "testExecution" / "coverage.json"
-        if coverage_path.exists():
-            coverage = json.loads(coverage_path.read_text())
-
         changed_tests_verdicts = []
         repaired_tests = []
+        tests_coverage = []
 
         proc_cnt = round(mp.cpu_count() / 2) if mp.cpu_count() > 2 else 1
         proc_cnt = min(proc_cnt, len(change_groups))
-        with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(), coverage)) as pool:
-            for verdicts, repaired in tqdm(
+        with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
+            for verdicts, repaired, test_coverage in tqdm(
                 pool.imap_unordered(self.run_changed_tests, change_groups),
                 total=len(change_groups),
                 ascii=True,
@@ -264,10 +249,19 @@ class DataCollector:
             ):
                 changed_tests_verdicts.extend(verdicts)
                 repaired_tests.extend(repaired)
+                tests_coverage.extend(test_coverage)
 
         ghapi.cleanup_worktrees(self.repo_name)
 
+        coverage = {}
+        for test_coverage in tests_coverage:
+            b_commit, test_name, covered_lines = test_coverage
+            coverage.setdefault(b_commit, {})
+            coverage[b_commit].setdefault(test_name, {})
+            coverage[b_commit][test_name] = covered_lines
+        
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
+        coverage_path.write_text(json.dumps(coverage, indent=2, sort_keys=False))
         repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
         self.print_execution_stats(changed_tests_verdicts, repaired_tests, changed_tests_cnt)
         return repaired_tests
