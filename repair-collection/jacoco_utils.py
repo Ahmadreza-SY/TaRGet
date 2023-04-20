@@ -44,11 +44,17 @@ ns = {"xmlns": "http://maven.apache.org/POM/4.0.0", "schemaLocation": "http://ma
 
 def add_jacoco_plugin(root):
     new_jacoco_xml = '<plugin xmlns="http://maven.apache.org/POM/4.0.0"><groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.8</version><configuration><excludes>**/*.jar</excludes></configuration><executions><execution><goals><goal>prepare-agent</goal></goals></execution><execution><id>report</id><goals><goal>report</goal></goals><phase>test</phase></execution><execution><id>report-aggregate</id><goals><goal>report-aggregate</goal></goals><phase>test</phase></execution></executions></plugin>'
-
     plugins = root.find("./xmlns:build/xmlns:plugins", ns)
-    jacoco_plugins = plugins.findall("./xmlns:plugin/[xmlns:artifactId='jacoco-maven-plugin']", ns)
-    for jacoco_plugin in jacoco_plugins:
-        plugins.remove(jacoco_plugin)
+    if plugins:
+        jacoco_plugins = plugins.findall("./xmlns:plugin/[xmlns:artifactId='jacoco-maven-plugin']", ns)
+        for jacoco_plugin in jacoco_plugins:
+            plugins.remove(jacoco_plugin)
+    else:
+        build = root.find("./xmlns:build", ns)
+        if not build:
+            build = ET.SubElement(root, "build")
+        plugins = ET.SubElement(build, "plugins")
+
 
     new_jacoco_plugin = ET.fromstring(new_jacoco_xml)
     plugins.append(new_jacoco_plugin)

@@ -171,8 +171,9 @@ class DataCollector:
                         "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
                     }
                 )
-            except FileNotFoundError:
-                print(f"File Not Found, Skipping Test. Test: {change['name']}, Broken File: {broken_file}, Original File: {original_file}")
+            except FileNotFoundError as e:
+                print(f"File Not Found, Skipping Test {change['name']}, Missing File: {e.filename} Broken File: {broken_file}, Original File: {original_file}")
+                raise e
 
         lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
@@ -212,9 +213,12 @@ class DataCollector:
                 changed_tests_verdicts.extend(verdicts)
                 repaired_tests.extend(repaired)
 
-        changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
-        print(f"Executed {changed_tests_cnt} test cases!")
-        print(f"{changed_tests_cnt - len(changed_tests_verdicts)} test cases were originaly unsuccessful (T1 failed on P1)!")
+        if len(repaired_tests) > 0:
+            changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
+            print(f"Executed {changed_tests_cnt} test cases!")
+            print(f"{changed_tests_cnt - len(changed_tests_verdicts)} test cases were originaly unsuccessful (T1 failed on P1)!")
+        else:
+            print("No repaired tests found")
 
         verdict_df = pd.DataFrame(
             {
@@ -232,7 +236,7 @@ class DataCollector:
 
         repair_per = round(100 * len(repaired_tests) / changed_tests_cnt, 1)
         print(
-            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correclty repaired!"
+            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correctly repaired!"
         )
         print(f"Found {len(repaired_tests)} repaired tests")
         repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
