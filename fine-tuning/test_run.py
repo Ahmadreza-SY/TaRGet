@@ -62,6 +62,14 @@ def main():
         required=False,
         default=None,
     )
+    parser.add_argument(
+        "-m2",
+        "--m2-path",
+        help="Custom path for maven local repository",
+        type=str,
+        required=False,
+        default=None,
+    )
     parser.add_argument("-do", "--discard-logs", dest="discard_logs", action="store_true")
     parser.set_defaults(discard_logs=False)
     args = parser.parse_args()
@@ -69,6 +77,7 @@ def main():
     Config.set("output_path", args.output_path)
     Config.set("repo_path", args.repo_path)
     Config.set("java_home", args.java_home)
+    Config.set("m2_path", args.m2_path)
 
     pred_file = args.output_path / "test_predictions.json"
     pred_df = pd.read_json(pred_file)
