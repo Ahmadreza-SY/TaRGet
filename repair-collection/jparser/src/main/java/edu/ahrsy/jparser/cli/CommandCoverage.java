@@ -7,16 +7,15 @@ import edu.ahrsy.jparser.CommitDiffParser;
 import edu.ahrsy.jparser.entity.CommitChangedClasses;
 import edu.ahrsy.jparser.entity.CommitChanges;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
+import edu.ahrsy.jparser.entity.TestElements;
 import edu.ahrsy.jparser.graph.CallGraph;
-import edu.ahrsy.jparser.refactoringminer.RefactoringInfo;
+import edu.ahrsy.jparser.refactoringminer.RenameRefactoring;
 import edu.ahrsy.jparser.refactoringminer.RefactoringMinerAPI;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.GitAPI;
 import edu.ahrsy.jparser.utils.IOUtils;
-import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import spoon.reflect.declaration.CtMethod;
 
 import java.io.IOException;
@@ -47,7 +46,7 @@ public class CommandCoverage {
     List<SingleHunkTestChange> repairedTests = gson.fromJson(repairedTestsJSON,
         new TypeToken<ArrayList<SingleHunkTestChange>>() {
         }.getType());
-    createCallGraphs(args, repairedTests);
+    createCallGraphsAndElements(args, repairedTests);
     mineRefactorings(args, repairedTests);
 
     var changedSUTClassesJSON = IOUtils.readFile(Path.of(args.outputPath, "codeMining", "changed_sut_classes.json"));
@@ -69,45 +68,50 @@ public class CommandCoverage {
     }
   }
 
-  private static void createCallGraphs(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
-    var aCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.aCommit));
+  private static void createCallGraphsAndElements(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
+    var testElementsPath = Path.of(args.outputPath, "codeMining", "test_elements.json");
+    var bCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
         .setInitialMax(repairedTests.size())
         .showSpeed()
-        .setTaskName("Computing call graphs")
+        .setTaskName("Computing call graphs and test elements")
         .build();
 
     int procCnt = Runtime.getRuntime().availableProcessors();
     var executor = Executors.newFixedThreadPool(procCnt);
 
-    for (var aEntry : aCommitRepairsMap.entrySet()) {
+    var testElements = Collections.synchronizedMap(new HashMap<String, Map<String, TestElements>>());
+
+    for (var bEntry : bCommitRepairsMap.entrySet()) {
       executor.submit(() -> {
         try {
-          var aCommit = aEntry.getKey();
-          var aCommitRepairs = aEntry.getValue();
-          var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", aCommit);
-          if (countNumberOfGraphFiles(commitGraphsPath) == aCommitRepairs.size()) {
-            pb.stepBy(aCommitRepairs.size());
+          var bCommit = bEntry.getKey();
+          var bCommitRepairs = bEntry.getValue();
+          var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", bCommit);
+          if (Files.exists(testElementsPath) && countNumberOfGraphFiles(commitGraphsPath) == bCommitRepairs.size()) {
+            pb.stepBy(bCommitRepairs.size());
             return;
           }
-          // Each aCommit can only have exactly one bCommit
-          var bCommit = aCommitRepairs.get(0).bCommit;
-          var names = aCommitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
-          var paths = aCommitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
+          var testNames = bCommitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
+          var testPaths = bCommitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
           var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
           var spoon = new Spoon(srcPath, args.complianceLevel);
-          var executables = spoon.getExecutablesByName(names, paths)
+          var testMethods = spoon.getExecutablesByName(testNames, testPaths)
               .stream()
               .map(m -> (CtMethod<?>) m)
               .collect(Collectors.toList());
-          for (var executable : executables) {
-            var callGraph = new CallGraph(executable, spoon);
+          for (var test : testMethods) {
+            if (!testElements.containsKey(bCommit))
+              testElements.put(bCommit, Collections.synchronizedMap(new HashMap<>()));
+            testElements.get(bCommit).put(Spoon.getUniqueName(test), Spoon.getElements(test));
+
+            var callGraph = new CallGraph(test, spoon);
             callGraph.createCallGraph();
             var graphJSON = callGraph.toJSON(srcPath);
             var graphFile = Path.of(commitGraphsPath.toString(),
-                executable.getTopLevelType().getSimpleName(),
-                executable.getSimpleName(),
-                Path.of(Spoon.getRelativePath(executable, srcPath)).getParent().toString(),
+                test.getTopLevelType().getSimpleName(),
+                test.getSimpleName(),
+                Path.of(Spoon.getRelativePath(test, srcPath)).getParent().toString(),
                 "graph.json");
             IOUtils.saveFile(graphFile, graphJSON);
             pb.step();
@@ -121,16 +125,17 @@ public class CommandCoverage {
 
     awaitTerminationAfterShutdown(executor);
     pb.close();
+
+    IOUtils.saveFile(testElementsPath, gson.toJson(testElements));
   }
 
   private static void mineRefactorings(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
-    var refactoringsPath = Path.of(args.outputPath, "codeMining", "refactorings.json");
-    var projectPath = Path.of(args.outputPath, "codeMining", "clone").toString();
+    var refactoringsPath = Path.of(args.outputPath, "codeMining", "rename_refactorings.json");
     if (Files.exists(refactoringsPath)) {
       System.out.println("Refactorings already mined, skipping ...");
       return;
     }
-    var commitRefactorings = Collections.synchronizedMap(new HashMap<String, List<RefactoringInfo>>());
+    var renameRefactorings = Collections.synchronizedMap(new HashMap<String, List<RenameRefactoring>>());
     var aCommits = repairedTests.stream().map(r -> r.aCommit).distinct().collect(Collectors.toList());
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
         .setInitialMax(aCommits.size())
@@ -141,15 +146,15 @@ public class CommandCoverage {
     var executor = Executors.newFixedThreadPool(procCnt);
     for (String aCommit : aCommits) {
       executor.submit(() -> {
-        var refactorings = RefactoringMinerAPI.mineCommitRefactorings(aCommit, projectPath);
-        commitRefactorings.put(aCommit, refactorings);
+        var refactorings = RefactoringMinerAPI.mineRenameRefactorings(aCommit, repoDir.toString());
+        renameRefactorings.put(aCommit, refactorings);
         pb.step();
       });
     }
     awaitTerminationAfterShutdown(executor);
     pb.close();
 
-    IOUtils.saveFile(refactoringsPath, gson.toJson(commitRefactorings));
+    IOUtils.saveFile(refactoringsPath, gson.toJson(renameRefactorings));
   }
 
   private static void extractChanges(CommandCoverage args, List<CommitChangedClasses> changedSUTClasses) {

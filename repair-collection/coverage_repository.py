@@ -47,7 +47,7 @@ class ChangesRepository:
 
     def get_covered_changes(self, repair):
         changes = self.get_changes(repair["aCommit"])
-        call_graph = self.get_call_graph(repair["aCommit"], repair["name"], repair["bPath"])
+        call_graph = self.get_call_graph(repair["bCommit"], repair["name"], repair["bPath"])
         covered_elements = self.get_covered_elements(call_graph)
         covered_changes = []
         for change in changes:

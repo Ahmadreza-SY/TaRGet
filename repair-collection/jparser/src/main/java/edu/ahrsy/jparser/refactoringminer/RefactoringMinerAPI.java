@@ -4,8 +4,6 @@ import gr.uom.java.xmi.UMLOperation;
 import gr.uom.java.xmi.UMLType;
 import gr.uom.java.xmi.VariableDeclarationContainer;
 import gr.uom.java.xmi.diff.*;
-import org.apache.commons.lang3.exception.ExceptionUtils;
-import org.eclipse.jgit.lib.Repository;
 import org.refactoringminer.api.*;
 import org.refactoringminer.rm1.GitHistoryRefactoringMinerImpl;
 import org.refactoringminer.util.GitServiceImpl;
@@ -15,16 +13,11 @@ import org.slf4j.spi.LocationAwareLogger;
 
 import java.lang.reflect.Field;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.LogManager;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class RefactoringMinerAPI {
-  private static String generateMethodSignature(UMLOperation operation) {
+  private static String getMethodSignature(UMLOperation operation) {
     String className = operation.getClassName();
     String name = operation.getName();
     List<String> parameterTypes = operation.getParameterTypeList()
@@ -198,7 +191,7 @@ public class RefactoringMinerAPI {
           for (Refactoring refactoring : refactorings) {
             VariableDeclarationContainer container = getRefactorContainer(refactoring);
             if (!(container instanceof UMLOperation)) continue;
-            String mSignature = generateMethodSignature((UMLOperation) container);
+            String mSignature = getMethodSignature((UMLOperation) container);
             if (mSignature == null) continue;
             if (!methodRefactorings.containsKey(mSignature))
               methodRefactorings.put(mSignature, new ArrayList<>());
@@ -212,8 +205,45 @@ public class RefactoringMinerAPI {
     return methodRefactorings;
   }
 
-  public static List<RefactoringInfo> mineCommitRefactorings(String commit, String projectPath) {
-    var commitRefactorings = new ArrayList<RefactoringInfo>();
+  private static RenameRefactoring createRenameRefactoring(Refactoring refactoring) {
+    var refType = refactoring.getRefactoringType();
+    String originalName, newName;
+    switch (refType) {
+      case RENAME_CLASS: {
+        var _refactoring = (RenameClassRefactoring) refactoring;
+        originalName = _refactoring.getOriginalClassName();
+        newName = _refactoring.getRenamedClassName();
+        break;
+      }
+      case MOVE_RENAME_CLASS: {
+        var _refactoring = (MoveAndRenameClassRefactoring) refactoring;
+        originalName = _refactoring.getOriginalClassName();
+        newName = _refactoring.getRenamedClassName();
+        break;
+      }
+      case RENAME_METHOD: {
+        var _refactoring = (RenameOperationRefactoring) refactoring;
+        originalName = getMethodSignature(_refactoring.getOriginalOperation());
+        newName = getMethodSignature(_refactoring.getRenamedOperation());
+        break;
+      }
+      case MOVE_AND_RENAME_OPERATION: {
+        var _refactoring = (MoveOperationRefactoring) refactoring;
+        originalName = getMethodSignature(_refactoring.getOriginalOperation());
+        newName = getMethodSignature(_refactoring.getMovedOperation());
+        break;
+      }
+      default:
+        throw new RuntimeException("Not rename refactoring " + refType);
+    }
+
+    return new RenameRefactoring(refType.toString(), originalName, newName);
+  }
+
+  public static List<RenameRefactoring> mineRenameRefactorings(String commit, String projectPath) {
+    var renameTypes = EnumSet.of(RefactoringType.RENAME_CLASS, RefactoringType.RENAME_METHOD,
+        RefactoringType.MOVE_RENAME_CLASS, RefactoringType.MOVE_AND_RENAME_OPERATION);
+    var renameRefactorings = new ArrayList<RenameRefactoring>();
 
     try {
       var miner = new GitHistoryRefactoringMinerImpl();
@@ -225,18 +255,10 @@ public class RefactoringMinerAPI {
         @Override
         public void handle(String commitId, List<Refactoring> refactorings) {
           for (Refactoring refactoring : refactorings) {
-            if (refactoring.leftSide().isEmpty())
+            var refType = refactoring.getRefactoringType();
+            if (!renameTypes.contains(refType))
               continue;
-            var widestCR = refactoring.leftSide().get(0);
-            for (CodeRange cr : refactoring.leftSide())
-              if (cr.getStartLine() < widestCR.getStartLine() || cr.getEndLine() > widestCR.getEndLine())
-                widestCR = cr;
-            var lines = IntStream.rangeClosed(widestCR.getStartLine(), widestCR.getEndLine())
-                .boxed()
-                .collect(Collectors.toList());
-            var type = refactoring.getRefactoringType().toString();
-            var info = new RefactoringInfo(widestCR.getFilePath(), type, lines);
-            commitRefactorings.add(info);
+            renameRefactorings.add(createRenameRefactoring(refactoring));
           }
         }
       });
@@ -244,7 +266,7 @@ public class RefactoringMinerAPI {
       throw new RuntimeException(e);
     }
 
-    return commitRefactorings;
+    return renameRefactorings;
   }
 
   private static void disableLogs() {

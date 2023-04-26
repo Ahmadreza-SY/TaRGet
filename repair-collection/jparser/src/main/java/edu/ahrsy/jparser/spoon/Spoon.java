@@ -1,21 +1,23 @@
 package edu.ahrsy.jparser.spoon;
 
+import edu.ahrsy.jparser.entity.TestElements;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.processing.Processor;
-import spoon.reflect.code.CtBlock;
 import spoon.reflect.code.CtComment;
 import spoon.reflect.cu.position.NoSourcePosition;
 import spoon.reflect.declaration.*;
+import spoon.reflect.reference.CtExecutableReference;
+import spoon.reflect.reference.CtReference;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.DefaultImportComparator;
 import spoon.reflect.visitor.ForceImportProcessor;
 import spoon.reflect.visitor.ImportCleaner;
 import spoon.reflect.visitor.ImportConflictDetector;
+import spoon.reflect.visitor.filter.AbstractFilter;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -102,6 +104,31 @@ public class Spoon {
     var srcCode = Spoon.prettyPrint(src);
     var dstCode = Spoon.prettyPrint(dst);
     return !srcCode.equals(dstCode);
+  }
+
+  private static boolean hasDeclarationAndPosition(CtReference reference) {
+    var declaration = reference.getDeclaration();
+    if (declaration == null)
+      return false;
+    return declaration.getPosition().isValidPosition();
+  }
+
+  public static TestElements getElements(CtMethod<?> method) {
+    var types = method.getElements(new AbstractFilter<CtTypeReference<?>>() {
+      @Override
+      public boolean matches(CtTypeReference<?> reference) {
+        return hasDeclarationAndPosition(reference) && super.matches(reference);
+      }
+    }).stream().map(r -> r.getDeclaration().getQualifiedName()).distinct().collect(Collectors.toList());
+
+    var executables = method.getElements(new AbstractFilter<CtExecutableReference<?>>() {
+      @Override
+      public boolean matches(CtExecutableReference<?> reference) {
+        return hasDeclarationAndPosition(reference) && super.matches(reference);
+      }
+    }).stream().map(r -> getUniqueName(r.getDeclaration())).distinct().collect(Collectors.toList());
+
+    return new TestElements(types, executables);
   }
 
   public List<CtMethod<?>> getTests() {
