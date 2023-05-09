@@ -1,5 +1,6 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from .testRepair import TestRepairDataEncoder, Tokens
+import json
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -12,11 +13,11 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             unique_lines.add(change["doc"])
         return unique_changes
 
-    def get_covered_change_documents(self, row):
+    def get_covered_change_documents(self, row, line_coverage=None):
         pass
 
     def get_sort_key(self, changed_doc):
-        return (changed_doc["depth"], changed_doc["element"], -changed_doc["tfidf_sim"])
+        return (not changed_doc["line_coverage"], changed_doc["depth"], changed_doc["element"], -changed_doc["tfidf_sim"])
 
     def get_broken_code(self, row):
         broken_code = ""
@@ -25,7 +26,10 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return broken_code
 
     def prioritize_changed_documents(self, row):
-        changes = self.get_covered_change_documents(row)
+        with open(f"{self.args.dataset_dir}/testExecution/coverage.json") as coverage_json:
+            coverage_dict = json.load(coverage_json)
+
+        changes = self.get_covered_change_documents(row, coverage_dict)
         changes = self.remove_duplicate_documents(changes)
 
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
@@ -126,18 +130,33 @@ class HunksDataEncoder(PrioritizedChangesDataEncoder):
 
         return doc, annotated_doc
 
-    def create_documents(self, covered_changes, element):
+    def create_documents(self, covered_changes, element, src_coverage, tgt_coverage):
         change_docs = []
         for change in covered_changes:
             depth = change["depth"]
             for hunk in change["hunks"]:
+                lines = []
+                if change["filePath"] in src_coverage and "sourceChanges" in hunk:
+                    lines += [l for l in src_coverage[change["filePath"]] if l in [x["lineNo"] for x in hunk["sourceChanges"]]]
+                if change["filePath"] in tgt_coverage and "targetChanges" in hunk:
+                    lines += [l for l in tgt_coverage[change["filePath"]] if l in [x["lineNo"] for x in hunk["targetChanges"]]]
                 doc, annotated_doc = self.create_hunk_document(hunk)
-                change_docs.append({"doc": doc, "annotated_doc": annotated_doc, "depth": depth, "element": element})
+                change_docs.append({"doc": doc, "annotated_doc": annotated_doc, "depth": depth, "element": element, "line_coverage": len(lines) > 0})
         return change_docs
 
-    def get_covered_change_documents(self, row):
-        method_docs = self.create_documents(row["coveredMethodChanges"], 0)
-        class_docs = self.create_documents(row["coveredClassChanges"], 1)
+    def get_covered_change_documents(self, row, line_coverage):
+        if row["bCommit"] in line_coverage and row["name"] in line_coverage[row["bCommit"]]:
+            src_coverage = line_coverage[row["bCommit"]][row["name"]]
+        else:
+            src_coverage = {}
+
+        if row["aCommit"] in line_coverage and row["name"] in line_coverage[row["aCommit"]]:
+            tgt_coverage = line_coverage[row["aCommit"]][row["name"]]
+        else:
+            tgt_coverage = {}
+
+        method_docs = self.create_documents(row["coveredMethodChanges"], 0, src_coverage, tgt_coverage)
+        class_docs = self.create_documents(row["coveredClassChanges"], 1, src_coverage, tgt_coverage)
         return method_docs + class_docs
 
 
