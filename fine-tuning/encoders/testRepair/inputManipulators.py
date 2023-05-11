@@ -26,6 +26,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return broken_code
 
     def prioritize_changed_documents(self, row):
+        # Programmed this way to handle having multiple dataset directories, could be simplified if that'll never happen
         coverage_file = f"{self.args.dataset_dir}/testExecution/coverage.json"
         if self._coverage_file != coverage_file:
             with open(coverage_file) as coverage_json:
