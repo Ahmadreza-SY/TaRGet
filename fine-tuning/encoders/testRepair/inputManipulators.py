@@ -26,10 +26,13 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return broken_code
 
     def prioritize_changed_documents(self, row):
-        with open(f"{self.args.dataset_dir}/testExecution/coverage.json") as coverage_json:
-            coverage_dict = json.load(coverage_json)
+        coverage_file = f"{self.args.dataset_dir}/testExecution/coverage.json"
+        if self._coverage_file != coverage_file:
+            with open(coverage_file) as coverage_json:
+                self._coverage_dict = json.load(coverage_json)
+            self._coverage_file = coverage_file
 
-        changes = self.get_covered_change_documents(row, coverage_dict)
+        changes = self.get_covered_change_documents(row, self._coverage_dict)
         changes = self.remove_duplicate_documents(changes)
 
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))

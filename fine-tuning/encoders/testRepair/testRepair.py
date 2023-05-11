@@ -20,6 +20,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
             [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
         )
 
+        self._coverage_dict = None
+        self._coverage_file = None
+
     def split_by_tag(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
