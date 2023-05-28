@@ -125,8 +125,8 @@ public class CommandCoverage {
 
     awaitTerminationAfterShutdown(executor);
     pb.close();
-
-    IOUtils.saveFile(testElementsPath, gson.toJson(testElements));
+    if (!Files.exists(testElementsPath))
+      IOUtils.saveFile(testElementsPath, gson.toJson(testElements));
   }
 
   private static void mineRefactorings(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {

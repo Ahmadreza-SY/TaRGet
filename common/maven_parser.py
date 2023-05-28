@@ -130,7 +130,7 @@ def run_cmd(cmd):
             return 124, e.stdout.decode("utf-8")
 
 
-def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True):
+def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[]):
     log_file = log_path / "test.log"
     rc_file = log_path / "returncode"
     test_path = project_path / test_rel_path
@@ -155,6 +155,8 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "-Dspotless.apply.skip=true",
             "--batch-mode",
         ]
+        if len(mvn_args) > 0:
+            cmd.extend(mvn_args)
         m2_path = Config.get("m2_path")
         if m2_path is not None:
             cmd.append(f"-Dmaven.repo.local={m2_path}")

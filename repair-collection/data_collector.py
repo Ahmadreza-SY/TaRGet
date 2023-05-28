@@ -8,9 +8,10 @@ from utils import save_file, is_test_class, get_java_diffs, no_covered_changes, 
 import jparser
 import shutil
 import maven_parser as mvnp
+from config import Config
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
-from jacoco_utils import configure_pom, parse_jacoco_report
+from trace_utils import configure_pom, parse_trace
 from trivial_detector import TrivialDetector
 
 
@@ -97,24 +98,20 @@ class DataCollector:
         log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
 
-        verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
+        selogger_path = Path(Config.get("selogger_path")).absolute()
+        trace_path = (original_log_path / "trace").absolute()
+        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,output={trace_path}"'
+
+        verdict = mvnp.compile_and_run_test(
+            project_path, test_b_path, test_method_name, original_log_path, mvn_args=[selogger_mvn_arg]
+        )
         covered_lines = None
         if verdict.succeeded():
-            module_path = mvnp.find_parent_pom(project_path / test_b_path).parent
-            rel_report_file = "target/site/jacoco/jacoco.xml"
-            rel_agg_file = "target/site/jacoco-aggregate/jacoco.xml"
-            rel_exe_file = "target/jacoco.exec"
-            if (module_path / rel_report_file).exists():
-                (original_log_path / rel_report_file).parent.mkdir(parents=True, exist_ok=True)
-                (original_log_path / rel_agg_file).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(str(module_path / rel_report_file), str(original_log_path / rel_report_file))
-                shutil.copyfile(str(module_path / rel_agg_file), str(original_log_path / rel_agg_file))
-                shutil.copyfile(str(module_path / rel_exe_file), str(original_log_path / rel_exe_file))
-            elif not (original_log_path / rel_report_file).exists():
-                print(f"\nNo jacoco.xml file found! {test_name} {b_commit} {module_path}")
+            if not (trace_path / "trace.json").exists():
+                print(f"\nNo trace.json file found! {test_name} {b_commit}")
                 return verdict, None
 
-            covered_lines = parse_jacoco_report(original_log_path / "target/site", project_path)
+            covered_lines = parse_trace(trace_path, project_path)
 
         return verdict, covered_lines
 
