@@ -11,7 +11,12 @@ class TrivialDetector:
         test_elements = self.elements[b_commit][test_name]
         test_elements = set(test_elements["types"] + test_elements["executables"])
         commit_refactorings = self.rename_refactorings[a_commit]
+        trivial_types = []
         for ref in commit_refactorings:
             if ref["originalName"] in test_elements:
-                return ref["refactoringType"]
-        return None
+                trivial_types.append(ref["refactoringType"])
+
+        if trivial_types:
+            return trivial_types
+        else:
+            return None
