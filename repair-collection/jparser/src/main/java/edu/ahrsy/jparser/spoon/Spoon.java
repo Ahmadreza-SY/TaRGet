@@ -42,8 +42,13 @@ public class Spoon {
       printer.setPreprocessors(preprocessors);
       return printer;
     });
-    spoon.buildModel();
-    spoon.getEnvironment().setCommentEnabled(false);
+    try {
+	    spoon.buildModel();
+	    spoon.getEnvironment().setCommentEnabled(false);
+    } catch (Exception e) {
+    	System.err.println("An exception occured while executing the test: " + e.toString().split("\n")[0] + "...");
+    	throw e;
+    }
   }
 
   public static String getRelativePath(CtNamedElement element, String srcPath) {
