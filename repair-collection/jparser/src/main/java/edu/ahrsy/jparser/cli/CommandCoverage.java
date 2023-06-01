@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static edu.ahrsy.jparser.utils.IOUtils.awaitTerminationAfterShutdown;
 
@@ -71,8 +72,13 @@ public class CommandCoverage {
   private static void createCallGraphsAndElements(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
     var testElementsPath = Path.of(args.outputPath, "codeMining", "test_elements.json");
     var bCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
+    var aCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.aCommit));
+    var allCommits = new HashSet<String>();
+    allCommits.addAll(bCommitRepairsMap.keySet());
+    allCommits.addAll(aCommitRepairsMap.keySet());
+
     var pb = new ProgressBarBuilder().setStyle(ProgressBarStyle.ASCII)
-        .setInitialMax(repairedTests.size())
+        .setInitialMax(allCommits.size())
         .showSpeed()
         .setTaskName("Computing call graphs and test elements")
         .build();
@@ -81,29 +87,31 @@ public class CommandCoverage {
     var executor = Executors.newFixedThreadPool(procCnt);
 
     var testElements = Collections.synchronizedMap(new HashMap<String, Map<String, TestElements>>());
-
-    for (var bEntry : bCommitRepairsMap.entrySet()) {
+    
+    // TODO improve Files.exists(testElementsPath), callGraph file count, and exception handling in threads
+    for (var commit : allCommits) {
       executor.submit(() -> {
         try {
-          var bCommit = bEntry.getKey();
-          var bCommitRepairs = bEntry.getValue();
-          var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", bCommit);
-          if (Files.exists(testElementsPath) && countNumberOfGraphFiles(commitGraphsPath) == bCommitRepairs.size()) {
-            pb.stepBy(bCommitRepairs.size());
+          var repairs = new ArrayList<SingleHunkTestChange>();
+          if (bCommitRepairsMap.containsKey(commit))
+            repairs.addAll(bCommitRepairsMap.get(commit));
+          if (aCommitRepairsMap.containsKey(commit))
+            repairs.addAll(aCommitRepairsMap.get(commit));
+          var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", commit);
+          if (Files.exists(testElementsPath) && countNumberOfGraphFiles(commitGraphsPath) == repairs.size())
             return;
-          }
-          var testNames = bCommitRepairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
-          var testPaths = bCommitRepairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
-          var srcPath = GitAPI.createWorktree(repoDir, bCommit).toString();
+          var testNames = repairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
+          var testPaths = repairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
+          var srcPath = GitAPI.createWorktree(repoDir, commit).toString();
           var spoon = new Spoon(srcPath, args.complianceLevel);
           var testMethods = spoon.getExecutablesByName(testNames, testPaths)
               .stream()
               .map(m -> (CtMethod<?>) m)
               .collect(Collectors.toList());
           for (var test : testMethods) {
-            if (!testElements.containsKey(bCommit))
-              testElements.put(bCommit, Collections.synchronizedMap(new HashMap<>()));
-            testElements.get(bCommit).put(Spoon.getUniqueName(test), Spoon.getElements(test));
+            if (!testElements.containsKey(commit))
+              testElements.put(commit, Collections.synchronizedMap(new HashMap<>()));
+            testElements.get(commit).put(Spoon.getUniqueName(test), Spoon.getElements(test));
 
             var callGraph = new CallGraph(test, spoon);
             callGraph.createCallGraph();
@@ -114,11 +122,12 @@ public class CommandCoverage {
                 Path.of(Spoon.getRelativePath(test, srcPath)).getParent().toString(),
                 "graph.json");
             IOUtils.saveFile(graphFile, graphJSON);
-            pb.step();
           }
-          GitAPI.removeWorktree(repoDir, bCommit);
+          GitAPI.removeWorktree(repoDir, commit);
+          pb.step();
         } catch (Exception e) {
-          e.printStackTrace();
+          e.printStackTrace(System.out);
+          pb.step();
         }
       });
     }

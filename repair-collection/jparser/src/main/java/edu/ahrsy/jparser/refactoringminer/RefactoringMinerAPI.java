@@ -227,12 +227,6 @@ public class RefactoringMinerAPI {
         newName = getMethodSignature(_refactoring.getRenamedOperation());
         break;
       }
-      case MOVE_AND_RENAME_OPERATION: {
-        var _refactoring = (MoveOperationRefactoring) refactoring;
-        originalName = getMethodSignature(_refactoring.getOriginalOperation());
-        newName = getMethodSignature(_refactoring.getMovedOperation());
-        break;
-      }
       default:
         throw new RuntimeException("Not rename refactoring " + refType);
     }
@@ -242,7 +236,7 @@ public class RefactoringMinerAPI {
 
   public static List<RenameRefactoring> mineRenameRefactorings(String commit, String projectPath) {
     var renameTypes = EnumSet.of(RefactoringType.RENAME_CLASS, RefactoringType.RENAME_METHOD,
-        RefactoringType.MOVE_RENAME_CLASS, RefactoringType.MOVE_AND_RENAME_OPERATION);
+        RefactoringType.MOVE_RENAME_CLASS);
     var renameRefactorings = new ArrayList<RenameRefactoring>();
 
     try {
