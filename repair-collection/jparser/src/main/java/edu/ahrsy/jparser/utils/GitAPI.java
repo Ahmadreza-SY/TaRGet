@@ -3,13 +3,15 @@ package edu.ahrsy.jparser.utils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class GitAPI {
 
-  private static final Map<String, Integer> acquiredWorktrees = new HashMap<>();
+  private static final Map<String, AtomicInteger> acquiredWorktrees = Collections.synchronizedMap(new HashMap<>());
 
   public synchronized static void cleanupWorktrees(Path repoDir) {
     var worktreesDir = repoDir.getParent().resolve("commits");
@@ -18,9 +20,9 @@ public class GitAPI {
     acquiredWorktrees.clear();
   }
 
-  public synchronized static Path createWorktree(Path repoDir, String commit) {
-    var acqCnt = acquiredWorktrees.getOrDefault(commit, 0);
-    acquiredWorktrees.put(commit, acqCnt + 1);
+  public static Path createWorktree(Path repoDir, String commit) {
+    var acqCnt = acquiredWorktrees.getOrDefault(commit, new AtomicInteger(0));
+    acqCnt.incrementAndGet();
     var worktreeDir = getWorktreeDir(repoDir, commit);
     if (Files.exists(worktreeDir))
       return worktreeDir;
@@ -28,10 +30,10 @@ public class GitAPI {
     return worktreeDir;
   }
 
-  public synchronized static void removeWorktree(Path repoDir, String commit) {
-    var acqCnt = acquiredWorktrees.getOrDefault(commit, 0);
-    if (acqCnt > 1) {
-      acquiredWorktrees.put(commit, acqCnt - 1);
+  public static void removeWorktree(Path repoDir, String commit) {
+    var acqCnt = acquiredWorktrees.getOrDefault(commit, new AtomicInteger(0));
+    if (acqCnt.get() > 1) {
+      acqCnt.decrementAndGet();
       return;
     }
     var worktreeDir = getWorktreeDir(repoDir, commit);
@@ -44,7 +46,7 @@ public class GitAPI {
     return repoDir.getParent().resolve("commits").resolve(commit).toAbsolutePath();
   }
 
-  private synchronized static void runCommand(Path dir, String... command) {
+  private static void runCommand(Path dir, String... command) {
     try {
       Objects.requireNonNull(dir, "directory");
       if (!Files.exists(dir))
