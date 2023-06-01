@@ -9,6 +9,7 @@ import edu.ahrsy.jparser.entity.CommitChanges;
 import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.entity.TestElements;
 import edu.ahrsy.jparser.graph.CallGraph;
+import edu.ahrsy.jparser.graph.dto.CallGraphDTO;
 import edu.ahrsy.jparser.refactoringminer.RenameRefactoring;
 import edu.ahrsy.jparser.refactoringminer.RefactoringMinerAPI;
 import edu.ahrsy.jparser.spoon.Spoon;
@@ -57,20 +58,14 @@ public class CommandCoverage {
     extractChanges(args, changedSUTClasses);
   }
 
-  private static Integer countNumberOfGraphFiles(Path graphsPath) {
-    try {
-      try (var files = Files.find(graphsPath,
-          Integer.MAX_VALUE,
-          (path, bfa) -> path.toString().endsWith("graph.json"))) {
-        return (int) files.count();
-      }
-    } catch (IOException e) {
-      return 0;
-    }
-  }
-
   private static void createCallGraphsAndElements(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {
+    var callGraphsPath = Path.of(args.outputPath, "codeMining", "call_graphs.json");
     var testElementsPath = Path.of(args.outputPath, "codeMining", "test_elements.json");
+    if (Files.exists(callGraphsPath) && Files.exists(testElementsPath)) {
+      System.out.println("Call graphs and test elements exist, skipping ...");
+      return;
+    }
+
     var bCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.bCommit));
     var aCommitRepairsMap = repairedTests.stream().collect(Collectors.groupingBy(r -> r.aCommit));
     var allCommits = new HashSet<String>();
@@ -86,9 +81,9 @@ public class CommandCoverage {
     int procCnt = Runtime.getRuntime().availableProcessors();
     var executor = Executors.newFixedThreadPool(procCnt);
 
+    var callGraphs = Collections.synchronizedMap(new HashMap<String, Map<String, CallGraphDTO>>());
     var testElements = Collections.synchronizedMap(new HashMap<String, Map<String, TestElements>>());
     
-    // TODO improve Files.exists(testElementsPath), callGraph file count, and exception handling in threads
     for (var commit : allCommits) {
       executor.submit(() -> {
         try {
@@ -97,9 +92,6 @@ public class CommandCoverage {
             repairs.addAll(bCommitRepairsMap.get(commit));
           if (aCommitRepairsMap.containsKey(commit))
             repairs.addAll(aCommitRepairsMap.get(commit));
-          var commitGraphsPath = Path.of(args.outputPath, "codeMining", "callGraphs", commit);
-          if (Files.exists(testElementsPath) && countNumberOfGraphFiles(commitGraphsPath) == repairs.size())
-            return;
           var testNames = repairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
           var testPaths = repairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
           var srcPath = GitAPI.createWorktree(repoDir, commit).toString();
@@ -109,19 +101,15 @@ public class CommandCoverage {
               .map(m -> (CtMethod<?>) m)
               .collect(Collectors.toList());
           for (var test : testMethods) {
+            var callGraph = new CallGraph(test, spoon);
+            callGraph.createCallGraph();
+            if (!callGraphs.containsKey(commit))
+              callGraphs.put(commit, Collections.synchronizedMap(new HashMap<>()));
+            callGraphs.get(commit).put(Spoon.getUniqueName(test), callGraph.toDTO(srcPath));
+
             if (!testElements.containsKey(commit))
               testElements.put(commit, Collections.synchronizedMap(new HashMap<>()));
             testElements.get(commit).put(Spoon.getUniqueName(test), Spoon.getElements(test));
-
-            var callGraph = new CallGraph(test, spoon);
-            callGraph.createCallGraph();
-            var graphJSON = callGraph.toJSON(srcPath);
-            var graphFile = Path.of(commitGraphsPath.toString(),
-                test.getTopLevelType().getSimpleName(),
-                test.getSimpleName(),
-                Path.of(Spoon.getRelativePath(test, srcPath)).getParent().toString(),
-                "graph.json");
-            IOUtils.saveFile(graphFile, graphJSON);
           }
           GitAPI.removeWorktree(repoDir, commit);
           pb.step();
@@ -134,8 +122,9 @@ public class CommandCoverage {
 
     awaitTerminationAfterShutdown(executor);
     pb.close();
-    if (!Files.exists(testElementsPath))
-      IOUtils.saveFile(testElementsPath, gson.toJson(testElements));
+
+    IOUtils.saveFile(callGraphsPath, gson.toJson(callGraphs));
+    IOUtils.saveFile(testElementsPath, gson.toJson(testElements));
   }
 
   private static void mineRefactorings(CommandCoverage args, List<SingleHunkTestChange> repairedTests) {

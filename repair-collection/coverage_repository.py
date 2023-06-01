@@ -1,6 +1,5 @@
 import json
 from common_utils import decompose_full_method_name
-from pathlib import Path
 import copy
 
 
@@ -8,31 +7,8 @@ class ChangesRepository:
     def __init__(self, output_path):
         self.output_path = output_path
         self.changes = {}
-        self.call_graphs = {}
-
-    def get_call_graph(self, commit, test_name, test_path):
-        if commit in self.call_graphs and test_name in self.call_graphs[commit]:
-            return self.call_graphs[commit][test_name]
-
-        _, class_name, test_short_name = decompose_full_method_name(test_name)
-        test_directory = Path(test_path).parent
-        graph_path = (
-            self.output_path
-            / "codeMining"
-            / "callGraphs"
-            / commit
-            / class_name
-            / test_short_name
-            / test_directory
-            / "graph.json"
-        )
-        graph = json.loads(graph_path.read_text())
-
-        if commit not in self.call_graphs:
-            self.call_graphs[commit] = {}
-
-        self.call_graphs[commit][test_name] = graph
-        return graph
+        call_graphs_path = self.output_path / "codeMining" / "call_graphs.json"
+        self.call_graphs = json.loads(call_graphs_path.read_text())
 
     def get_changes(self, commit):
         if commit in self.changes:
@@ -47,7 +23,7 @@ class ChangesRepository:
 
     def get_covered_changes(self, repair):
         changes = self.get_changes(repair["aCommit"])
-        call_graph = self.get_call_graph(repair["bCommit"], repair["name"], repair["bPath"])
+        call_graph = self.call_graphs[repair["bCommit"]][repair["name"]]
         covered_elements = self.get_covered_elements(call_graph)
         covered_changes = []
         for change in changes:

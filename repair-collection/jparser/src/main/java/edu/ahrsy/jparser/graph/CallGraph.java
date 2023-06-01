@@ -1,13 +1,11 @@
 package edu.ahrsy.jparser.graph;
 
+import edu.ahrsy.jparser.graph.dto.CallGraphDTO;
 import edu.ahrsy.jparser.graph.dto.Mapper;
 import edu.ahrsy.jparser.spoon.Spoon;
-import edu.ahrsy.jparser.utils.IOUtils;
 import spoon.reflect.code.CtAbstractInvocation;
 import spoon.reflect.declaration.CtExecutable;
-import spoon.reflect.declaration.CtType;
 
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -47,8 +45,7 @@ public class CallGraph {
     }
   }
 
-  public String toJSON(String srcPath) {
-    var gson = IOUtils.createGsonInstance();
-    return gson.toJson(Mapper.toDto(this, srcPath));
+  public CallGraphDTO toDTO(String srcPath) {
+    return Mapper.toDto(this, srcPath);
   }
 }
