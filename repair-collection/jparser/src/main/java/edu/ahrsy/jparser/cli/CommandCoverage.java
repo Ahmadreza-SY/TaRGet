@@ -93,7 +93,9 @@ public class CommandCoverage {
           if (aCommitRepairsMap.containsKey(commit))
             repairs.addAll(aCommitRepairsMap.get(commit));
           var testNames = repairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
-          var testPaths = repairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
+          var testBPaths = repairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
+          var testAPaths = repairs.stream().map(r -> r.aPath).collect(Collectors.toCollection(HashSet::new));
+          var testPaths = Stream.concat(testBPaths.stream(), testAPaths.stream()).collect(Collectors.toCollection(HashSet::new));
           var srcPath = GitAPI.createWorktree(repoDir, commit).toString();
           var spoon = new Spoon(srcPath, args.complianceLevel);
           var testMethods = spoon.getExecutablesByName(testNames, testPaths)
