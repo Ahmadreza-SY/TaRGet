@@ -151,12 +151,27 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
             f'-Dtest="{test_class}#{test_method}"',
-            "-Dcheckstyle.skip=true",
-            "-Dspotless.apply.skip=true",
             "--batch-mode",
         ]
         if len(mvn_args) > 0:
             cmd.extend(mvn_args)
+        MVN_SKIPS = [
+            "-Djacoco.skip",
+            "-Dcheckstyle.skip",
+            "-Dspotless.apply.skip",
+            "-Drat.skip",
+            "-Denforcer.skip",
+            "-Danimal.sniffer.skip",
+            "-Dmaven.javadoc.skip",
+            "-Dfindbugs.skip",
+            "-Dwarbucks.skip",
+            "-Dmodernizer.skip",
+            "-Dimpsort.skip",
+            "-Dpmd.skip",
+            "-Dxjc.skip",
+            "-Dair.check.skip-all",
+        ]
+        cmd.extend(MVN_SKIPS)
         m2_path = Config.get("m2_path")
         if m2_path is not None:
             cmd.append(f"-Dmaven.repo.local={m2_path}")
