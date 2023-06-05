@@ -36,7 +36,8 @@ class TestRepairDataEncoder(BaseDataEncoder):
             p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
 
             # stratified test and valid split
-            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("project")]
+            p_eval_ds = p_eval_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("aCommit")]
             p_valid_ds = pd.concat([t[0] for t in p_eval_list])
             p_test_ds = pd.concat([t[1] for t in p_eval_list])
 
