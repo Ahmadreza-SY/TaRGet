@@ -20,6 +20,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
             [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
         )
 
+    def shuffle(self, ds):
+        return ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+
     def split_by_tag(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
@@ -36,7 +39,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
 
             # stratified test and valid split
-            p_eval_ds = p_eval_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+            p_eval_ds = self.shuffle(p_eval_ds)
             p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("aCommit")]
             p_valid_ds = pd.concat([t[0] for t in p_eval_list])
             p_test_ds = pd.concat([t[1] for t in p_eval_list])
@@ -50,9 +53,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
         test_ds = pd.concat(test_ds_list)
 
         # Shuffle splits
-        train_ds = train_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
-        valid_ds = valid_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
-        test_ds = test_ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
+        train_ds = self.shuffle(train_ds)
+        valid_ds = self.shuffle(valid_ds)
+        test_ds = self.shuffle(test_ds)
 
         return train_ds, valid_ds, test_ds
 
@@ -61,6 +64,13 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
     def preprocess(self, ds):
         return ds
+
+    def prepare_inputs_and_outputs(self, ds):
+        ds = self.create_inputs_and_outputs(ds)
+        ds["input"] = ds["input"].str.strip()
+        ds["output"] = ds["output"].str.strip()
+        validsize_ind = self.get_validsize_indices(ds)
+        return ds.iloc[list(validsize_ind)].reset_index(drop=True)
 
     def load_dataset(self):
         self.log("Loading test repair datasets ...")
@@ -87,13 +97,22 @@ class TestRepairDataEncoder(BaseDataEncoder):
                 ds_list.append(project_ds)
 
             ds = pd.concat(ds_list)
-            ds = self.create_inputs_and_outputs(ds)
-            ds["input"] = ds["input"].str.strip()
-            ds["output"] = ds["output"].str.strip()
-            validsize_ind = self.get_validsize_indices(ds)
-            ds = ds.iloc[list(validsize_ind)].reset_index(drop=True)
+            before_len = len(ds)
+            trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
+            ds = ds[ds["trivial"].isna()].reset_index(drop=True)
+            self.log(f"Removed {before_len - len(ds)} trivial test repairs")
+            self.log("Preparing main dataset")
+            ds = self.prepare_inputs_and_outputs(ds)
 
             train_ds, valid_ds, test_ds = self.split_by_tag(ds)
+
+            latest_train_time = train_ds["aCommitTime"].max()
+            train_trivial_ds = trivial_ds[trivial_ds["aCommitTime"] <= latest_train_time].reset_index(drop=True)
+            self.log("Preparing trivial train dataset")
+            train_trivial_ds = self.prepare_inputs_and_outputs(train_trivial_ds)
+            train_ds = pd.concat([train_ds, train_trivial_ds])
+            train_ds = self.shuffle(train_ds)
+            self.log(f"Added {len(train_trivial_ds)} trivial test repairs to the train set")
 
             ds_output_dir.mkdir(exist_ok=True, parents=True)
             train_ds.to_json(train_file, orient="records", indent=2)
