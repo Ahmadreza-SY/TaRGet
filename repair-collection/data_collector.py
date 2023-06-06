@@ -33,6 +33,9 @@ class DataCollector:
 
         print("Phase #2: Detecting broken tests by executing them")
         repaired_tests = self.detect_repaired_tests()
+        if len(repaired_tests) == 0:
+            print("No repaired tests found")
+            return
         print()
 
         print("Phase #3: Identifying and extracting covered changes")
@@ -130,6 +133,9 @@ class DataCollector:
             test_method_name = test_name.split(".")[-1].replace("()", "")
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "codeMining" / "testClasses" / a_commit / test_a_path
+            if not original_file.exists():
+                print(f"Original test file expected but not found, skipping test execution: {original_file}")
+                continue
             broken_file = (
                 self.output_path
                 / "codeMining"
@@ -139,6 +145,9 @@ class DataCollector:
                 / test_method_name
                 / test_a_path
             )
+            if not broken_file.exists():
+                print(f"Broken test file expected but not found, skipping test execution: {broken_file}")
+                continue
             log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
 
             # Running T on P to trace test coverage
@@ -192,7 +201,7 @@ class DataCollector:
         print(f"Found {len(repaired_tests)} repaired tests")
         repair_per = round(100 * len(repaired_tests) / changed_tests_cnt, 1)
         print(
-            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correclty repaired!"
+            f"{repair_per}% ({len(repaired_tests)}/{changed_tests_cnt}) of changed tests were broken and correctly repaired!"
         )
         verdict_df = pd.DataFrame(
             {
@@ -226,6 +235,10 @@ class DataCollector:
             return json.loads(repaired_tests_path.read_text())
 
         changed_tests = pd.read_json(self.output_path / "codeMining" / "changed_tests.json")
+        if changed_tests.empty:
+            print("No Changed Tests Found!")
+            return []
+
         change_groups = list(changed_tests.groupby("aCommit"))
         changed_tests_cnt = sum([len(g[1]) for g in change_groups])
 

@@ -16,6 +16,9 @@ class ChangesRepository:
 
         changes_path = self.get_changes_path()
         all_changes = json.loads(changes_path.read_text())
+        if len(all_changes) == 0:
+            print(f"No changes found in {changes_path}")
+            return []
         for commit_changes in all_changes:
             self.changes[commit_changes["aCommit"]] = commit_changes["changes"]
 
