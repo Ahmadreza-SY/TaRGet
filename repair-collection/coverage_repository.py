@@ -17,7 +17,7 @@ class ChangesRepository:
         changes_path = self.get_changes_path()
         all_changes = json.loads(changes_path.read_text())
         if len(all_changes) == 0:
-            print(f"No changes found in {changes_path}")
+            print(f"No changes found for {commit}")
             return []
         for commit_changes in all_changes:
             self.changes[commit_changes["aCommit"]] = commit_changes["changes"]
@@ -26,6 +26,10 @@ class ChangesRepository:
 
     def get_covered_changes(self, repair):
         changes = self.get_changes(repair["aCommit"])
+        bCommit = repair["bCommit"]
+        if bCommit not in self.call_graphs:
+            print(f"No call graph found for {bCommit}")
+            return []
         call_graph = self.call_graphs[repair["bCommit"]][repair["name"]]
         covered_elements = self.get_covered_elements(call_graph)
         covered_changes = []

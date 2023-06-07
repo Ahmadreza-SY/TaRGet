@@ -11,7 +11,7 @@ import maven_parser as mvnp
 from config import Config
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
-from trace_utils import configure_pom, parse_trace
+from trace_utils import configure_poms, parse_trace
 from trivial_detector import TrivialDetector
 
 
@@ -90,13 +90,13 @@ class DataCollector:
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
     def extract_covered_lines(self, project_path, change):
-        pom_path = configure_pom(project_path)
+        test_b_path = Path(change["bPath"])
+        pom_path = configure_poms(project_path, test_b_path)
         if pom_path is None:
             return mvnp.TestVerdict(mvnp.TestVerdict.POM_NOT_FOUND, None), None
 
         test_name = change["name"]
         b_commit = change["bCommit"]
-        test_b_path = Path(change["bPath"])
         test_method_name = test_name.split(".")[-1].replace("()", "")
         log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path

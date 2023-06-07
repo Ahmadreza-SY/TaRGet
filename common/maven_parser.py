@@ -4,7 +4,7 @@ import shlex
 import re
 from config import Config
 import os
-from common_utils import auto_str
+from common_utils import auto_str, find_parent_pom
 
 
 @auto_str
@@ -42,16 +42,6 @@ class TestVerdict:
             "status": self.status,
             "error_lines": sorted(list(self.error_lines)) if self.error_lines is not None else None,
         }
-
-
-def find_parent_pom(file_path):
-    current_dir = file_path.parent
-    while True:
-        if (current_dir / "pom.xml").exists():
-            return current_dir / "pom.xml"
-        current_dir = current_dir.parent
-        if current_dir == current_dir.parent:
-            return None
 
 
 def parse_compile_error(log, test_rel_path):

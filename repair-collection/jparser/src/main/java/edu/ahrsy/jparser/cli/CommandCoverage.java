@@ -10,8 +10,8 @@ import edu.ahrsy.jparser.entity.SingleHunkTestChange;
 import edu.ahrsy.jparser.entity.TestElements;
 import edu.ahrsy.jparser.graph.CallGraph;
 import edu.ahrsy.jparser.graph.dto.CallGraphDTO;
-import edu.ahrsy.jparser.refactoringminer.RenameRefactoring;
 import edu.ahrsy.jparser.refactoringminer.RefactoringMinerAPI;
+import edu.ahrsy.jparser.refactoringminer.RenameRefactoring;
 import edu.ahrsy.jparser.spoon.Spoon;
 import edu.ahrsy.jparser.utils.GitAPI;
 import edu.ahrsy.jparser.utils.IOUtils;
@@ -19,11 +19,10 @@ import me.tongfei.progressbar.ProgressBarBuilder;
 import me.tongfei.progressbar.ProgressBarStyle;
 import spoon.reflect.declaration.CtMethod;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -84,7 +83,7 @@ public class CommandCoverage {
 
     var callGraphs = Collections.synchronizedMap(new HashMap<String, Map<String, CallGraphDTO>>());
     var testElements = Collections.synchronizedMap(new HashMap<String, Map<String, TestElements>>());
-    
+
     for (var commit : allCommits) {
       executor.submit(() -> {
         try {
@@ -96,7 +95,8 @@ public class CommandCoverage {
           var testNames = repairs.stream().map(r -> r.name).collect(Collectors.toCollection(HashSet::new));
           var testBPaths = repairs.stream().map(r -> r.bPath).collect(Collectors.toCollection(HashSet::new));
           var testAPaths = repairs.stream().map(r -> r.aPath).collect(Collectors.toCollection(HashSet::new));
-          var testPaths = Stream.concat(testBPaths.stream(), testAPaths.stream()).collect(Collectors.toCollection(HashSet::new));
+          var testPaths =
+              Stream.concat(testBPaths.stream(), testAPaths.stream()).collect(Collectors.toCollection(HashSet::new));
           var srcPath = GitAPI.createWorktree(repoDir, commit).toString();
           var spoon = new Spoon(srcPath, args.complianceLevel);
           var testMethods = spoon.getExecutablesByName(testNames, testPaths)
@@ -196,7 +196,8 @@ public class CommandCoverage {
           GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
           GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
         } catch (Exception e) {
-          e.printStackTrace();
+          System.err.printf("%nERROR in extractChanges %s-%s ERROR: %s%n", changedClasses.bCommit,
+              changedClasses.aCommit, e.getMessage());
         }
       });
     }

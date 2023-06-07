@@ -3,6 +3,7 @@ package edu.ahrsy.jparser.spoon;
 import edu.ahrsy.jparser.entity.TestElements;
 import spoon.Launcher;
 import spoon.SpoonAPI;
+import spoon.SpoonModelBuilder;
 import spoon.processing.Processor;
 import spoon.reflect.code.CtComment;
 import spoon.reflect.cu.position.NoSourcePosition;
@@ -16,6 +17,8 @@ import spoon.reflect.visitor.ImportCleaner;
 import spoon.reflect.visitor.ImportConflictDetector;
 import spoon.reflect.visitor.filter.AbstractFilter;
 import spoon.reflect.visitor.filter.TypeFilter;
+import spoon.support.compiler.FileSystemFolder;
+import spoon.support.compiler.FilteringFolder;
 
 import java.io.File;
 import java.util.*;
@@ -31,7 +34,11 @@ public class Spoon {
   public Spoon(String srcPath, Integer complianceLevel) {
     this.srcPath = srcPath;
     spoon = new Launcher();
-    spoon.addInputResource(srcPath);
+    SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
+    FilteringFolder resources = new FilteringFolder();
+    resources.addFolder(new FileSystemFolder(srcPath));
+    resources.removeAllThatMatch(".*/module-info.java");
+    modelBuilder.addInputSource(resources);
     spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     spoon.getFactory().getEnvironment().setPrettyPrinterCreator(() -> {
@@ -44,13 +51,14 @@ public class Spoon {
       printer.setPreprocessors(preprocessors);
       return printer;
     });
-    try {
-	    spoon.buildModel();
-	    spoon.getEnvironment().setCommentEnabled(false);
-    } catch (Exception e) {
-    	System.err.println("An exception occured while parsing source path " + srcPath + "\nERROR:\n" + e.toString().split("\n")[0] + "...");
-    	throw e;
-    }
+   try {
+      spoon.buildModel();
+      spoon.getEnvironment().setCommentEnabled(false);
+   } catch (Exception e) {
+     System.err.printf("%nAn exception occured while parsing source path by Spoon: %s%nERROR: %s%n", srcPath,
+         e.getMessage());
+     throw e;
+   }
   }
 
   public static String getRelativePath(CtNamedElement element, String srcPath) {
