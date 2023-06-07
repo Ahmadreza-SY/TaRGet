@@ -22,6 +22,7 @@ public class GitAPI {
 
   public static Path createWorktree(Path repoDir, String commit) {
     var acqCnt = acquiredWorktrees.getOrDefault(commit, new AtomicInteger(0));
+    acquiredWorktrees.put(commit, acqCnt);
     acqCnt.incrementAndGet();
     var worktreeDir = getWorktreeDir(repoDir, commit);
     if (Files.exists(worktreeDir))

@@ -51,6 +51,7 @@ public class CommandCoverage {
     createCallGraphsAndElements(args, repairedTests);
     mineRefactorings(args, repairedTests);
 
+    GitAPI.cleanupWorktrees(repoDir);
     var changedSUTClassesJSON = IOUtils.readFile(Path.of(args.outputPath, "codeMining", "changed_sut_classes.json"));
     List<CommitChangedClasses> changedSUTClasses = gson.fromJson(changedSUTClassesJSON,
         new TypeToken<List<CommitChangedClasses>>() {
