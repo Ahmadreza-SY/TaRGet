@@ -103,7 +103,7 @@ class DataCollector:
 
         selogger_path = Path(Config.get("selogger_path")).absolute()
         trace_path = (original_log_path / "trace").absolute()
-        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,output={trace_path}"'
+        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=com/gradle,output={trace_path}"'
 
         verdict = mvnp.compile_and_run_test(
             project_path, test_b_path, test_method_name, original_log_path, mvn_args=[selogger_mvn_arg]
@@ -123,6 +123,7 @@ class DataCollector:
         repaired_tests = []
         tests_coverage = []
         (a_commit, changes) = change_group
+        changes = changes.reset_index(drop=True)
         b_commit = changes.iloc[0]["bCommit"]
 
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
@@ -270,6 +271,7 @@ class DataCollector:
             coverage[b_commit].setdefault(test_name, {})
             coverage[b_commit][test_name] = covered_lines
 
+        changed_tests_verdicts_path.parent.mkdir(exist_ok=True, parents=True)
         changed_tests_verdicts_path.write_text(json.dumps(changed_tests_verdicts, indent=2, sort_keys=False))
         coverage_path.write_text(json.dumps(coverage, indent=2, sort_keys=False))
         repaired_tests_path.write_text(json.dumps(repaired_tests, indent=2, sort_keys=False))
