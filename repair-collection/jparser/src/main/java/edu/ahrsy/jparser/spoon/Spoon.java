@@ -34,11 +34,14 @@ public class Spoon {
   public Spoon(String srcPath, Integer complianceLevel) {
     this.srcPath = srcPath;
     spoon = new Launcher();
-    SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
-    FilteringFolder resources = new FilteringFolder();
-    resources.addFolder(new FileSystemFolder(srcPath));
-    resources.removeAllThatMatch(".*/module-info.java");
-    modelBuilder.addInputSource(resources);
+    if (new File(srcPath).isDirectory()) {
+      SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
+      FilteringFolder resources = new FilteringFolder();
+      resources.addFolder(new FileSystemFolder(srcPath));
+      resources.removeAllThatMatch(".*/module-info.java");
+      modelBuilder.addInputSource(resources);
+    } else
+      spoon.addInputResource(srcPath);
     spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     spoon.getFactory().getEnvironment().setPrettyPrinterCreator(() -> {
@@ -51,14 +54,14 @@ public class Spoon {
       printer.setPreprocessors(preprocessors);
       return printer;
     });
-   try {
+    try {
       spoon.buildModel();
       spoon.getEnvironment().setCommentEnabled(false);
-   } catch (Exception e) {
-     System.err.printf("%nAn exception occured while parsing source path by Spoon: %s%nERROR: %s%n", srcPath,
-         e.getMessage());
-     throw e;
-   }
+    } catch (Exception e) {
+      System.err.printf("%nAn exception occured while parsing source path by Spoon: %s%nERROR: %s%n", srcPath,
+          e.getMessage());
+      throw e;
+    }
   }
 
   public static String getRelativePath(CtNamedElement element, String srcPath) {
