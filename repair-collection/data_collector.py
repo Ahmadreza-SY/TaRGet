@@ -103,7 +103,7 @@ class DataCollector:
 
         selogger_path = Path(Config.get("selogger_path")).absolute()
         trace_path = (original_log_path / "trace").absolute()
-        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=com/gradle,output={trace_path}"'
+        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=jdk,e=com/gradle,output={trace_path}"'
 
         verdict = mvnp.compile_and_run_test(
             project_path, test_b_path, test_method_name, original_log_path, mvn_args=[selogger_mvn_arg]
