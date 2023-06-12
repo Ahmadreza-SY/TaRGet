@@ -140,6 +140,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             f"-pl {str(pom_path.relative_to(project_path))}",
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
+            "-DfailIfNoTests=false",
             f'-Dtest="{test_class}#{test_method}"',
             "--batch-mode",
         ]
