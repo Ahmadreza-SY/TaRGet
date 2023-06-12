@@ -158,6 +158,7 @@ class DataCollector:
                     {
                         "name": test_name,
                         "aCommit": a_commit,
+                        "bCommit": b_commit,
                         "original_verdict": original_verdict.to_dict(),
                     }
                 )
@@ -186,6 +187,7 @@ class DataCollector:
                 {
                     "name": test_name,
                     "aCommit": a_commit,
+                    "bCommit": b_commit,
                     "verdict": before_verdict.to_dict(),
                     "broken": before_verdict.is_broken(),
                     "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
