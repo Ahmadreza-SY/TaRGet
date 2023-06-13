@@ -67,8 +67,8 @@ class DataCollector:
                     save_file(before, b_copy_path)
                     save_file(after, a_copy_path)
                 except UnicodeEncodeError as e:
-                    print(f"\nUnicode exception in {b_commit } -> {a_commit} for file {diff.b_path} -> {diff.a_path}: {e}")
-                    
+                    # print(f"\nUnicode exception in {b_commit } -> {a_commit} for file {diff.b_path} -> {diff.a_path}: {e}")
+                    lock.acquire()
                     b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, "0")
                     b_copy_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(str(b_commit_path / diff.b_path), str(b_copy_path))
@@ -78,6 +78,7 @@ class DataCollector:
                     a_copy_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(str(a_commit_path / diff.a_path), str(a_copy_path))
                     ghapi.remove_commit_code(self.repo_name, a_commit_path)
+                    lock.release()
 
         return commit_changed_test_classes
 
@@ -90,7 +91,7 @@ class DataCollector:
         commits_sha = [c.hexsha for c in commits]
 
         changed_test_classes = []
-        with mp.Pool() as pool:
+        with mp.Pool(initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for commit_changed_test_classes in tqdm(
                 pool.imap_unordered(self.get_commit_changed_test_classes, commits_sha),
                 total=len(commits_sha),
