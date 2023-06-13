@@ -55,9 +55,6 @@ def parse_trace(trace_path, project_path):
         if src_path is None and k_parent in covered_lines:
             src_path = next(module_path.glob(f"**/{k_parent}"), None)
         if src_path is None:
-            # ignoring auto-generated src files by Antlr
-            if "/autogen/" not in k:
-                print(f"Covered source file not found: {k} {module_path}")
             continue
         src_path = src_path.relative_to(project_path)
         final_covered_lines[str(src_path)] = v
