@@ -125,7 +125,7 @@ class DataCollector:
         covered_lines = None
         if verdict.succeeded():
             if not (trace_path / "trace.json").exists():
-                print(f"\nNo trace.json file found! {test_name} {b_commit}")
+                # print(f"\nNo trace.json file found! {test_name} {b_commit}")
                 return verdict, None
 
             covered_lines = parse_trace(trace_path, project_path)
