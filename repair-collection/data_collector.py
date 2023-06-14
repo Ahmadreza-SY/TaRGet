@@ -161,7 +161,7 @@ class DataCollector:
                 / test_a_path
             )
             if not broken_file.exists():
-                print(f"Broken test file expected but not found, skipping test execution: {broken_file}")
+                print(f"\nBroken test file expected but not found, skipping test execution: {broken_file}")
                 continue
             log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
 
