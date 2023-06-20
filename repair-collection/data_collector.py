@@ -124,8 +124,10 @@ class DataCollector:
         changes = changes.reset_index(drop=True)
         b_commit = changes.iloc[0]["bCommit"]
 
+        lock.acquire()
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
         b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
+        lock.release()
 
         for _, change in changes.iterrows():
             test_name = change["name"]
@@ -133,7 +135,7 @@ class DataCollector:
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "codeMining" / "testClasses" / a_commit / test_a_path
             if not original_file.exists():
-                print(f"Original test file expected but not found, skipping test execution: {original_file}")
+                ErrorStats.update(ErrorStats.missing_tf, str(original_file))
                 continue
             broken_file = (
                 self.output_path
@@ -145,7 +147,7 @@ class DataCollector:
                 / test_a_path
             )
             if not broken_file.exists():
-                print(f"\nBroken test file expected but not found, skipping test execution: {broken_file}")
+                ErrorStats.update(ErrorStats.missing_tf, str(broken_file))
                 continue
             log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
 
@@ -192,8 +194,10 @@ class DataCollector:
                 }
             )
 
+        lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
         ghapi.remove_commit_code(self.repo_name, b_commit_path)
+        lock.release()
 
         return changed_tests_verdicts, repaired_tests, tests_coverage
 

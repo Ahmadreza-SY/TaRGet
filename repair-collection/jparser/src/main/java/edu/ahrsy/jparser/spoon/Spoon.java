@@ -38,6 +38,7 @@ public class Spoon {
       SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
       FilteringFolder resources = new FilteringFolder();
       resources.addFolder(new FileSystemFolder(srcPath));
+      resources.removeAllThatMatch(".*/package-info.java");
       resources.removeAllThatMatch(".*/module-info.java");
       modelBuilder.addInputSource(resources);
     } else
