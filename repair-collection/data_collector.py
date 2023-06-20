@@ -69,8 +69,7 @@ class DataCollector:
                 try:
                     save_file(before, b_copy_path)
                     save_file(after, a_copy_path)
-                except UnicodeEncodeError as e:
-                    # print(f"\nUnicode exception in {b_commit } -> {a_commit} for file {diff.b_path} -> {diff.a_path}: {e}")
+                except UnicodeEncodeError:
                     lock.acquire()
                     b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, "0")
                     b_copy_path.parent.mkdir(parents=True, exist_ok=True)
