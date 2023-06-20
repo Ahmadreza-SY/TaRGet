@@ -11,7 +11,6 @@ import maven_parser as mvnp
 from config import Config
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
-from trace_utils import configure_poms, parse_trace
 from trivial_detector import TrivialDetector
 from error_stats import ErrorStats
 
@@ -43,6 +42,7 @@ class DataCollector:
         repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
         self.find_changed_sut_classes(repair_commits)
         jparser.extract_covered_changes_info(self.output_path)
+        ghapi.cleanup_worktrees(self.repo_name)
         print()
 
         self.make_dataset(repaired_tests)
@@ -106,36 +106,16 @@ class DataCollector:
         changed_test_classes = pd.DataFrame(changed_test_classes)
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
-    def extract_covered_lines(self, project_path, change):
+    def run_original_test(self, project_path, change):
         test_b_path = Path(change["bPath"])
-        pom_path = configure_poms(project_path, test_b_path)
-        if pom_path is None:
-            return mvnp.TestVerdict(mvnp.TestVerdict.POM_NOT_FOUND, None), None
-
         test_name = change["name"]
         b_commit = change["bCommit"]
         test_method_name = test_name.split(".")[-1].replace("()", "")
         log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
 
-        selogger_path = Path(Config.get("selogger_path")).absolute()
-        trace_path = (original_log_path / "trace").absolute()
-        selogger_mvn_arg = (
-            f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=jdk,e=com/gradle,output={trace_path}"'
-        )
-
-        verdict = mvnp.compile_and_run_test(
-            project_path, test_b_path, test_method_name, original_log_path, mvn_args=[selogger_mvn_arg]
-        )
-        covered_lines = None
-        if verdict.succeeded():
-            if not (trace_path / "trace.json").exists():
-                # print(f"\nNo trace.json file found! {test_name} {b_commit}")
-                return verdict, None
-
-            covered_lines = parse_trace(trace_path, project_path)
-
-        return verdict, covered_lines
+        verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
+        return verdict, None
 
     def run_changed_tests(self, change_group):
         changed_tests_verdicts = []
@@ -170,8 +150,8 @@ class DataCollector:
                 continue
             log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
 
-            # Running T on P to trace test coverage
-            original_verdict, covered_lines = self.extract_covered_lines(b_commit_path, change)
+            # Running T on P to check original test success (todo trace test coverage)
+            original_verdict, covered_lines = self.run_original_test(b_commit_path, change)
             if not original_verdict.succeeded():
                 changed_tests_verdicts.append(
                     {
