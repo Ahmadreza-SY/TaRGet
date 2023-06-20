@@ -110,7 +110,7 @@ def run_cmd(cmd):
     while True:
         proc = subprocess.Popen(shlex.split(" ".join(cmd)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env)
         try:
-            stdout, stderr = proc.communicate(timeout=30 * 60)
+            stdout, stderr = proc.communicate(timeout=15 * 60)
             return proc.returncode, stdout.decode("utf-8")
         except TimeoutExpired as e:
             proc.kill()
@@ -154,6 +154,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "-Denforcer.skip",
             "-Danimal.sniffer.skip",
             "-Dmaven.javadoc.skip",
+            "-Dmaven.gitcommitid.skip",
             "-Dfindbugs.skip",
             "-Dwarbucks.skip",
             "-Dmodernizer.skip",

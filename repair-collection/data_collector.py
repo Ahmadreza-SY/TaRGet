@@ -13,6 +13,7 @@ from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
 from trace_utils import configure_poms, parse_trace
 from trivial_detector import TrivialDetector
+from error_stats import ErrorStats
 
 
 def pool_init(_lock):
@@ -46,6 +47,8 @@ class DataCollector:
 
         self.make_dataset(repaired_tests)
 
+        ErrorStats.report()
+
     def get_commit_changed_test_classes(self, commit_sha):
         commit = ghapi.get_commit(commit_sha, self.repo_name)
         if len(commit.parents) == 0:
@@ -73,7 +76,7 @@ class DataCollector:
                     b_copy_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(str(b_commit_path / diff.b_path), str(b_copy_path))
                     ghapi.remove_commit_code(self.repo_name, b_commit_path)
-                    
+
                     a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
                     a_copy_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(str(a_commit_path / diff.a_path), str(a_copy_path))
@@ -117,7 +120,9 @@ class DataCollector:
 
         selogger_path = Path(Config.get("selogger_path")).absolute()
         trace_path = (original_log_path / "trace").absolute()
-        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=jdk,e=com/gradle,output={trace_path}"'
+        selogger_mvn_arg = (
+            f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=jdk,e=com/gradle,output={trace_path}"'
+        )
 
         verdict = mvnp.compile_and_run_test(
             project_path, test_b_path, test_method_name, original_log_path, mvn_args=[selogger_mvn_arg]
