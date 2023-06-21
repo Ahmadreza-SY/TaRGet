@@ -7,6 +7,7 @@ import gumtree.spoon.AstComparator;
 import spoon.reflect.declaration.CtElement;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,8 @@ public class GumTreeUtils {
   }
 
   public static List<Action> getASTActions(CtElement before, CtElement after) {
+    if (before == null || after == null)
+      return Collections.emptyList();
     var diff = new AstComparator().compare(before, after);
     var rootOperations = diff.getRootOperations();
     var actions = new ArrayList<Action>();

@@ -1,6 +1,7 @@
 package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.TestElements;
+import gumtree.spoon.AstComparator;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.SpoonModelBuilder;
@@ -28,12 +29,17 @@ import java.util.stream.Stream;
 
 public class Spoon {
   private final SpoonAPI spoon;
+  private boolean buildSucceeded;
   public String srcPath;
   private List<CtMethod<?>> testMethods = null;
 
   public Spoon(String srcPath, Integer complianceLevel) {
     this.srcPath = srcPath;
     spoon = new Launcher();
+    spoon.getEnvironment().setCommentEnabled(false);
+    spoon.getEnvironment().setLevel("OFF");
+    spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
+    if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     if (new File(srcPath).isDirectory()) {
       SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
       FilteringFolder resources = new FilteringFolder();
@@ -43,8 +49,6 @@ public class Spoon {
       modelBuilder.addInputSource(resources);
     } else
       spoon.addInputResource(srcPath);
-    spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
-    if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     spoon.getFactory().getEnvironment().setPrettyPrinterCreator(() -> {
       var printer = new CustomJavaPrettyPrinter(spoon.getFactory().getEnvironment());
       List<Processor<CtElement>> preprocessors = List.of(new ForceImportProcessor(),
@@ -57,12 +61,97 @@ public class Spoon {
     });
     try {
       spoon.buildModel();
-      spoon.getEnvironment().setCommentEnabled(false);
+      this.buildSucceeded = true;
     } catch (Exception e) {
-      System.err.printf("%nAn exception occured while parsing source path by Spoon: %s%nERROR: %s%n", srcPath,
-          e.getMessage());
-      throw e;
+      System.err.printf("%nSpoon exception: %s%nERROR: %s%n", srcPath, e.getMessage());
+      this.buildSucceeded = false;
     }
+  }
+
+  public List<CtMethod<?>> getTests() {
+    if (!buildSucceeded) return Collections.emptyList();
+    if (this.testMethods != null) return this.testMethods;
+
+    var refs = Stream.of("org.junit.Test", "org.junit.jupiter.api.Test")
+        .map(refName -> spoon.getFactory().Type().createReference(refName))
+        .toArray(CtTypeReference[]::new);
+    this.testMethods = new ArrayList<>();
+    for (var type : spoon.getModel().getAllTypes()) {
+      this.testMethods.addAll(type.getMethodsAnnotatedWith(refs));
+    }
+    return this.testMethods;
+  }
+
+  public List<CtExecutable<?>> getExecutablesByName(Set<String> names, Set<String> paths) {
+    if (!buildSucceeded) return Collections.emptyList();
+    TypeFilter<CtExecutable<?>> executableNameFilter = new TypeFilter<>(CtExecutable.class) {
+      @Override
+      public boolean matches(CtExecutable<?> ctExecutable) {
+        if (!super.matches(ctExecutable)) return false;
+        if (!isMethodOrConstructor(ctExecutable)) return false;
+        if (!names.contains(getUniqueName(ctExecutable))) return false;
+        return paths == null || paths.contains(getRelativePath(ctExecutable, srcPath));
+      }
+    };
+    return spoon.getModel().getRootPackage().getElements(executableNameFilter);
+  }
+
+  public List<CtExecutable<?>> getExecutablesByFile(Set<String> files) {
+    if (!buildSucceeded) return Collections.emptyList();
+    TypeFilter<CtExecutable<?>> executableFileFilter = new TypeFilter<>(CtExecutable.class) {
+      @Override
+      public boolean matches(CtExecutable<?> ctExecutable) {
+        if (!super.matches(ctExecutable)) return false;
+        if (!isMethodOrConstructor(ctExecutable)) return false;
+        var executableFilePath = getRelativePath(ctExecutable, srcPath);
+        return files.contains(executableFilePath);
+      }
+    };
+    return spoon.getModel().getRootPackage().getElements(executableFileFilter);
+  }
+
+  public CtType<?> getType(Integer index) {
+    ArrayList<CtType<?>> orgTypes = (ArrayList<CtType<?>>) this.spoon.getModel().getAllTypes();
+    return orgTypes.get(index);
+  }
+
+  public boolean isTest(CtMethod<?> method) {
+    var junit = this.spoon.getFactory().Type().createReference("org.junit.Test");
+    var jupiter = this.spoon.getFactory().Type().createReference("org.junit.jupiter.api.Test");
+    for (var annotation : method.getAnnotations()) {
+      if (annotation.getAnnotationType().equals(junit) || annotation.getAnnotationType().equals(jupiter)) return true;
+    }
+    return false;
+  }
+
+  public CtType<?> getTopLevelTypeByFile(String file) {
+    if (!buildSucceeded) return null;
+    TypeFilter<CtType<?>> typeFileFilter = new TypeFilter<>(CtType.class) {
+      @Override
+      public boolean matches(CtType<?> ctType) {
+        if (!super.matches(ctType)) return false;
+        if (!ctType.isTopLevel()) return false;
+        if (!ctType.getPosition().isValidPosition()) return false;
+        var typeFile = getRelativePath(ctType, srcPath);
+        return typeFile.equals(file);
+      }
+    };
+    var elements = spoon.getModel().getRootPackage().getElements(typeFileFilter);
+    return elements.isEmpty() ? null : elements.get(0);
+  }
+
+  public CtType<?> getTopLevelType() {
+    if (!buildSucceeded) return null;
+    TypeFilter<CtType<?>> typeFileFilter = new TypeFilter<>(CtType.class) {
+      @Override
+      public boolean matches(CtType<?> ctType) {
+        if (!super.matches(ctType)) return false;
+        if (!ctType.getPosition().isValidPosition()) return false;
+        return ctType.isTopLevel();
+      }
+    };
+    var elements = spoon.getModel().getRootPackage().getElements(typeFileFilter);
+    return elements.isEmpty() ? null : elements.get(0);
   }
 
   public static String getRelativePath(CtNamedElement element, String srcPath) {
@@ -98,8 +187,7 @@ public class Spoon {
   public static String prettyPrint(CtNamedElement element) {
     try {
       return element.toString();
-    } catch (Exception e) {
-      // System.out.printf("ERROR in prettyPrint: executable = %s%n %s%n", element.getSimpleName(), e.getMessage());
+    } catch (Exception ignored) {
     }
     return element.getSimpleName();
   }
@@ -148,59 +236,6 @@ public class Spoon {
     return new TestElements(types, executables);
   }
 
-  public List<CtMethod<?>> getTests() {
-    if (this.testMethods != null) return this.testMethods;
-
-    var refs = Stream.of("org.junit.Test", "org.junit.jupiter.api.Test")
-        .map(refName -> spoon.getFactory().Type().createReference(refName))
-        .toArray(CtTypeReference[]::new);
-    this.testMethods = new ArrayList<>();
-    for (var type : spoon.getModel().getAllTypes()) {
-      this.testMethods.addAll(type.getMethodsAnnotatedWith(refs));
-    }
-    return this.testMethods;
-  }
-
-  public List<CtExecutable<?>> getExecutablesByName(Set<String> names, Set<String> paths) {
-    TypeFilter<CtExecutable<?>> executableNameFilter = new TypeFilter<>(CtExecutable.class) {
-      @Override
-      public boolean matches(CtExecutable<?> ctExecutable) {
-        if (!super.matches(ctExecutable)) return false;
-        if (!isMethodOrConstructor(ctExecutable)) return false;
-        if (!names.contains(getUniqueName(ctExecutable))) return false;
-        return paths == null || paths.contains(getRelativePath(ctExecutable, srcPath));
-      }
-    };
-    return spoon.getModel().getRootPackage().getElements(executableNameFilter);
-  }
-
-  public List<CtExecutable<?>> getExecutablesByFile(Set<String> files) {
-    TypeFilter<CtExecutable<?>> executableFileFilter = new TypeFilter<>(CtExecutable.class) {
-      @Override
-      public boolean matches(CtExecutable<?> ctExecutable) {
-        if (!super.matches(ctExecutable)) return false;
-        if (!isMethodOrConstructor(ctExecutable)) return false;
-        var executableFilePath = getRelativePath(ctExecutable, srcPath);
-        return files.contains(executableFilePath);
-      }
-    };
-    return spoon.getModel().getRootPackage().getElements(executableFileFilter);
-  }
-
-  public CtType<?> getType(Integer index) {
-    ArrayList<CtType<?>> orgTypes = (ArrayList<CtType<?>>) this.spoon.getModel().getAllTypes();
-    return orgTypes.get(index);
-  }
-
-  public boolean isTest(CtMethod<?> method) {
-    var junit = this.spoon.getFactory().Type().createReference("org.junit.Test");
-    var jupiter = this.spoon.getFactory().Type().createReference("org.junit.jupiter.api.Test");
-    for (var annotation : method.getAnnotations()) {
-      if (annotation.getAnnotationType().equals(junit) || annotation.getAnnotationType().equals(jupiter)) return true;
-    }
-    return false;
-  }
-
   public static String getOriginalSourceCode(CtNamedElement element) {
     return element.getPosition().getCompilationUnit().getOriginalSourceCode();
   }
@@ -223,34 +258,6 @@ public class Spoon {
         .filter(i -> position < lineSepPos[i])
         .findFirst()
         .orElse(lineSepPos.length) + 1;
-  }
-
-  public CtType<?> getTopLevelTypeByFile(String file) {
-    TypeFilter<CtType<?>> typeFileFilter = new TypeFilter<>(CtType.class) {
-      @Override
-      public boolean matches(CtType<?> ctType) {
-        if (!super.matches(ctType)) return false;
-        if (!ctType.isTopLevel()) return false;
-        if (!ctType.getPosition().isValidPosition()) return false;
-        var typeFile = getRelativePath(ctType, srcPath);
-        return typeFile.equals(file);
-      }
-    };
-    var elements = spoon.getModel().getRootPackage().getElements(typeFileFilter);
-    return elements.isEmpty() ? null : elements.get(0);
-  }
-
-  public CtType<?> getTopLevelType() {
-    TypeFilter<CtType<?>> typeFileFilter = new TypeFilter<>(CtType.class) {
-      @Override
-      public boolean matches(CtType<?> ctType) {
-        if (!super.matches(ctType)) return false;
-        if (!ctType.getPosition().isValidPosition()) return false;
-        return ctType.isTopLevel();
-      }
-    };
-    var elements = spoon.getModel().getRootPackage().getElements(typeFileFilter);
-    return elements.isEmpty() ? null : elements.get(0);
   }
 
   public static Set<Integer> getCommentsLineNumbers(CtNamedElement element) {

@@ -118,10 +118,6 @@ public class CommitDiffParser {
     var bClass = bSpoon.getTopLevelTypeByFile(changedFile.getLeft());
     var aClass = aSpoon.getTopLevelTypeByFile(changedFile.getRight());
     if (bClass == null || aClass == null) {
-      /*var aCommit = aSpoon.srcPath.substring(aSpoon.srcPath.lastIndexOf("/") + 1);
-      System.out.printf("%nCould not find top level type by file: aCommit %s ; file %s%n",
-              aCommit,
-              changedFile.getLeft());*/
       return null;
     }
 

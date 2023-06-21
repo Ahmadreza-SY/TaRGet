@@ -196,8 +196,9 @@ public class CommandCoverage {
           GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
           GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
         } catch (Exception e) {
-          System.err.printf("%nERROR in extractChanges %s-%s ERROR: %s%n", changedClasses.bCommit,
+          System.err.printf("%nException in extractChanges %s-%s%nERROR: %s%n", changedClasses.bCommit,
               changedClasses.aCommit, e.getMessage());
+          pb.stepBy(changedClasses.changedClasses.size());
         }
       });
     }
