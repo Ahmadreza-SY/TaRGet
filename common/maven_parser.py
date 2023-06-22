@@ -120,10 +120,29 @@ def run_cmd(cmd):
             return 124, e.stdout.decode("utf-8")
 
 
+def replace_findbugs_version(pom_path):
+    if not pom_path.exists():
+        return
+    pom = pom_path.read_text()
+    regex = (
+        r"<groupId>org\.codehaus\.mojo</groupId>\s*<artifactId>findbugs-maven-plugin</artifactId>\s*<version>(.+)</version>"
+    )
+    pattern = re.compile(regex)
+    match = pattern.search(pom)
+    if match:
+        old_version = match.group(1)
+        new_version = "3.0.4"
+        old_plugin = match.group(0)
+        new_plugin = old_plugin.replace(old_version, new_version)
+        new_pom = pom.replace(old_plugin, new_plugin)
+        pom_path.write_text(new_pom)
+
+
 def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[]):
     log_file = log_path / "test.log"
     rc_file = log_path / "returncode"
     test_path = project_path / test_rel_path
+    replace_findbugs_version(project_path / "pom.xml")
     if not test_path.exists():
         raise FileNotFoundError(f"Test file does not exist: {test_path}")
     test_class = test_path.stem
@@ -134,6 +153,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         pom_path = find_parent_pom(test_path)
         if pom_path is None:
             return TestVerdict(TestVerdict.POM_NOT_FOUND, None)
+        replace_findbugs_version(pom_path)
         cmd = [
             "mvn",
             "test",
