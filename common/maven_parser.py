@@ -45,7 +45,7 @@ class TestVerdict:
 
 
 def parse_compile_error(log, test_rel_path):
-    if "COMPILATION ERROR" not in log:
+    if "COMPILATION ERROR" not in log or "Compilation failure:" not in log:
         return None
 
     matches = re.compile(f"^\[ERROR\]\s*/.+/{test_rel_path}:\[(\d+),\d+\].*$", re.MULTILINE).findall(log)
@@ -84,7 +84,7 @@ def parse_test_failure(log, test_class, test_method):
 
 
 def parse_invalid_execution(log):
-    if "COMPILATION ERROR" in log:
+    if "COMPILATION ERROR" in log or "Compilation failure:" in log:
         return TestVerdict(TestVerdict.UNRELATED_COMPILE_ERR, None)
     if "java.lang.AssertionError: Expected exception:" in log:
         return TestVerdict(TestVerdict.EXPECTED_EXCEPTION_FAILURE, None)
@@ -99,7 +99,9 @@ def parse_invalid_execution(log):
 
 
 def parse_successful_execution(log):
-    matches = re.compile(f"^.*Tests run: (\d+), Failures: \d+, Errors: \d+, Skipped: (\d+).*$", re.MULTILINE).findall(log)
+    matches = re.compile(
+        f"^.*Tests run: (\d+), Failures: \d+, Errors: \d+, Skipped: (\d+).*Time elapsed.*$", re.MULTILINE
+    ).findall(log)
     if len(matches) == 0:
         return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
     for match in matches:
