@@ -21,7 +21,7 @@ public class CommandCompare {
   public String outputPath;
 
   @Parameter(names = {"-cl", "--compliance-level"}, description = "Java version compliance level")
-  public Integer complianceLevel = 10;
+  public Integer complianceLevel = 11;
 
   public static void cCompare(CommandCompare args) {
     var changedTestsPath = Path.of(args.outputPath, "codeMining", "changed_tests.json");

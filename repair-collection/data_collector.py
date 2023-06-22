@@ -157,6 +157,8 @@ class DataCollector:
                 changed_tests_verdicts.append(
                     {
                         "name": test_name,
+                        "aPath": change["aPath"],
+                        "bPath": change["bPath"],
                         "aCommit": a_commit,
                         "bCommit": b_commit,
                         "original_verdict": original_verdict.to_dict(),
@@ -186,6 +188,8 @@ class DataCollector:
             changed_tests_verdicts.append(
                 {
                     "name": test_name,
+                    "aPath": change["aPath"],
+                    "bPath": change["bPath"],
                     "aCommit": a_commit,
                     "bCommit": b_commit,
                     "verdict": before_verdict.to_dict(),

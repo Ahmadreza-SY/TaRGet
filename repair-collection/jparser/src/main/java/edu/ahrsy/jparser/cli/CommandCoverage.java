@@ -34,7 +34,7 @@ public class CommandCoverage {
   public String outputPath;
 
   @Parameter(names = {"-cl", "--compliance-level"}, description = "Java version compliance level")
-  public Integer complianceLevel = 10;
+  public Integer complianceLevel = 11;
 
   private static final Gson gson = IOUtils.createGsonInstance();
   private static Path repoDir = null;
