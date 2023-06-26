@@ -1,4 +1,5 @@
 import sys
+
 sys.path.append("../common")
 from config import Config
 import argparse
@@ -32,8 +33,8 @@ def main():
     )
     parser.add_argument(
         "-j",
-        "--java-home",
-        help="The home of Java for executing test cases of the repository. If not passed, Maven's default java home will be used.",
+        "--java-homes",
+        help="Path to a json file that contains java homes for all java versions.",
         type=str,
         required=False,
         default=None,
@@ -50,7 +51,7 @@ def main():
     args = parser.parse_args()
     Config.set("repo", args.repository)
     Config.set("output_path", args.output_path)
-    Config.set("java_home", args.java_home)
+    Config.set("java_homes_path", args.java_homes)
     Config.set("m2_path", args.m2_path)
     args.func(args)
 

@@ -5,6 +5,8 @@ import re
 from config import Config
 import os
 from common_utils import auto_str, find_parent_pom
+from java_version_detector import JavaVersionDetector
+from pathlib import Path
 
 
 @auto_str
@@ -45,7 +47,7 @@ class TestVerdict:
 
 
 def parse_compile_error(log, test_rel_path):
-    if "COMPILATION ERROR" not in log or "Compilation failure:" not in log:
+    if "COMPILATION ERROR" not in log and "Compilation failure:" not in log:
         return None
 
     matches = re.compile(f"^\[ERROR\]\s*/.+/{test_rel_path}:\[(\d+),\d+\].*$", re.MULTILINE).findall(log)
@@ -111,8 +113,7 @@ def parse_successful_execution(log):
     return TestVerdict(TestVerdict.SUCCESS, None)
 
 
-def run_cmd(cmd):
-    java_home = Config.get("java_home")
+def run_cmd(cmd, java_home=None):
     my_env = os.environ.copy()
     if java_home is not None:
         my_env["JAVA_HOME"] = java_home
@@ -149,21 +150,42 @@ def replace_findbugs_version(pom_path):
         pom_path.write_text(new_pom)
 
 
+MVN_SKIPS = [
+    "-Djacoco.skip",
+    "-Dcheckstyle.skip",
+    "-Dspotless.apply.skip",
+    "-Drat.skip",
+    "-Denforcer.skip",
+    "-Danimal.sniffer.skip",
+    "-Dmaven.javadoc.skip",
+    "-Dmaven.gitcommitid.skip",
+    "-Dfindbugs.skip",
+    "-Dwarbucks.skip",
+    "-Dmodernizer.skip",
+    "-Dimpsort.skip",
+    "-Dpmd.skip",
+    "-Dxjc.skip",
+    "-Dair.check.skip-all",
+    "-Dlicense.skip",
+    "-Dfindbugs.skip",
+    "-Denforcer.skip",
+]
+
+
 def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[]):
     log_file = log_path / "test.log"
-    rc_file = log_path / "returncode"
     test_path = project_path / test_rel_path
-    replace_findbugs_version(project_path / "pom.xml")
     if not test_path.exists():
         raise FileNotFoundError(f"Test file does not exist: {test_path}")
     test_class = test_path.stem
     if log_file.exists():
-        returncode = int(rc_file.read_text())
         log = log_file.read_text()
+        returncode = int(log.splitlines()[0])
     else:
         pom_path = find_parent_pom(test_path)
         if pom_path is None:
             return TestVerdict(TestVerdict.POM_NOT_FOUND, None)
+        replace_findbugs_version(project_path / "pom.xml")
         replace_findbugs_version(pom_path)
         cmd = [
             "mvn",
@@ -177,40 +199,19 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         ]
         if len(mvn_args) > 0:
             cmd.extend(mvn_args)
-        MVN_SKIPS = [
-            "-Djacoco.skip",
-            "-Dcheckstyle.skip",
-            "-Dspotless.apply.skip",
-            "-Drat.skip",
-            "-Denforcer.skip",
-            "-Danimal.sniffer.skip",
-            "-Dmaven.javadoc.skip",
-            "-Dmaven.gitcommitid.skip",
-            "-Dfindbugs.skip",
-            "-Dwarbucks.skip",
-            "-Dmodernizer.skip",
-            "-Dimpsort.skip",
-            "-Dpmd.skip",
-            "-Dxjc.skip",
-            "-Dair.check.skip-all",
-            "-Dlicense.skip",
-            "-Dfindbugs.skip",
-            "-Denforcer.skip",
-        ]
         cmd.extend(MVN_SKIPS)
         m2_path = Config.get("m2_path")
         if m2_path is not None:
             cmd.append(f"-Dmaven.repo.local={m2_path}")
         original_cwd = os.getcwd()
         os.chdir(str(project_path.absolute()))
-        returncode, log = run_cmd(cmd)
+        jvd = JavaVersionDetector(Path("pom.xml"))
+        java_home = jvd.get_java_home()
+        returncode, log = run_cmd(cmd, java_home)
         os.chdir(original_cwd)
         if save_logs:
             log_path.mkdir(parents=True, exist_ok=True)
-            rc_file.write_text(str(returncode))
-            log_file.write_text(log)
-            cmd_file = log_path / "command"
-            cmd_file.write_text(" ".join(cmd))
+            log_file.write_text("\n".join([str(returncode), " ".join(cmd), log]))
 
     if returncode == 0:
         return parse_successful_execution(log)

@@ -4,7 +4,15 @@ import git_api as ghapi
 from tqdm import tqdm
 import json
 import copy
-from utils import save_file, is_test_class, get_java_diffs, no_covered_changes, hunk_to_string, get_hunk_lines
+from utils import (
+    save_file,
+    is_test_class,
+    get_java_diffs,
+    no_covered_changes,
+    hunk_to_string,
+    get_hunk_lines,
+    get_short_hash,
+)
 import jparser
 import shutil
 import maven_parser as mvnp
@@ -110,7 +118,7 @@ class DataCollector:
         test_name = change["name"]
         b_commit = change["bCommit"]
         test_method_name = test_name.split(".")[-1].replace("()", "")
-        log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
+        log_path = Path(b_commit) / test_b_path.stem / test_method_name / get_short_hash(str(test_b_path.parent))
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
 
         verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
@@ -149,7 +157,7 @@ class DataCollector:
             if not broken_file.exists():
                 ErrorStats.update(ErrorStats.missing_tf, str(broken_file))
                 continue
-            log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
+            log_path = Path(a_commit) / original_file.stem / test_method_name / get_short_hash(str(test_a_path.parent))
 
             # Running T on P to check original test success (todo trace test coverage)
             original_verdict, covered_lines = self.run_original_test(b_commit_path, change)
@@ -257,7 +265,7 @@ class DataCollector:
         repaired_tests = []
         tests_coverage = []
 
-        proc_cnt = round(mp.cpu_count() / 2) if mp.cpu_count() > 2 else 1
+        proc_cnt = round(mp.cpu_count() / 4) if mp.cpu_count() > 2 else 1
         proc_cnt = min(proc_cnt, len(change_groups))
         with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for verdicts, repaired, test_coverage in tqdm(

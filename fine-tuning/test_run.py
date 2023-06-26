@@ -23,6 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MAIN")
 
+
 def pool_init(_lock, _test_ds, _args):
     global lock, test_ds, args
     lock = _lock
@@ -48,8 +49,8 @@ def main():
     )
     parser.add_argument(
         "-j",
-        "--java-home",
-        help="The home of Java for executing test cases of the repository. If not passed, Maven's default java home will be used.",
+        "--java-homes",
+        help="Path to a json file that contains java homes for all java versions.",
         type=str,
         required=False,
         default=None,
@@ -76,7 +77,7 @@ def main():
     args.output_path = Path(args.output_path)
     Config.set("output_path", args.output_path)
     Config.set("repo_path", args.repo_path)
-    Config.set("java_home", args.java_home)
+    Config.set("java_homes_path", args.java_homes)
     Config.set("m2_path", args.m2_path)
 
     pred_file = args.output_path / "test_predictions.json"
@@ -114,6 +115,7 @@ def main():
         verdicts_file.parent.mkdir(exist_ok=True, parents=True)
     verdict_df.to_json(verdicts_file, orient="records", indent=2)
 
+
 def analyze_verdicts(verdicts):
     vs_df = pd.DataFrame({"verdict": [r[0]["status"] for r in verdicts]})
     logger.info("Verdict stats:")
@@ -129,6 +131,7 @@ def analyze_verdicts(verdicts):
     logger.info(f"Success Rate: {success_rate} %")
 
     return verdict_df
+
 
 def get_breakage_from_input(input):
     matches = re.compile(f"^{Tokens.BREAKAGE} (.*) {Tokens.TEST_CONTEXT}.+$", re.MULTILINE).findall(input)
@@ -199,7 +202,9 @@ def apply_and_run_preds(pred_group):
                 / test_rel_path.parent
                 / str(pred["rank"])
             )
-            verdict = mvnp.compile_and_run_test(worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs)
+            verdict = mvnp.compile_and_run_test(
+                worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs
+            )
             verdict = verdict.to_dict()
             with open(test_file, "w") as orig_file:
                 orig_file.write(original_contents)
