@@ -195,6 +195,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "-Dair.check.skip-all",
             "-Dlicense.skip",
             "-Dfindbugs.skip",
+            "-Denforcer.skip",
         ]
         cmd.extend(MVN_SKIPS)
         m2_path = Config.get("m2_path")
