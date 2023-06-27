@@ -73,10 +73,10 @@ def parse_test_failure(log, test_class, test_method):
         regex = r"Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+).*Time elapsed.*"
         match = re.compile(regex).search(log)
         if match:
-            failures, errors = match.group(2), match.group(3)
+            failures, errors = int(match.group(2)), int(match.group(3))
             if failures > 0 or errors > 0:
                 return TestVerdict(TestVerdict.FAILURE, set())
-            runs, skips = match.group(1), match.group(4)
+            runs, skips = int(match.group(1)), int(match.group(4))
             if runs == 0 or skips > 0:
                 return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
         return None

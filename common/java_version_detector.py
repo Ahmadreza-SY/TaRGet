@@ -4,6 +4,7 @@ import json
 from config import Config
 import traceback
 
+
 class JavaVersionDetector:
     ns = {"xmlns": "http://maven.apache.org/POM/4.0.0", "schemaLocation": "http://maven.apache.org/xsd/maven-4.0.0.xsd"}
     config_paths = ["./xmlns:configuration", "./xmlns:executions/xmlns:execution/xmlns:configuration"]
@@ -22,11 +23,12 @@ class JavaVersionDetector:
 
     def __init__(self, pom_path):
         self.java_homes = json.load(open(Config.get("java_homes_path")))
+        self.root = None
         try:
-            self.root = ET.fromstring(pom_path.read_text().strip())
+            if pom_path.exists():
+                self.root = ET.fromstring(pom_path.read_text().strip())
         except Exception:
-            print(f"Error in parsing {pom_path}:", traceback.format_exc())
-            self.root = None
+            print(f"\nError in parsing {pom_path.absolute()}:\n", traceback.format_exc())
 
     def get_tag_value(self, tag):
         if tag is None or tag.text is None:
