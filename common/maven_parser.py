@@ -102,15 +102,13 @@ def parse_invalid_execution(log):
 
 def parse_successful_execution(log):
     matches = re.compile(
-        f"^.*Tests run: (\d+), Failures: \d+, Errors: \d+, Skipped: (\d+).*Time elapsed.*$", re.MULTILINE
+        r"^.*Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+).*Time elapsed.*$", re.MULTILINE
     ).findall(log)
-    if len(matches) == 0:
-        return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
     for match in matches:
-        runs, skips = (int(n) for n in match)
-        if runs == 0 or skips > 0:
-            return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
-    return TestVerdict(TestVerdict.SUCCESS, None)
+        runs, failures, errors, skips = (int(n) for n in match)
+        if runs == 1 and failures == 0 and errors == 0 and skips == 0:
+            return TestVerdict(TestVerdict.SUCCESS, None)
+    return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
 
 
 def run_cmd(cmd, java_home=None):
@@ -211,7 +209,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         os.chdir(original_cwd)
         if save_logs:
             log_path.mkdir(parents=True, exist_ok=True)
-            log_file.write_text("\n".join([str(returncode), " ".join(cmd), log]))
+            log_file.write_text("\n".join([str(returncode), " ".join(cmd), f"JAVA_HOME={java_home}", log]))
 
     if returncode == 0:
         return parse_successful_execution(log)
