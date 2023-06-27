@@ -265,7 +265,7 @@ class DataCollector:
         repaired_tests = []
         tests_coverage = []
 
-        proc_cnt = round(mp.cpu_count() / 4) if mp.cpu_count() > 2 else 1
+        proc_cnt = round(mp.cpu_count() / 3) if mp.cpu_count() > 2 else 1
         proc_cnt = min(proc_cnt, len(change_groups))
         with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for verdicts, repaired, test_coverage in tqdm(
