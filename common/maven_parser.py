@@ -133,7 +133,10 @@ def run_cmd(cmd, java_home=None):
 def remove_unnecessary_plugins(pom_path):
     if not pom_path.exists():
         return
-    pom = pom_path.read_text()
+    try:
+        pom = pom_path.read_text()
+    except Exception:
+        return
     plugins = [
         (r"org\.codehaus\.mojo", r"findbugs-maven-plugin"),
         (r"pl\.project13\.maven", r"git-commit-id-plugin"),
