@@ -130,21 +130,23 @@ def run_cmd(cmd, java_home=None):
             return 124, e.stdout.decode("utf-8")
 
 
-def replace_findbugs_version(pom_path):
+def remove_unnecessary_plugins(pom_path):
     if not pom_path.exists():
         return
     pom = pom_path.read_text()
-    regex = (
-        r"<groupId>org\.codehaus\.mojo</groupId>\s*<artifactId>findbugs-maven-plugin</artifactId>\s*<version>(.+)</version>"
-    )
-    pattern = re.compile(regex)
-    match = pattern.search(pom)
-    if match:
-        old_version = match.group(1)
-        new_version = "3.0.4"
-        old_plugin = match.group(0)
-        new_plugin = old_plugin.replace(old_version, new_version)
-        new_pom = pom.replace(old_plugin, new_plugin)
+    plugins = [
+        (r"org\.codehaus\.mojo", r"findbugs-maven-plugin"),
+        (r"pl\.project13\.maven", r"git-commit-id-plugin"),
+        (r"io\.github\.git-commit-id", r"git-commit-id-maven-plugin"),
+        (r"org\.apache\.maven\.plugins", r"maven-checkstyle-plugin"),
+    ]
+    new_pom = pom
+    for groupId, artifactId in plugins:
+        regex = r"<plugin>\s*<groupId>{}</groupId>\s*<artifactId>{}</artifactId>.*?</plugin>".format(groupId, artifactId)
+        match = re.compile(regex, re.DOTALL).search(new_pom)
+        if match:
+            new_pom = new_pom.replace(match.group(), "")
+    if new_pom != pom:
         pom_path.write_text(new_pom)
 
 
@@ -167,7 +169,7 @@ MVN_SKIPS = [
     "-Dlicense.skip",
     "-Dfindbugs.skip",
     "-Denforcer.skip",
-    "-Dremoteresources.skip"
+    "-Dremoteresources.skip",
 ]
 
 
@@ -184,8 +186,8 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         pom_path = find_parent_pom(test_path)
         if pom_path is None:
             return TestVerdict(TestVerdict.POM_NOT_FOUND, None)
-        replace_findbugs_version(project_path / "pom.xml")
-        replace_findbugs_version(pom_path)
+        remove_unnecessary_plugins(project_path / "pom.xml")
+        remove_unnecessary_plugins(pom_path)
         cmd = [
             "mvn",
             "test",

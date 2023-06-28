@@ -3,19 +3,35 @@ import xml.etree.ElementTree as ET
 import json
 from config import Config
 import traceback
+from pathlib import Path
 
 
 class JavaVersionDetector:
     ns = {"xmlns": "http://maven.apache.org/POM/4.0.0", "schemaLocation": "http://maven.apache.org/xsd/maven-4.0.0.xsd"}
-    config_paths = ["./xmlns:configuration", "./xmlns:executions/xmlns:execution/xmlns:configuration"]
-    version_tags = ["source", "target", "release"]
+    plugins = ["maven-compiler-plugin", "maven-enforcer-plugin"]
+    plugin_config_paths = {
+        "maven-compiler-plugin": [
+            "./xmlns:configuration/xmlns:release",
+            "./xmlns:configuration/xmlns:source",
+            "./xmlns:configuration/xmlns:target",
+            "./xmlns:executions/xmlns:execution/xmlns:configuration/xmlns:release",
+            "./xmlns:executions/xmlns:execution/xmlns:configuration/xmlns:source",
+            "./xmlns:executions/xmlns:execution/xmlns:configuration/xmlns:target",
+            "./xmlns:configuration/xmlns:jdkToolchain/xmlns:version",
+        ],
+        "maven-enforcer-plugin": [
+            "./xmlns:executions/xmlns:execution/xmlns:configuration/xmlns:rules/xmlns:requireJavaVersion/xmlns:version",
+        ],
+    }
     version_prop_names = [
         "java.version",
+        "version.java",
         "javaVersion",
         "jdk.version",
         "jre.version",
         "compiler.level",
         "maven.compiler.release",
+        "maven.compiler.testRelease",
         "maven.compiler.source",
         "maven.compiler.target",
     ]
@@ -35,7 +51,12 @@ class JavaVersionDetector:
             return None
         match = re.compile(r"\$\{(.+)\}").search(tag.text)
         if not match:
-            return tag.text if is_float(tag.text) else None
+            if is_float(tag.text):
+                return tag.text
+            match = re.compile(r"\[(.+),.*").search(tag.text)
+            if match and is_float(match.group(1)):
+                return match.group(1)
+            return None
         prop = self.root.find(f"./xmlns:properties/xmlns:{match.group(1)}", JavaVersionDetector.ns)
         if prop is not None and is_float(prop.text):
             return prop.text
@@ -44,17 +65,15 @@ class JavaVersionDetector:
     def detect_java_versions(self):
         if self.root is None:
             return []
-        compiler_plugins = self.root.findall(
-            ".//xmlns:plugin/[xmlns:artifactId='maven-compiler-plugin']", JavaVersionDetector.ns
-        )
+
         versions = []
-        for compiler_plugin in compiler_plugins:
-            for config_path in JavaVersionDetector.config_paths:
-                for version_tag in JavaVersionDetector.version_tags:
-                    for found_tag in compiler_plugin.findall(f"{config_path}/xmlns:{version_tag}", JavaVersionDetector.ns):
-                        tag_value = self.get_tag_value(found_tag)
-                        if tag_value is not None:
-                            versions.append(tag_value)
+        for plugin in JavaVersionDetector.plugins:
+            for found_plugin in self.root.findall(f".//xmlns:plugin/[xmlns:artifactId='{plugin}']", JavaVersionDetector.ns):
+                for path in JavaVersionDetector.plugin_config_paths[plugin]:
+                    found_tag = found_plugin.find(path, JavaVersionDetector.ns)
+                    tag_value = self.get_tag_value(found_tag)
+                    if tag_value is not None:
+                        versions.append(tag_value)
 
         if len(versions) == 0:
             for prop_name in JavaVersionDetector.version_prop_names:
