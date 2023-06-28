@@ -167,6 +167,7 @@ MVN_SKIPS = [
     "-Dlicense.skip",
     "-Dfindbugs.skip",
     "-Denforcer.skip",
+    "-Dremoteresources.skip"
 ]
 
 
