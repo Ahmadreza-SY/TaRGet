@@ -198,6 +198,8 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
             "-DfailIfNoTests=false",
+            "-Dmaven.test.skip=false",
+            "-DskipTests=false",
             f'-Dtest="{test_class}#{test_method}"',
             "--batch-mode",
         ]
