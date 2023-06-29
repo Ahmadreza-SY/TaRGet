@@ -141,7 +141,6 @@ def remove_unnecessary_plugins(pom_path):
         (r"org\.codehaus\.mojo", r"findbugs-maven-plugin"),
         (r"pl\.project13\.maven", r"git-commit-id-plugin"),
         (r"io\.github\.git-commit-id", r"git-commit-id-maven-plugin"),
-        (r"org\.apache\.maven\.plugins", r"maven-checkstyle-plugin"),
     ]
     new_pom = pom
     for groupId, artifactId in plugins:
@@ -189,8 +188,6 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         pom_path = find_parent_pom(test_path)
         if pom_path is None:
             return TestVerdict(TestVerdict.POM_NOT_FOUND, None)
-        remove_unnecessary_plugins(project_path / "pom.xml")
-        remove_unnecessary_plugins(pom_path)
         cmd = [
             "mvn",
             "test",
@@ -209,10 +206,12 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         m2_path = Config.get("m2_path")
         if m2_path is not None:
             cmd.append(f"-Dmaven.repo.local={m2_path}")
+        jvd = JavaVersionDetector(project_path / "pom.xml")
+        java_home = jvd.get_java_home()
+        remove_unnecessary_plugins(project_path / "pom.xml")
+        remove_unnecessary_plugins(pom_path)
         original_cwd = os.getcwd()
         os.chdir(str(project_path.absolute()))
-        jvd = JavaVersionDetector(Path("pom.xml"))
-        java_home = jvd.get_java_home()
         returncode, log = run_cmd(cmd, java_home)
         os.chdir(original_cwd)
         if save_logs:
