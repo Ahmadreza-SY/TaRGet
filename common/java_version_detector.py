@@ -87,7 +87,7 @@ class JavaVersionDetector:
         java_versions = self.detect_java_versions()
         if len(java_versions) == 0:
             return self.java_homes[JavaVersionDetector.default_home]
-        unique_versions = set([int(v.replace("1.", "")) for v in java_versions])
+        unique_versions = set([int(float(v.replace("1.", ""))) for v in java_versions])
         max_version = max(unique_versions)
         if str(max_version) in self.java_homes:
             return self.java_homes[str(max_version)]
