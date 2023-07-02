@@ -62,18 +62,35 @@ class JavaVersionDetector:
             return prop.text
         return None
 
+    def extract_versions(self, plugin, paths):
+        versions = []
+        for path in paths:
+            found_tag = plugin.find(path, JavaVersionDetector.ns)
+            tag_value = self.get_tag_value(found_tag)
+            if tag_value is not None:
+                versions.append(tag_value)
+        return versions
+    
     def detect_java_versions(self):
         if self.root is None:
             return []
 
+        main_plugin_paths = [
+            "./xmlns:build/xmlns:pluginManagement/xmlns:plugins/xmlns:plugin/[xmlns:artifactId='maven-compiler-plugin']",
+            "./xmlns:build/xmlns:plugins/xmlns:plugin/[xmlns:artifactId='maven-compiler-plugin']"
+        ]
+        for main_path in main_plugin_paths:
+            main_compiler_plugin = self.root.find(main_path, JavaVersionDetector.ns)
+            if main_compiler_plugin is not None:
+                main_versions = self.extract_versions(main_compiler_plugin, JavaVersionDetector.plugin_config_paths['maven-compiler-plugin'])
+                if len(main_versions) > 0:
+                    return main_versions[:1]
+
         versions = []
         for plugin in JavaVersionDetector.plugins:
             for found_plugin in self.root.findall(f".//xmlns:plugin/[xmlns:artifactId='{plugin}']", JavaVersionDetector.ns):
-                for path in JavaVersionDetector.plugin_config_paths[plugin]:
-                    found_tag = found_plugin.find(path, JavaVersionDetector.ns)
-                    tag_value = self.get_tag_value(found_tag)
-                    if tag_value is not None:
-                        versions.append(tag_value)
+                found_versions = self.extract_versions(found_plugin, JavaVersionDetector.plugin_config_paths[plugin])
+                versions.extend(found_versions)
 
         if len(versions) == 0:
             for prop_name in JavaVersionDetector.version_prop_names:
