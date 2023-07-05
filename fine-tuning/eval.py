@@ -1,19 +1,13 @@
-from pathlib import Path
 import torch.distributed as dist
 import logging
-import bleu as bleu_scoring
 from encoders import *
-import json
 import pandas as pd
 from joblib import Parallel, delayed
-import git
-from tqdm import tqdm
 from datetime import datetime
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn import CrossEntropyLoss
-import maven_parser as mvnp
-import git_api as ghapi
 from utils import create_loader, save_stats
+from nltk.translate.bleu_score import corpus_bleu, sentence_bleu
 
 
 def test(gpu, args):
@@ -162,7 +156,7 @@ def compute_single_bleus(targets, preds):
         if len(pred) == 0:
             bleus.append(0.0)
             continue
-        bleu = bleu_scoring._bleu([target], [pred])
+        bleu = compute_bleu_score([target], [pred])
         bleus.append(bleu)
     return bleus
 
@@ -184,6 +178,23 @@ def compute_scores(targets, preds, ids):
         best_targets.append(beam_outputs.iloc[0]["target"])
 
     em = round(em_size / eval_size * 100, 2)
-    bleu_score = bleu_scoring._bleu(best_targets, best_preds)
+    bleu_score = compute_bleu_score(best_targets, best_preds)
 
     return bleu_score, em
+
+
+def compute_bleu_score(targets, preds):
+    if len(targets) != len(preds):
+        raise Exception(f"Targets and preds size mismatch in compute_bleu_score: {len(targets)} != {len(preds)}")
+
+    simple_tokenize = lambda text: text.strip().split()
+    format_score = lambda score: round(100 * score, 2)
+
+    if len(targets) == 1:
+        reference = [simple_tokenize(targets[0])]
+        candidate = simple_tokenize(preds[0])
+        return format_score(sentence_bleu(reference, candidate))
+
+    references = [[simple_tokenize(target)] for target in targets]
+    candidates = [simple_tokenize(pred) for pred in preds]
+    return format_score(corpus_bleu(references, candidates))
