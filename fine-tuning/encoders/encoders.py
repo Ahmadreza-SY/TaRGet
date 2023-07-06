@@ -2,6 +2,7 @@ import logging
 import numpy as np
 from torch.utils.data import Dataset
 
+
 class TensorDataset(Dataset):
     def __init__(self, *tensors):
         assert all(tensors[0].shape[0] == tensor.shape[0] for tensor in tensors), "Size mismatch between tensors"
@@ -21,8 +22,7 @@ class BaseDataEncoder:
         self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
 
     def log(self, msg):
-        if self.args.rank == 0:
-            self.logger.info(msg)
+        self.logger.info(msg)
 
     def tokenize(self, dataset, return_tensors):
         padding = False

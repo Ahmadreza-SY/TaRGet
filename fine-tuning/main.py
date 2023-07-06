@@ -87,9 +87,9 @@ def run(gpu, args):
     if args.rank == 0:
         logger.info("All processes joined!")
 
-    load_data(args)
-
     torch.cuda.set_device(gpu)
+
+    load_data(args)
 
     if not args.test_only:
         train(gpu, args)
@@ -99,7 +99,13 @@ def run(gpu, args):
 
 def load_data(args):
     data_encoder = args.data_encoder_class(args)
-    args.train_dataset, args.valid_dataset, args.test_dataset = data_encoder.load_dataset()
+    if args.rank == 0:
+        dataset_splits = list(data_encoder.load_dataset())
+    else:
+        dataset_splits = [None, None, None]
+
+    dist.broadcast_object_list(dataset_splits, src=0)
+    args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
     args.tokenizer = data_encoder.tokenizer
 
     if (args.output_dir / "stats.json").exists():
