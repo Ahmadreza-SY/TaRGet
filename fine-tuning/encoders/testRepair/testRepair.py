@@ -96,6 +96,8 @@ class TestRepairDataEncoder(BaseDataEncoder):
                     continue
                 ds_list.append(project_ds)
 
+            if len(ds_list) == 0:
+                raise Exception(f"No datasets found in {ds_path}")
             ds = pd.concat(ds_list)
             before_len = len(ds)
             trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
@@ -108,11 +110,14 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
             latest_train_time = train_ds["aCommitTime"].max()
             train_trivial_ds = trivial_ds[trivial_ds["aCommitTime"] <= latest_train_time].reset_index(drop=True)
-            self.log("Preparing trivial train dataset")
-            train_trivial_ds = self.prepare_inputs_and_outputs(train_trivial_ds)
-            train_ds = pd.concat([train_ds, train_trivial_ds])
-            train_ds = self.shuffle(train_ds)
-            self.log(f"Added {len(train_trivial_ds)} trivial test repairs to the train set")
+            if len(train_trivial_ds) == 0:
+                self.log("No trivial repairs found")
+            else:
+                self.log("Preparing trivial train dataset")
+                train_trivial_ds = self.prepare_inputs_and_outputs(train_trivial_ds)
+                train_ds = pd.concat([train_ds, train_trivial_ds])
+                train_ds = self.shuffle(train_ds)
+                self.log(f"Added {len(train_trivial_ds)} trivial test repairs to the train set")
 
             ds_output_dir.mkdir(exist_ok=True, parents=True)
             train_ds.to_json(train_file, orient="records", indent=2)
