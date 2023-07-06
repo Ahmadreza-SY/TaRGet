@@ -30,6 +30,8 @@ class BaseDataEncoder:
         if return_tensors is not None:
             padding = "max_length"
             max_length = self.args.max_seq
+        
+        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         model_inputs = self.tokenizer(
             dataset["input"].values.tolist(), return_tensors=return_tensors, padding=padding, max_length=max_length
         )

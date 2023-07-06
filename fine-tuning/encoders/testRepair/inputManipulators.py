@@ -1,4 +1,5 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
+from joblib import Parallel, delayed
 from .testRepair import TestRepairDataEncoder, Tokens
 
 
@@ -28,6 +29,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         changes = self.get_covered_change_documents(row)
         changes = self.remove_duplicate_documents(changes)
 
+        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
         broken_code = self.get_broken_code(row)
         test_repr = broken_code if broken_code != "" else row["bSource"]["code"]
@@ -41,7 +43,9 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def preprocess(self, ds):
         ds = super().preprocess(ds)
-        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
+        ds["prioritized_changes"] = Parallel(n_jobs=-1)(
+            delayed(self.prioritize_changed_documents)(r) for _, r in ds.iterrows()
+        )
         return ds
 
     def create_input(self, row, covered_changes):
@@ -78,11 +82,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return repaired_code
 
     def create_inputs_and_outputs(self, ds):
-        self.log("Prioritizing changed documents and creating inputs ...")
-        included_change_cnt = 0
-        all_change_cnt = 0
-        inputs = []
-        for _, r in ds.iterrows():
+        def select_changes(r):
+            self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
             pr_changes_cnt = len(r["prioritized_changes"])
             selected_changes = []
             for i in range(pr_changes_cnt):
@@ -94,15 +95,17 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
             if len(selected_changes) == 0:
                 selected_changes = [r["prioritized_changes"][0]]
-            inputs.append(self.create_input(r, selected_changes))
+            return (self.create_input(r, selected_changes), selected_changes)
 
-            included_change_cnt += len(selected_changes)
-            all_change_cnt += pr_changes_cnt
+        self.log("Prioritizing changed documents and creating inputs ...")
+        ds_selected_changes = Parallel(n_jobs=-1)(delayed(select_changes)(r) for _, r in ds.iterrows())
 
+        all_change_cnt = sum([len(r["prioritized_changes"]) for _, r in ds.iterrows()])
+        included_change_cnt = sum([len(sc[1]) for sc in ds_selected_changes])
         included_change_p = round(100 * included_change_cnt / all_change_cnt, 1)
         self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
 
-        ds["input"] = inputs
+        ds["input"] = [sc[0] for sc in ds_selected_changes]
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
         return ds
 
