@@ -99,6 +99,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             if len(ds_list) == 0:
                 raise Exception(f"No datasets found in {ds_path}")
             ds = pd.concat(ds_list)
+            self.log(f"Read and preprocessed {len(ds)} samples from {len(ds_list)} projects")
             before_len = len(ds)
             trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
             ds = ds[ds["trivial"].isna()].reset_index(drop=True)
