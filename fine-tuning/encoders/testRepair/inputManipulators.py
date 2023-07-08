@@ -50,23 +50,20 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_input(self, row, covered_changes):
         test_code = row["bSource"]["code"]
-        if "sourceChanges" not in row["hunk"]:
-            test_context = " ".join([l.strip() for l in test_code.split("\n")])
-        else:
-            breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-            breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-            TEST_CONTEXT_SIZE = 10
-            backward_offset = TEST_CONTEXT_SIZE // 2
-            forward_offset = TEST_CONTEXT_SIZE // 2
-            test_lines = test_code.split("\n")
-            if breakge_start < backward_offset:
-                forward_offset += backward_offset - breakge_start
-            if breakge_end > len(test_lines) - 1 - forward_offset:
-                backward_offset += breakge_end - (len(test_lines) - 1 - forward_offset)
+        breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        TEST_CONTEXT_SIZE = 10
+        backward_offset = TEST_CONTEXT_SIZE // 2
+        forward_offset = TEST_CONTEXT_SIZE // 2
+        test_lines = test_code.split("\n")
+        if breakge_start < backward_offset:
+            forward_offset += backward_offset - breakge_start
+        if breakge_end > len(test_lines) - 1 - forward_offset:
+            backward_offset += breakge_end - (len(test_lines) - 1 - forward_offset)
 
-            context_start = max(0, breakge_start - backward_offset)
-            context_end = min(len(test_lines) - 1, breakge_end + forward_offset)
-            test_context = " ".join(test_lines[context_start : (context_end + 1)])
+        context_start = max(0, breakge_start - backward_offset)
+        context_end = min(len(test_lines) - 1, breakge_end + forward_offset)
+        test_context = " ".join(test_lines[context_start : (context_end + 1)])
 
         return " ".join(
             [Tokens.BREAKAGE, self.get_broken_code(row)]

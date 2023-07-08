@@ -64,6 +64,18 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
     def preprocess(self, ds):
         return ds
+    
+    def filter(self, ds):
+        before_len = len(ds)
+        ds["has_source_changes"] = ds["hunk"].apply(lambda h: "sourceChanges" in h and len(h["sourceChanges"]) > 0)
+        ds = ds[ds["has_source_changes"]].reset_index(drop=True).drop(columns=["has_source_changes"])
+        self.log(f"Filtered {before_len - len(ds)} rows due to no source changes")
+
+        before_len = len(ds)
+        ds = ds[ds["trivial"].isna()].reset_index(drop=True)
+        self.log(f"Filtered {before_len - len(ds)} trivial test repairs")
+
+        return ds
 
     def prepare_inputs_and_outputs(self, ds):
         ds = self.create_inputs_and_outputs(ds)
@@ -71,6 +83,48 @@ class TestRepairDataEncoder(BaseDataEncoder):
         ds["output"] = ds["output"].str.strip()
         validsize_ind = self.get_validsize_indices(ds)
         return ds.iloc[list(validsize_ind)].reset_index(drop=True)
+
+    def merge_train_with_trivial(self, train_ds, trivial_ds):
+        projects = trivial_ds["project"].unique().tolist()
+        train_trivial_ds_list = []
+        for project in projects:
+            latest_train_time = train_ds[train_ds["project"] == project]["aCommitTime"].max()
+            project_trivial_ds = trivial_ds[trivial_ds["project"] == project].reset_index(drop=True)
+            project_train_trivial_ds = project_trivial_ds[
+                project_trivial_ds["aCommitTime"] <= latest_train_time
+            ].reset_index(drop=True)
+            if len(project_train_trivial_ds) > 0:
+                train_trivial_ds_list.append(project_train_trivial_ds)
+
+        train_trivial_ds = pd.concat(train_trivial_ds_list)
+        if len(train_trivial_ds) == 0:
+            self.log("No trivial repairs to add to train")
+        else:
+            self.log("Preparing trivial train dataset")
+            train_trivial_ds = self.prepare_inputs_and_outputs(train_trivial_ds)
+            train_ds = pd.concat([train_ds, train_trivial_ds])
+            train_ds = self.shuffle(train_ds)
+            self.log(f"Added {len(train_trivial_ds)} trivial test repairs to the train set")
+
+        return train_ds
+
+    def read_and_preproces(self):
+        ds_path = Path(self.args.dataset_dir)
+        ds_list = []
+        for project_ds_path in ds_path.rglob("dataset.json"):
+            project_ds = pd.read_json(project_ds_path)
+            project_ds["project"] = f"{project_ds_path.parent.parent.name}/{project_ds_path.parent.name}"
+            project_ds = self.preprocess(project_ds)
+            if len(project_ds) == 0:
+                continue
+            ds_list.append(project_ds)
+
+        if len(ds_list) == 0:
+            raise Exception(f"No datasets found in {ds_path}")
+        ds = pd.concat(ds_list)
+        self.log(f"Read and preprocessed {len(ds)} samples from {len(ds_list)} projects")
+
+        return ds
 
     def load_dataset(self):
         self.log("Loading test repair datasets ...")
@@ -86,39 +140,16 @@ class TestRepairDataEncoder(BaseDataEncoder):
             valid_ds = pd.read_json(valid_file)
             test_ds = pd.read_json(test_file)
         else:
-            ds_path = Path(self.args.dataset_dir)
-            ds_list = []
-            for project_ds_path in ds_path.rglob("dataset.json"):
-                project_ds = pd.read_json(project_ds_path)
-                project_ds["project"] = project_ds_path.parent.name
-                project_ds = self.preprocess(project_ds)
-                if len(project_ds) == 0:
-                    continue
-                ds_list.append(project_ds)
-
-            if len(ds_list) == 0:
-                raise Exception(f"No datasets found in {ds_path}")
-            ds = pd.concat(ds_list)
-            self.log(f"Read and preprocessed {len(ds)} samples from {len(ds_list)} projects")
-            before_len = len(ds)
+            ds = self.read_and_preproces()
             trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
-            ds = ds[ds["trivial"].isna()].reset_index(drop=True)
-            self.log(f"Removed {before_len - len(ds)} trivial test repairs")
+            ds = self.filter(ds)
+
             self.log("Preparing main dataset")
             ds = self.prepare_inputs_and_outputs(ds)
 
             train_ds, valid_ds, test_ds = self.split_by_tag(ds)
 
-            latest_train_time = train_ds["aCommitTime"].max()
-            train_trivial_ds = trivial_ds[trivial_ds["aCommitTime"] <= latest_train_time].reset_index(drop=True)
-            if len(train_trivial_ds) == 0:
-                self.log("No trivial repairs found")
-            else:
-                self.log("Preparing trivial train dataset")
-                train_trivial_ds = self.prepare_inputs_and_outputs(train_trivial_ds)
-                train_ds = pd.concat([train_ds, train_trivial_ds])
-                train_ds = self.shuffle(train_ds)
-                self.log(f"Added {len(train_trivial_ds)} trivial test repairs to the train set")
+            train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
 
             ds_output_dir.mkdir(exist_ok=True, parents=True)
             train_ds.to_json(train_file, orient="records", indent=2)
