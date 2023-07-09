@@ -120,19 +120,14 @@ def eval(model, split, args, save_dir):
 
         target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
         pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
-        all_bleus, all_code_bleus = compute_single_bleus(target_codes, pred_codes)
 
         ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
-        pred_df = pd.DataFrame(
-            {
-                "id": all_ids,
-                "pred": pred_codes,
-                "target": target_codes,
-                "rank": ranks * len(dataset),
-                "bleu": all_bleus,
-                "code_bleu": all_code_bleus,
-            }
-        )
+        pred_df = {"id": all_ids, "pred": pred_codes, "target": target_codes, "rank": ranks * len(dataset)}
+        if split == "test":
+            all_bleus, all_code_bleus = compute_single_bleus(target_codes, pred_codes)
+            pred_df["bleu"] = all_bleus
+            pred_df["code_bleu"] = all_code_bleus
+        pred_df = pd.DataFrame(pred_df)
 
         bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
         avg_loss = round(sum(all_loss) / len(all_loss), 3)

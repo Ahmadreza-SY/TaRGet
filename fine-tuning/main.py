@@ -36,7 +36,7 @@ def main():
     parser.add_argument("-e", "--epochs", required=True, type=int)
     parser.add_argument("-m", "--max_seq", required=True, type=int)
     parser.add_argument("-ebs", "--eval_batch_size", default=16, type=int)
-    parser.add_argument("-c", "--checkpoint_interval", default=3, type=int)
+    parser.add_argument("-c", "--checkpoint_interval", default=2, type=int)
     parser.add_argument("-lr", "--learning_rate", default=5e-05, type=float)
     parser.add_argument("-ls", "--label_smoothing", default=0.1, type=float)
     parser.add_argument("-ts", "--train_size", default=0.8, type=float)
