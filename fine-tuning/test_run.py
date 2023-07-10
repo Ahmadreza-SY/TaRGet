@@ -24,13 +24,6 @@ logging.basicConfig(
 logger = logging.getLogger("MAIN")
 
 
-def pool_init(_lock, _test_ds, _args):
-    global lock, test_ds, args
-    lock = _lock
-    test_ds = _test_ds
-    args = _args
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -60,8 +53,7 @@ def main():
         "--test-index",
         help="The index of the row to execute from the test split. If not provided, all rows from test split will be executed",
         type=int,
-        required=False,
-        default=None,
+        required=True,
     )
     parser.add_argument(
         "-m2",
@@ -83,36 +75,16 @@ def main():
     pred_file = args.output_path / "test_predictions.json"
     pred_df = pd.read_json(pred_file)
     test_rows = json.loads((args.output_path / "splits" / "test.json").read_text())
-    test_ds = {row["ID"]: row for row in test_rows}
-    if args.test_index is not None:
-        selected_test = test_rows[args.test_index]
-        pred_df = pred_df[pred_df["id"] == selected_test["ID"]].reset_index(drop=True)
+    selected_test = test_rows[args.test_index]
+    pred_df = pred_df[pred_df["id"] == selected_test["ID"]].reset_index(drop=True)
 
-    pred_groups = list(pred_df.groupby("id"))
-    logger.info(
-        f"Starting to execute {len(pred_df)} candidate repair patches" + f" - single ID {selected_test['ID']}"
-        if args.test_index is not None
-        else ""
-    )
-    results = []
-    proc_cnt = round(mp.cpu_count() / 4) if mp.cpu_count() > 2 else 1
-    if args.test_index is not None:
-        proc_cnt = 1
-    with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(), test_ds, args)) as pool:
-        for res in tqdm(
-            pool.imap_unordered(apply_and_run_preds, pred_groups),
-            total=len(pred_groups),
-            ascii=True,
-            desc="Executing tests",
-        ):
-            results.extend(res)
+    logger.info(f"Starting to execute {len(pred_df)} candidate repair patches - test ID {selected_test['ID']}")
+    results = apply_and_run_preds(pred_df, selected_test, args)
 
     logger.info(f"Execution finished!")
     verdict_df = analyze_verdicts(results)
-    verdicts_file = args.output_path / "test_verdicts.json"
-    if args.test_index is not None:
-        verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
-        verdicts_file.parent.mkdir(exist_ok=True, parents=True)
+    verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
+    verdicts_file.parent.mkdir(exist_ok=True, parents=True)
     verdict_df.to_json(verdicts_file, orient="records", indent=2)
 
 
@@ -168,19 +140,19 @@ def apply_patch(patch, test, test_file):
     return original_contents
 
 
-def apply_and_run_preds(pred_group):
-    (pred_id, preds) = pred_group
-    test = test_ds[pred_id]
+def apply_and_run_preds(preds, test, args):
     repo_name = test["ID"].split(":")[0]
     a_commit = test["aCommit"]
 
-    lock.acquire()
     worktree_path = gapi.copy_commit_code(repo_name, a_commit, test["ID"].split(":")[-1])
-    lock.release()
 
     verdicts = []
-    for _, pred in preds.iterrows():
-        test = test_ds[pred["id"]]
+    for _, pred in tqdm(
+        preds.iterrows(),
+        total=len(preds),
+        ascii=True,
+        desc="Executing tests",
+    ):
         breakage_code = get_breakage_from_input(test["input"])
         pred_code = pred["pred"]
         target_code = pred["target"]
@@ -211,9 +183,7 @@ def apply_and_run_preds(pred_group):
 
         verdicts.append((verdict, pred["id"], pred["rank"]))
 
-    lock.acquire()
     gapi.remove_commit_code(repo_name, worktree_path)
-    lock.release()
 
     return verdicts
 
