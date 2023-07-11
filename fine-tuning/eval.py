@@ -159,6 +159,10 @@ def compute_single_bleus(targets, preds):
             bleus.append(0.0)
             code_bleus.append(0.0)
             continue
+        if target == pred:
+            bleus.append(100.0)
+            code_bleus.append(100.0)
+            continue
         bleu, code_bleu = compute_bleu_scores([target], [pred])
         bleus.append(bleu)
         code_bleus.append(code_bleu)
