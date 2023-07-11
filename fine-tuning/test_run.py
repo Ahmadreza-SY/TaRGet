@@ -82,7 +82,7 @@ def main():
     results = apply_and_run_preds(pred_df, selected_test, args)
 
     logger.info(f"Execution finished!")
-    verdict_df = analyze_verdicts(results)
+    verdict_df, _ = analyze_verdicts(results)
     verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
     verdicts_file.parent.mkdir(exist_ok=True, parents=True)
     verdict_df.to_json(verdicts_file, orient="records", indent=2)
@@ -99,10 +99,10 @@ def analyze_verdicts(verdicts):
     )
     verdict_df["success"] = verdict_df["verdict"].apply(lambda v: 1 if v["status"] == mvnp.TestVerdict.SUCCESS else 0)
     success_cnt = verdict_df.groupby("id").filter(lambda g: g["success"].sum() >= 1)["id"].nunique()
-    success_rate = round(100 * success_cnt / verdict_df["id"].nunique(), 1)
-    logger.info(f"Success Rate: {success_rate} %")
+    plausible_rate = round(100 * success_cnt / verdict_df["id"].nunique(), 1)
+    logger.info(f"Plausible Rate: {plausible_rate} %")
 
-    return verdict_df
+    return verdict_df, plausible_rate
 
 
 def get_breakage_from_input(input):

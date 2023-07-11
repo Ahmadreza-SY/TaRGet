@@ -40,9 +40,14 @@ def main():
     for verdict_file in verdict_paths:
         verdicts.extend(json.loads(verdict_file.read_text()))
     verdicts = [(v["verdict"], v["id"], v["rank"]) for v in verdicts]
-    verdict_df = analyze_verdicts(verdicts)
+    verdict_df, plausible_rate = analyze_verdicts(verdicts)
     verdicts_file = args.output_path / "test_verdicts.json"
     verdict_df.to_json(verdicts_file, orient="records", indent=2)
+
+    stats_file = args.output_path / "stats.json"
+    stats = json.loads(stats_file.read_text())
+    stats["test_results"]["plausible_rate"] = plausible_rate
+    stats_file.write_text(json.dumps(stats, indent=2, sort_keys=False))
 
     shutil.rmtree(verdicts_dir)
 
