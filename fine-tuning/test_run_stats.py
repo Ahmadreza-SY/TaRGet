@@ -49,8 +49,6 @@ def main():
     stats["test_results"]["plausible_rate"] = plausible_rate
     stats_file.write_text(json.dumps(stats, indent=2, sort_keys=False))
 
-    shutil.rmtree(verdicts_dir)
-
 
 if __name__ == "__main__":
     main()
