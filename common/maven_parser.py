@@ -121,13 +121,13 @@ def run_cmd(cmd, java_home=None):
         proc = subprocess.Popen(shlex.split(" ".join(cmd)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env)
         try:
             stdout, stderr = proc.communicate(timeout=15 * 60)
-            return proc.returncode, stdout.decode("utf-8")
+            return proc.returncode, stdout.decode("utf-8", errors="ignore")
         except TimeoutExpired as e:
             proc.kill()
             if retries < 1:
                 retries += 1
                 continue
-            return 124, e.stdout.decode("utf-8")
+            return 124, e.stdout.decode("utf-8", errors="ignore")
 
 
 def remove_unnecessary_plugins(pom_path):
