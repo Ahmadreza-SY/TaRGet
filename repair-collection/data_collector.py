@@ -73,7 +73,7 @@ class DataCollector:
         if changed_test_classes_path.exists():
             print("Changed tests classes already exists, skipping ...")
             return
-        commits = ghapi.get_all_commits(self.repo_name)
+        commits = ghapi.get_all_commits(self.repo_name)[:200]
         commits_sha = [c.hexsha for c in commits]
 
         changed_test_classes = []
