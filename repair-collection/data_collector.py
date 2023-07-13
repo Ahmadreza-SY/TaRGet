@@ -21,6 +21,7 @@ from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
 from trivial_detector import TrivialDetector
 from error_stats import ErrorStats
+from code_white_space_formatter import format_covered_changes, format_hunk
 
 
 def pool_init(_lock):
@@ -357,10 +358,11 @@ class DataCollector:
         for i, repair in tqdm(enumerate(repaired_tests), total=len(repaired_tests), ascii=True, desc="Creating dataset"):
             _repair = copy.deepcopy(repair)
 
-            covered_class_changes = class_change_repo.get_covered_changes(_repair)
-            covered_method_changes = method_change_repo.get_covered_changes(_repair)
+            covered_class_changes = format_covered_changes(class_change_repo.get_covered_changes(_repair))
+            covered_method_changes = format_covered_changes(method_change_repo.get_covered_changes(_repair))
             _repair["coveredClassChanges"] = covered_class_changes
             _repair["coveredMethodChanges"] = covered_method_changes
+            _repair['hunk'] = format_hunk(_repair['hunk'])
             self.remove_common_hunks(_repair)
             if no_covered_changes(_repair):
                 zero_cov_cnt += 1
