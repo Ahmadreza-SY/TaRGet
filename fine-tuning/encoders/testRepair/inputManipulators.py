@@ -68,7 +68,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return " ".join(
             [Tokens.BREAKAGE, self.get_broken_code(row)]
             + [Tokens.TEST_CONTEXT, test_context]
-            + [Tokens.COVERED_CONTEXT]
+            + [Tokens.REPAIR_CONTEXT]
             + [cc["annotated_doc"] for cc in covered_changes]
         )
 

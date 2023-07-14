@@ -2,12 +2,13 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from encoders.encoders import BaseDataEncoder
+from encoders.testRepair.code_white_space_formatter import format_hunk, format_covered_changes, format_source
 
 
 class Tokens:
     BREAKAGE = "<breakage>"
     TEST_CONTEXT = "<testContext>"
-    COVERED_CONTEXT = "<coveredContext>"
+    REPAIR_CONTEXT = "<repairContext>"
     DELETE = "<del>"
     ADD = "<add>"
     HUNK = "<hunk>"
@@ -17,7 +18,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
     def __init__(self, args):
         super().__init__(args)
         self.tokenizer.add_tokens(
-            [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
+            [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.REPAIR_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
         )
 
     def shuffle(self, ds):
@@ -63,8 +64,13 @@ class TestRepairDataEncoder(BaseDataEncoder):
         pass
 
     def preprocess(self, ds):
+        ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
+        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: format_covered_changes(c))
+        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: format_covered_changes(m))
+        ds["aSource"] = ds["aSource"].apply(lambda s: format_source(s))
+        ds["bSource"] = ds["bSource"].apply(lambda s: format_source(s))
         return ds
-    
+
     def filter(self, ds):
         before_len = len(ds)
         ds["has_source_changes"] = ds["hunk"].apply(lambda h: "sourceChanges" in h and len(h["sourceChanges"]) > 0)
@@ -96,8 +102,11 @@ class TestRepairDataEncoder(BaseDataEncoder):
             if len(project_train_trivial_ds) > 0:
                 train_trivial_ds_list.append(project_train_trivial_ds)
 
-        train_trivial_ds = pd.concat(train_trivial_ds_list)
-        if len(train_trivial_ds) == 0:
+        train_trivial_ds = None
+        if len(train_trivial_ds_list) > 0:
+            train_trivial_ds = pd.concat(train_trivial_ds_list)
+
+        if train_trivial_ds is None or len(train_trivial_ds) == 0:
             self.log("No trivial repairs to add to train")
         else:
             self.log("Preparing trivial train dataset")
