@@ -1,7 +1,10 @@
 import re
 import uuid
 
-non_word_non_whitespace_non_quote_regex = r'(?!"|\'|\s)[\W]'
+# Java chars/groups that can be surrounded by ' '
+# In order: ';', '(', ')', '+='/'-='/'*='/'/='/'%=', '->', '++', '+', '--', '-', '**', '*', '//', '/', '%', '{', '}',
+# '<<'/'>>'/'<='/'>='/'!='/'=='/(others that are probably errors anyways), '!', '^', '&&', '&', '||', '|', '::', ':'
+non_word_non_whitespace_non_quote_regex = r';|\(|\)|[\+\-\*\/%]=|->|\+\+|\+|\-\-|\-|\*\*|\*|\/\/|\/|%|\{|\}|[<>=!][<>=]|[<>=]|!|\^|&&|&|\|\||\||::|:|,'
 
 def mask_quotes(code):
     mask_dict = dict()
@@ -48,3 +51,8 @@ def format_covered_changes(covered_changes):
             format_hunk(h)
 
     return covered_changes
+
+def format_source(source):
+    source["code"] = add_padding_to_chars(source["code"])
+
+    return source
