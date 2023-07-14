@@ -4,6 +4,7 @@ from pathlib import Path
 from encoders.encoders import BaseDataEncoder
 from encoders.testRepair.code_white_space_formatter import format_hunk, format_covered_changes, format_source
 
+
 class Tokens:
     BREAKAGE = "<breakage>"
     TEST_CONTEXT = "<testContext>"
