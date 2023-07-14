@@ -8,7 +8,7 @@ from encoders.testRepair.code_white_space_formatter import format_hunk, format_c
 class Tokens:
     BREAKAGE = "<breakage>"
     TEST_CONTEXT = "<testContext>"
-    COVERED_CONTEXT = "<coveredContext>"
+    REPAIR_CONTEXT = "<repairContext>"
     DELETE = "<del>"
     ADD = "<add>"
     HUNK = "<hunk>"
@@ -18,7 +18,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
     def __init__(self, args):
         super().__init__(args)
         self.tokenizer.add_tokens(
-            [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.COVERED_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
+            [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.REPAIR_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
         )
 
     def shuffle(self, ds):
@@ -64,13 +64,13 @@ class TestRepairDataEncoder(BaseDataEncoder):
         pass
 
     def preprocess(self, ds):
-        ds['hunk'] = ds['hunk'].apply(lambda h : format_hunk(h))
-        ds['coveredClassChanges'] = ds['coveredClassChanges'].apply(lambda c : format_covered_changes(c))
-        ds['coveredMethodChanges'] = ds['coveredMethodChanges'].apply(lambda m : format_covered_changes(m))
-        ds['aSource'] = ds['aSource'].apply(lambda s : format_source(s))
-        ds['bSource'] = ds['bSource'].apply(lambda s : format_source(s))
+        ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
+        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: format_covered_changes(c))
+        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: format_covered_changes(m))
+        ds["aSource"] = ds["aSource"].apply(lambda s: format_source(s))
+        ds["bSource"] = ds["bSource"].apply(lambda s: format_source(s))
         return ds
-    
+
     def filter(self, ds):
         before_len = len(ds)
         ds["has_source_changes"] = ds["hunk"].apply(lambda h: "sourceChanges" in h and len(h["sourceChanges"]) > 0)
