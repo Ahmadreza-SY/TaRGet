@@ -7,7 +7,7 @@ from datetime import datetime
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn import CrossEntropyLoss
 from utils import create_loader, save_stats
-from nltk.translate.bleu_score import corpus_bleu, sentence_bleu
+from nltk.translate.bleu_score import corpus_bleu
 from CodeBLEU.code_bleu import calc_code_bleu
 
 
@@ -22,11 +22,11 @@ def test(gpu, args):
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
 
     if args.rank == 0:
-        logger.info(f"    Testing with best checkpoint on Valid set")
+        logger.info(f"    Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
     bleu_score, code_bleu_score, em, _ = eval(model, "valid", args, best_checkpoint_path)
 
     if args.rank == 0:
-        logger.info(f"    Testing with best checkpoint on Test set")
+        logger.info(f"    Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
     bleu_score, code_bleu_score, em, test_loss = eval(model, "test", args, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em, "loss": test_loss}
 
@@ -68,12 +68,13 @@ def eval(model, split, args, save_dir):
         local_loss.append(loss.item())
         target_ids = target_ids.to("cpu")
 
+        max_gen_lengh = args.max_seq // 2
         if args.eval_full_beam:
             outputs = model_module.generate(
                 input_ids=source_ids,
                 attention_mask=source_mask,
                 num_beams=args.beam_size,
-                max_length=args.max_seq,
+                max_length=max_gen_lengh,
                 use_cache=True,
                 early_stopping=True,
                 num_return_sequences=args.beam_size,
@@ -93,7 +94,7 @@ def eval(model, split, args, save_dir):
                     input_ids=source_ids,
                     attention_mask=source_mask,
                     num_beams=args.beam_size,
-                    max_length=args.max_seq,
+                    max_length=max_gen_lengh,
                     use_cache=True,
                     early_stopping=True,
                 )

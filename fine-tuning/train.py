@@ -103,7 +103,7 @@ def train(gpu, args):
 
         if epoch % args.checkpoint_interval == 0:
             valid_start = datetime.now()
-            validate(args, model, epoch, optimizer, scheduler, epoch_stats)
+            validate(args, model, epoch, epoch_stats)
             valid_time = datetime.now() - valid_start
             epoch_stats["valid_duration"] = str(valid_time)
             elapsed_time += valid_time
@@ -125,10 +125,8 @@ def train(gpu, args):
     save_stats(args)
 
 
-def validate(args, model, epoch, optimizer, scheduler, epoch_stats):
-    valid_output_dir = args.output_dir / f"checkpoint-last"
-
-    bleu_score, code_bleu_score, em, loss = eval(model, "valid", args, valid_output_dir)
+def validate(args, model, epoch, epoch_stats):
+    bleu_score, code_bleu_score, em, loss = eval(model, "valid", args, args.output_dir / f"checkpoint-last")
     if args.scoring == "em":
         sel_score = em
     elif args.scoring == "bleu":
@@ -147,7 +145,7 @@ def validate(args, model, epoch, optimizer, scheduler, epoch_stats):
                 "code_bleu": code_bleu_score,
                 "em": em,
             }
-            save_model(model, optimizer, scheduler, valid_output_dir)
+            save_model(model, args.output_dir / f"checkpoint-best")
 
     epoch_stats["bleu"] = bleu_score
     epoch_stats["code_bleu"] = code_bleu_score
@@ -155,18 +153,7 @@ def validate(args, model, epoch, optimizer, scheduler, epoch_stats):
     epoch_stats["valid_loss"] = loss
 
 
-def save_model(model, optimizer, scheduler, output_dir):
+def save_model(model, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     model_to_save = model.module if hasattr(model, "module") else model
-    model_to_save.config.save_pretrained(output_dir)
-    torch.save(model_to_save.state_dict(), output_dir / "pytorch_model.bin")
-    torch.save(
-        optimizer.state_dict(),
-        output_dir / "optimizer.pt",
-        _use_new_zipfile_serialization=False,
-    )
-    torch.save(
-        scheduler.state_dict(),
-        output_dir / "scheduler.pt",
-        _use_new_zipfile_serialization=False,
-    )
+    model_to_save.save_pretrained(output_dir)
