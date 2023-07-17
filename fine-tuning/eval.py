@@ -7,7 +7,7 @@ from datetime import datetime
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn import CrossEntropyLoss
 from utils import create_loader, save_stats
-from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 from CodeBLEU.code_bleu import calc_code_bleu
 
 
@@ -164,7 +164,7 @@ def compute_single_bleus(targets, preds):
             bleus.append(100.0)
             code_bleus.append(100.0)
             continue
-        bleu, code_bleu = compute_bleu_scores([target], [pred])
+        bleu, code_bleu = compute_bleu_scores([target], [pred], sf=SmoothingFunction().method1)
         bleus.append(bleu)
         code_bleus.append(code_bleu)
     return bleus, code_bleus
@@ -192,7 +192,7 @@ def compute_scores(targets, preds, ids):
     return bleu_score, code_bleu_score, em
 
 
-def compute_bleu_scores(targets, preds):
+def compute_bleu_scores(targets, preds, sf=None):
     if len(targets) != len(preds):
         raise Exception(f"Targets and preds size mismatch: {len(targets)} != {len(preds)}")
     format_score = lambda score: round(100 * score, 2)
@@ -200,7 +200,7 @@ def compute_bleu_scores(targets, preds):
 
     tokenized_references = [[simple_tokenize(target)] for target in targets]
     tokenized_hypotheses = [simple_tokenize(pred) for pred in preds]
-    bleu_score = corpus_bleu(tokenized_references, tokenized_hypotheses)
+    bleu_score = corpus_bleu(tokenized_references, tokenized_hypotheses, smoothing_function=sf)
 
     code_bleu_score = calc_code_bleu([targets], preds)
 
