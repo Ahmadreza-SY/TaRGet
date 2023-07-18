@@ -52,24 +52,17 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         test_code = row["bSource"]["code"]
         breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-        TEST_CONTEXT_SIZE = 10
-        backward_offset = TEST_CONTEXT_SIZE // 2
-        forward_offset = TEST_CONTEXT_SIZE // 2
         test_lines = test_code.split("\n")
-        if breakge_start < backward_offset:
-            forward_offset += backward_offset - breakge_start
-        if breakge_end > len(test_lines) - 1 - forward_offset:
-            backward_offset += breakge_end - (len(test_lines) - 1 - forward_offset)
+        for i in range(len(test_lines)):
+            if i == breakge_start:
+                test_lines[i] = " ".join([Tokens.BREAKAGE_START, test_lines[i]])
+            if i == breakge_end:
+                test_lines[i] = " ".join([test_lines[i], Tokens.BREAKAGE_END])
 
-        context_start = max(0, breakge_start - backward_offset)
-        context_end = min(len(test_lines) - 1, breakge_end + forward_offset)
-        test_context = " ".join(test_lines[context_start : (context_end + 1)])
+        test_context = " ".join(test_lines)
 
         return " ".join(
-            [Tokens.BREAKAGE, self.get_broken_code(row)]
-            + [Tokens.TEST_CONTEXT, test_context]
-            + [Tokens.REPAIR_CONTEXT]
-            + [cc["annotated_doc"] for cc in covered_changes]
+            [Tokens.TEST_CONTEXT, test_context] + [Tokens.REPAIR_CONTEXT] + [cc["annotated_doc"] for cc in covered_changes]
         )
 
     def create_output(self, row):

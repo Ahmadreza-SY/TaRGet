@@ -1,12 +1,14 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import inspect
 from encoders.encoders import BaseDataEncoder
 from encoders.testRepair.code_white_space_formatter import format_hunk, format_covered_changes, format_source
 
 
 class Tokens:
-    BREAKAGE = "<breakage>"
+    BREAKAGE_START = "<breakage>"
+    BREAKAGE_END = "</breakage>"
     TEST_CONTEXT = "<testContext>"
     REPAIR_CONTEXT = "<repairContext>"
     DELETE = "<del>"
@@ -17,9 +19,8 @@ class Tokens:
 class TestRepairDataEncoder(BaseDataEncoder):
     def __init__(self, args):
         super().__init__(args)
-        self.tokenizer.add_tokens(
-            [Tokens.BREAKAGE, Tokens.TEST_CONTEXT, Tokens.REPAIR_CONTEXT, Tokens.DELETE, Tokens.ADD, Tokens.HUNK]
-        )
+        new_tokens = [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
+        self.tokenizer.add_tokens(new_tokens, special_tokens=True)
 
     def shuffle(self, ds):
         return ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
