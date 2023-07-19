@@ -3,7 +3,12 @@ import numpy as np
 from pathlib import Path
 import inspect
 from encoders.encoders import BaseDataEncoder
-from encoders.testRepair.code_white_space_formatter import format_hunk, format_covered_changes, format_source
+from encoders.preprocessing.codeFormatter import format_hunk, format_covered_changes, format_source
+from encoders.preprocessing.commentRemoval import (
+    remove_hunk_comments,
+    hunk_is_empty,
+    remove_covered_changes_comments,
+)
 
 
 class Tokens:
@@ -64,12 +69,35 @@ class TestRepairDataEncoder(BaseDataEncoder):
     def create_inputs_and_outputs(self, ds):
         pass
 
-    def preprocess(self, ds):
+    def format_code(self, ds):
         ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
         ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: format_covered_changes(c))
         ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: format_covered_changes(m))
         ds["aSource"] = ds["aSource"].apply(lambda s: format_source(s))
         ds["bSource"] = ds["bSource"].apply(lambda s: format_source(s))
+
+    def remove_comments(self, ds):
+        project = ds.iloc[0]["project"]
+        ds["hunk"] = ds["hunk"].apply(lambda h: remove_hunk_comments(h))
+        before_len = len(ds)
+        ds["hunk_is_empty"] = ds["hunk"].apply(lambda h: hunk_is_empty(h))
+        ds = ds[~ds["hunk_is_empty"]].reset_index(drop=True).drop(columns=["hunk_is_empty"])
+        if before_len != len(ds):
+            self.log(f"Removed {before_len - len(ds)} rows due to comments in test repair for project {project}")
+
+        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: remove_covered_changes_comments(c))
+        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: remove_covered_changes_comments(m))
+        before_len = len(ds)
+        ds["cov_is_empty"] = ds.apply(
+            lambda r: len(r["coveredClassChanges"]) == 0 and len(r["coveredMethodChanges"]) == 0, axis=1
+        )
+        ds = ds[~ds["cov_is_empty"]].reset_index(drop=True).drop(columns=["cov_is_empty"])
+        if before_len != len(ds):
+            self.log(f"Removed {before_len - len(ds)} rows due to comments in covered changes for project {project}")
+
+    def preprocess(self, ds):
+        self.remove_comments(ds)
+        self.format_code(ds)
         return ds
 
     def filter(self, ds):

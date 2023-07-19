@@ -1,6 +1,7 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from joblib import Parallel, delayed
-from .testRepair import TestRepairDataEncoder, Tokens
+from encoders.testRepair import TestRepairDataEncoder, Tokens
+from encoders.preprocessing.commentRemoval import line_is_comment
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -53,12 +54,9 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         test_lines = test_code.split("\n")
-        for i in range(len(test_lines)):
-            if i == breakge_start:
-                test_lines[i] = " ".join([Tokens.BREAKAGE_START, test_lines[i]])
-            if i == breakge_end:
-                test_lines[i] = " ".join([test_lines[i], Tokens.BREAKAGE_END])
-
+        test_lines.insert(breakge_start, Tokens.BREAKAGE_START)
+        test_lines.insert(breakge_end + 2, Tokens.BREAKAGE_END)
+        test_lines = [l for l in test_lines if not line_is_comment(l)]
         test_context = " ".join(test_lines)
 
         return " ".join(

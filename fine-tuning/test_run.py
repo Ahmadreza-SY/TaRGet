@@ -4,13 +4,9 @@ sys.path.append("../common")
 import argparse
 import logging
 import json
-import git
-import re
 from tqdm import tqdm
 from pathlib import Path
 import pandas as pd
-import multiprocessing as mp
-from encoders.testRepair.testRepair import Tokens
 from common_utils import decompose_full_method_name
 from config import Config
 import maven_parser as mvnp
@@ -105,13 +101,6 @@ def analyze_verdicts(verdicts):
     return verdict_df, plausible_rate
 
 
-def get_breakage_from_input(input):
-    matches = re.compile(f"^{Tokens.BREAKAGE} (.*) {Tokens.TEST_CONTEXT}.+$", re.MULTILINE).findall(input)
-    if len(matches) != 1:
-        raise AssertionError(f"Expected exactly 1 match for breakage, found {len(matches)}! Input: {input}")
-    return matches[0]
-
-
 def apply_patch(patch, test, test_file):
     with open(test_file, "r") as orig_file:
         original_contents = orig_file.read()
@@ -153,12 +142,9 @@ def apply_and_run_preds(preds, test, args):
         ascii=True,
         desc="Executing tests",
     ):
-        breakage_code = get_breakage_from_input(test["input"])
         pred_code = pred["pred"]
         target_code = pred["target"]
-        if pred_code == breakage_code:
-            verdict = test["verdict"]
-        elif pred_code == target_code:
+        if pred_code == target_code:
             verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None).to_dict()
         else:
             test_rel_path = Path(test["aPath"])
