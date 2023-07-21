@@ -2,6 +2,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from joblib import Parallel, delayed
 from encoders.testRepair import TestRepairDataEncoder, Tokens
 from encoders.preprocessing.commentRemoval import line_is_comment
+from encoders.preprocessing.textDiff import get_hunk_diffs
+from encoders.preprocessing.utils import get_hunk_lines
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -100,13 +102,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
 class HunksDataEncoder(PrioritizedChangesDataEncoder):
     def create_hunk_document(self, hunk):
-        source_lines = []
-        target_lines = []
-        if "sourceChanges" in hunk:
-            source_lines = [l["line"] for l in hunk["sourceChanges"]]
-        if "targetChanges" in hunk:
-            target_lines = [l["line"] for l in hunk["targetChanges"]]
-
+        source_lines, target_lines = get_hunk_lines(hunk)
         doc = " ".join(source_lines + target_lines)
 
         if len(source_lines) > 0:
@@ -130,6 +126,25 @@ class HunksDataEncoder(PrioritizedChangesDataEncoder):
         method_docs = self.create_documents(row["coveredMethodChanges"], 0)
         class_docs = self.create_documents(row["coveredClassChanges"], 1)
         return method_docs + class_docs
+
+
+class FineGrainedHunksDataEncoder(HunksDataEncoder):
+    def create_hunk_document(self, hunk):
+        diffs = get_hunk_diffs(hunk)
+        body = []
+        annotated_body = []
+        for type, text in diffs:
+            body.append(text)
+            if type == 0:
+                annotated_body.append(text)
+            elif type == -1:
+                annotated_body.extend([Tokens.DELETE, text, Tokens.DELETE_END])
+            elif type == 1:
+                annotated_body.extend([Tokens.ADD, text, Tokens.ADD_END])
+        doc = " ".join(body)
+        annotated_doc = " ".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
+
+        return doc, annotated_doc
 
 
 BEST_INPUT_MANIPULATOR = HunksDataEncoder

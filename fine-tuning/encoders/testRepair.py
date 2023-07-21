@@ -7,7 +7,6 @@ from encoders.preprocessing.codeFormatter import format_hunk, format_covered_cha
 from encoders.preprocessing.commentRemoval import (
     remove_hunk_comments,
     hunk_is_empty,
-    remove_covered_changes_comments,
 )
 
 
@@ -17,8 +16,11 @@ class Tokens:
     TEST_CONTEXT = "<testContext>"
     REPAIR_CONTEXT = "<repairContext>"
     DELETE = "<del>"
+    DELETE_END = "</del>"
     ADD = "<add>"
+    ADD_END = "</add>"
     HUNK = "<hunk>"
+    HUNK_END = "</hunk>"
 
 
 class TestRepairDataEncoder(BaseDataEncoder):
@@ -99,6 +101,22 @@ class TestRepairDataEncoder(BaseDataEncoder):
         before_len = len(ds)
         ds = ds[ds["trivial"].isna()].reset_index(drop=True)
         self.log(f"Filtered {before_len - len(ds)} trivial test repairs")
+
+        def remove_empty_hunks(covered_changes):
+            for c in covered_changes:
+                c["hunks"] = [h for h in c["hunks"] if not hunk_is_empty(h)]
+            covered_changes = [c for c in covered_changes if len(c["hunks"]) > 0]
+            return covered_changes
+
+        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: remove_empty_hunks(c))
+        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: remove_empty_hunks(m))
+        before_len = len(ds)
+        ds["cov_is_empty"] = ds.apply(
+            lambda r: len(r["coveredClassChanges"]) == 0 and len(r["coveredMethodChanges"]) == 0, axis=1
+        )
+        ds = ds[~ds["cov_is_empty"]].reset_index(drop=True).drop(columns=["cov_is_empty"])
+        if before_len != len(ds):
+            self.log(f"Filtered {before_len - len(ds)} rows due to empty hunks in covered changes")
 
         return ds
 
