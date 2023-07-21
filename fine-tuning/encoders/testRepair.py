@@ -85,16 +85,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
         if before_len != len(ds):
             self.log(f"Removed {before_len - len(ds)} rows due to comments in test repair for project {project}")
 
-        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: remove_covered_changes_comments(c))
-        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: remove_covered_changes_comments(m))
-        before_len = len(ds)
-        ds["cov_is_empty"] = ds.apply(
-            lambda r: len(r["coveredClassChanges"]) == 0 and len(r["coveredMethodChanges"]) == 0, axis=1
-        )
-        ds = ds[~ds["cov_is_empty"]].reset_index(drop=True).drop(columns=["cov_is_empty"])
-        if before_len != len(ds):
-            self.log(f"Removed {before_len - len(ds)} rows due to comments in covered changes for project {project}")
-
     def preprocess(self, ds):
         self.remove_comments(ds)
         self.format_code(ds)
