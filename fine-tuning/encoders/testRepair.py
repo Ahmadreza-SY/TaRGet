@@ -3,11 +3,7 @@ import numpy as np
 from pathlib import Path
 import inspect
 from encoders.encoders import BaseDataEncoder
-from encoders.preprocessing.codeFormatter import format_hunk, format_covered_changes, format_source
-from encoders.preprocessing.commentRemoval import (
-    remove_hunk_comments,
-    hunk_is_empty,
-)
+from encoders.preprocessing.processors import Processors
 
 
 class Tokens:
@@ -70,52 +66,24 @@ class TestRepairDataEncoder(BaseDataEncoder):
     def create_inputs_and_outputs(self, ds):
         pass
 
-    def format_code(self, ds):
-        ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
-        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: format_covered_changes(c))
-        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: format_covered_changes(m))
-        ds["aSource"] = ds["aSource"].apply(lambda s: format_source(s))
-        ds["bSource"] = ds["bSource"].apply(lambda s: format_source(s))
-
-    def remove_comments(self, ds):
-        project = ds.iloc[0]["project"]
-        ds["hunk"] = ds["hunk"].apply(lambda h: remove_hunk_comments(h))
+    def apply_processor(self, processor, ds):
         before_len = len(ds)
-        ds["hunk_is_empty"] = ds["hunk"].apply(lambda h: hunk_is_empty(h))
-        ds = ds[~ds["hunk_is_empty"]].reset_index(drop=True).drop(columns=["hunk_is_empty"])
+        ds = processor(ds)
         if before_len != len(ds):
-            self.log(f"Removed {before_len - len(ds)} rows due to comments in test repair for project {project}")
-
-    def preprocess(self, ds):
-        self.remove_comments(ds)
-        self.format_code(ds)
+            self.log(f"Removed {before_len - len(ds)} rows by the {processor.__name__} processor")
         return ds
 
-    def filter(self, ds):
-        before_len = len(ds)
-        ds["has_source_changes"] = ds["hunk"].apply(lambda h: "sourceChanges" in h and len(h["sourceChanges"]) > 0)
-        ds = ds[ds["has_source_changes"]].reset_index(drop=True).drop(columns=["has_source_changes"])
-        self.log(f"Filtered {before_len - len(ds)} rows due to no source changes")
-
-        before_len = len(ds)
-        ds = ds[ds["trivial"].isna()].reset_index(drop=True)
-        self.log(f"Filtered {before_len - len(ds)} trivial test repairs")
-
-        def remove_empty_hunks(covered_changes):
-            for c in covered_changes:
-                c["hunks"] = [h for h in c["hunks"] if not hunk_is_empty(h)]
-            covered_changes = [c for c in covered_changes if len(c["hunks"]) > 0]
-            return covered_changes
-
-        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: remove_empty_hunks(c))
-        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: remove_empty_hunks(m))
-        before_len = len(ds)
-        ds["cov_is_empty"] = ds.apply(
-            lambda r: len(r["coveredClassChanges"]) == 0 and len(r["coveredMethodChanges"]) == 0, axis=1
-        )
-        ds = ds[~ds["cov_is_empty"]].reset_index(drop=True).drop(columns=["cov_is_empty"])
-        if before_len != len(ds):
-            self.log(f"Filtered {before_len - len(ds)} rows due to empty hunks in covered changes")
+    def preprocess(self, ds):
+        processors = [
+            Processors.remove_repair_comments,
+            Processors.format_code,
+            Processors.remove_whitespace_hunks,
+            Processors.remove_empty_hunks,
+            Processors.remove_empty_covered_changes,
+            Processors.remove_no_source_changes,
+        ]
+        for processor in processors:
+            ds = self.apply_processor(processor, ds)
 
         return ds
 
@@ -153,22 +121,18 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         return train_ds
 
-    def read_and_preproces(self):
+    def read_data(self):
         ds_path = Path(self.args.dataset_dir)
         ds_list = []
         for project_ds_path in ds_path.rglob("dataset.json"):
             project_ds = pd.read_json(project_ds_path)
             project_ds["project"] = f"{project_ds_path.parent.parent.name}/{project_ds_path.parent.name}"
-            project_ds = self.preprocess(project_ds)
             if len(project_ds) == 0:
                 continue
             ds_list.append(project_ds)
-
         if len(ds_list) == 0:
             raise Exception(f"No datasets found in {ds_path}")
         ds = pd.concat(ds_list)
-        self.log(f"Read and preprocessed {len(ds)} samples from {len(ds_list)} projects")
-
         return ds
 
     def load_dataset(self):
@@ -185,9 +149,13 @@ class TestRepairDataEncoder(BaseDataEncoder):
             valid_ds = pd.read_json(valid_file)
             test_ds = pd.read_json(test_file)
         else:
-            ds = self.read_and_preproces()
+            original_ds = self.read_data()
+            self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
+
+            ds = self.preprocess(original_ds)
             trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
-            ds = self.filter(ds)
+            ds = self.apply_processor(Processors.remove_trivial_repairs, ds)
+            self.log(f"Got {len(ds)} samples after preprocessing")
 
             self.log("Preparing main dataset")
             ds = self.prepare_inputs_and_outputs(ds)

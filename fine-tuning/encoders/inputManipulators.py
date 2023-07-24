@@ -4,6 +4,7 @@ from encoders.testRepair import TestRepairDataEncoder, Tokens
 from encoders.preprocessing.commentRemoval import line_is_comment
 from encoders.preprocessing.textDiff import get_hunk_diffs
 from encoders.preprocessing.utils import get_hunk_lines
+from diff_match_patch import diff_match_patch as dmp
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -135,11 +136,11 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
         annotated_body = []
         for type, text in diffs:
             body.append(text)
-            if type == 0:
+            if type == dmp.DIFF_EQUAL:
                 annotated_body.append(text)
-            elif type == -1:
+            elif type == dmp.DIFF_DELETE:
                 annotated_body.extend([Tokens.DELETE, text, Tokens.DELETE_END])
-            elif type == 1:
+            elif type == dmp.DIFF_INSERT:
                 annotated_body.extend([Tokens.ADD, text, Tokens.ADD_END])
         doc = " ".join(body)
         annotated_doc = " ".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
