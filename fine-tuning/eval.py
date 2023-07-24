@@ -1,19 +1,14 @@
-from pathlib import Path
 import torch.distributed as dist
 import logging
-import bleu as bleu_scoring
 from encoders import *
-import json
 import pandas as pd
 from joblib import Parallel, delayed
-import git
-from tqdm import tqdm
 from datetime import datetime
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn import CrossEntropyLoss
-import maven_parser as mvnp
-import git_api as ghapi
 from utils import create_loader, save_stats
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+from CodeBLEU.code_bleu import calc_code_bleu
 
 
 def test(gpu, args):
@@ -27,13 +22,13 @@ def test(gpu, args):
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
 
     if args.rank == 0:
-        logger.info(f"    Testing with best checkpoint on Valid set")
-    bleu_score, em, _ = eval(model, "valid", args, best_checkpoint_path)
+        logger.info(f"    Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
+    bleu_score, code_bleu_score, em, _ = eval(model, "valid", args, best_checkpoint_path)
 
     if args.rank == 0:
-        logger.info(f"    Testing with best checkpoint on Test set")
-    bleu_score, em, test_loss = eval(model, "test", args, args.output_dir)
-    args.stats["test_results"] = {"bleu": bleu_score, "em": em, "loss": test_loss}
+        logger.info(f"    Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
+    bleu_score, code_bleu_score, em, test_loss = eval(model, "test", args, args.output_dir)
+    args.stats["test_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em, "loss": test_loss}
 
     save_stats(args)
 
@@ -73,12 +68,13 @@ def eval(model, split, args, save_dir):
         local_loss.append(loss.item())
         target_ids = target_ids.to("cpu")
 
+        max_gen_lengh = args.max_seq // 2
         if args.eval_full_beam:
             outputs = model_module.generate(
                 input_ids=source_ids,
                 attention_mask=source_mask,
                 num_beams=args.beam_size,
-                max_length=args.max_seq,
+                max_length=max_gen_lengh,
                 use_cache=True,
                 early_stopping=True,
                 num_return_sequences=args.beam_size,
@@ -98,7 +94,7 @@ def eval(model, split, args, save_dir):
                     input_ids=source_ids,
                     attention_mask=source_mask,
                     num_beams=args.beam_size,
-                    max_length=args.max_seq,
+                    max_length=max_gen_lengh,
                     use_cache=True,
                     early_stopping=True,
                 )
@@ -125,46 +121,53 @@ def eval(model, split, args, save_dir):
 
         target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
         pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
-        all_bleus = compute_single_bleus(target_codes, pred_codes)
 
         ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
-        pred_df = pd.DataFrame(
-            {
-                "id": all_ids,
-                "pred": pred_codes,
-                "target": target_codes,
-                "rank": ranks * len(dataset),
-                "bleu": all_bleus,
-            }
-        )
+        pred_df = {"id": all_ids, "pred": pred_codes, "target": target_codes, "rank": ranks * len(dataset)}
+        if split == "test":
+            all_bleus, all_code_bleus = compute_single_bleus(target_codes, pred_codes)
+            pred_df["bleu"] = all_bleus
+            pred_df["code_bleu"] = all_code_bleus
+        pred_df = pd.DataFrame(pred_df)
 
-        bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
+        bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
         avg_loss = round(sum(all_loss) / len(all_loss), 3)
-        logger.info(f"    * BLEU: {bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}")
+        logger.info(
+            f"    * BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}"
+        )
         save_dir.mkdir(parents=True, exist_ok=True)
         pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
 
-        scores = [bleu_score, em, avg_loss]
+        scores = [bleu_score, code_bleu_score, em, avg_loss]
     else:
-        scores = [None, None, None]
+        scores = [None, None, None, None]
 
     dist.broadcast_object_list(scores, src=0)
-    bleu_score, em, loss = scores[0], scores[1], scores[2]
-    return bleu_score, em, loss
+    bleu_score, code_bleu_score, em, loss = scores[0], scores[1], scores[2], scores[3]
+    return bleu_score, code_bleu_score, em, loss
 
 
 def compute_single_bleus(targets, preds):
     bleus = []
+    code_bleus = []
     for target, pred in zip(targets, preds):
         if len(target) == 0:
-            bleus.append(100.0 if len(pred) == 0 else 0.0)
+            score = 100.0 if len(pred) == 0 else 0.0
+            bleus.append(score)
+            code_bleus.append(score)
             continue
         if len(pred) == 0:
             bleus.append(0.0)
+            code_bleus.append(0.0)
             continue
-        bleu = bleu_scoring._bleu([target], [pred])
+        if target == pred:
+            bleus.append(100.0)
+            code_bleus.append(100.0)
+            continue
+        bleu, code_bleu = compute_bleu_scores([target], [pred], sf=SmoothingFunction().method1)
         bleus.append(bleu)
-    return bleus
+        code_bleus.append(code_bleu)
+    return bleus, code_bleus
 
 
 def compute_scores(targets, preds, ids):
@@ -184,6 +187,21 @@ def compute_scores(targets, preds, ids):
         best_targets.append(beam_outputs.iloc[0]["target"])
 
     em = round(em_size / eval_size * 100, 2)
-    bleu_score = bleu_scoring._bleu(best_targets, best_preds)
+    bleu_score, code_bleu_score = compute_bleu_scores(best_targets, best_preds)
 
-    return bleu_score, em
+    return bleu_score, code_bleu_score, em
+
+
+def compute_bleu_scores(targets, preds, sf=None):
+    if len(targets) != len(preds):
+        raise Exception(f"Targets and preds size mismatch: {len(targets)} != {len(preds)}")
+    format_score = lambda score: round(100 * score, 2)
+    simple_tokenize = lambda text: text.strip().split()
+
+    tokenized_references = [[simple_tokenize(target)] for target in targets]
+    tokenized_hypotheses = [simple_tokenize(pred) for pred in preds]
+    bleu_score = corpus_bleu(tokenized_references, tokenized_hypotheses, smoothing_function=sf)
+
+    code_bleu_score = calc_code_bleu([targets], preds)
+
+    return format_score(bleu_score), format_score(code_bleu_score)

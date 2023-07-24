@@ -20,7 +20,7 @@ public class GitAPI {
     acquiredWorktrees.clear();
   }
 
-  public static Path createWorktree(Path repoDir, String commit) {
+  public synchronized static Path createWorktree(Path repoDir, String commit) {
     var acqCnt = acquiredWorktrees.getOrDefault(commit, new AtomicInteger(0));
     acquiredWorktrees.put(commit, acqCnt);
     acqCnt.incrementAndGet();
@@ -31,7 +31,7 @@ public class GitAPI {
     return worktreeDir;
   }
 
-  public static void removeWorktree(Path repoDir, String commit) {
+  public synchronized static void removeWorktree(Path repoDir, String commit) {
     var acqCnt = acquiredWorktrees.getOrDefault(commit, new AtomicInteger(0));
     if (acqCnt.get() > 1) {
       acqCnt.decrementAndGet();

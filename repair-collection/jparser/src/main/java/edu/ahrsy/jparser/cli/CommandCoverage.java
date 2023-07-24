@@ -34,7 +34,7 @@ public class CommandCoverage {
   public String outputPath;
 
   @Parameter(names = {"-cl", "--compliance-level"}, description = "Java version compliance level")
-  public Integer complianceLevel = 10;
+  public Integer complianceLevel = 11;
 
   private static final Gson gson = IOUtils.createGsonInstance();
   private static Path repoDir = null;
@@ -196,8 +196,9 @@ public class CommandCoverage {
           GitAPI.removeWorktree(repoDir, changedClasses.bCommit);
           GitAPI.removeWorktree(repoDir, changedClasses.aCommit);
         } catch (Exception e) {
-          System.err.printf("%nERROR in extractChanges %s-%s ERROR: %s%n", changedClasses.bCommit,
+          System.err.printf("%nException in extractChanges %s-%s%nERROR: %s%n", changedClasses.bCommit,
               changedClasses.aCommit, e.getMessage());
+          pb.stepBy(changedClasses.changedClasses.size());
         }
       });
     }

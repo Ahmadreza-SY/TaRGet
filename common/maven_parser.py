@@ -5,6 +5,8 @@ import re
 from config import Config
 import os
 from common_utils import auto_str, find_parent_pom
+from java_version_detector import JavaVersionDetector
+from pathlib import Path
 
 
 @auto_str
@@ -45,7 +47,7 @@ class TestVerdict:
 
 
 def parse_compile_error(log, test_rel_path):
-    if "COMPILATION ERROR" not in log:
+    if "COMPILATION ERROR" not in log and "Compilation failure:" not in log:
         return None
 
     matches = re.compile(f"^\[ERROR\]\s*/.+/{test_rel_path}:\[(\d+),\d+\].*$", re.MULTILINE).findall(log)
@@ -68,6 +70,15 @@ def parse_test_failure(log, test_class, test_method):
             break
 
     if len(matches) == 0:
+        regex = r"Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+).*Time elapsed.*"
+        match = re.compile(regex).search(log)
+        if match:
+            failures, errors = int(match.group(2)), int(match.group(3))
+            if failures > 0 or errors > 0:
+                return TestVerdict(TestVerdict.FAILURE, set())
+            runs, skips = int(match.group(1)), int(match.group(4))
+            if runs == 0 or skips > 0:
+                return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
         return None
 
     error_lines = set([int(m) for m in matches])
@@ -75,7 +86,7 @@ def parse_test_failure(log, test_class, test_method):
 
 
 def parse_invalid_execution(log):
-    if "COMPILATION ERROR" in log:
+    if "COMPILATION ERROR" in log or "Compilation failure:" in log:
         return TestVerdict(TestVerdict.UNRELATED_COMPILE_ERR, None)
     if "java.lang.AssertionError: Expected exception:" in log:
         return TestVerdict(TestVerdict.EXPECTED_EXCEPTION_FAILURE, None)
@@ -90,18 +101,17 @@ def parse_invalid_execution(log):
 
 
 def parse_successful_execution(log):
-    matches = re.compile(f"^.*Tests run: (\d+), Failures: \d+, Errors: \d+, Skipped: (\d+).*$", re.MULTILINE).findall(log)
-    if len(matches) == 0:
-        return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
+    matches = re.compile(
+        r"^.*Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+).*Time elapsed.*$", re.MULTILINE
+    ).findall(log)
     for match in matches:
-        runs, skips = (int(n) for n in match)
-        if runs == 0 or skips > 0:
-            return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
-    return TestVerdict(TestVerdict.SUCCESS, None)
+        runs, failures, errors, skips = (int(n) for n in match)
+        if runs == 1 and failures == 0 and errors == 0 and skips == 0:
+            return TestVerdict(TestVerdict.SUCCESS, None)
+    return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
 
 
-def run_cmd(cmd):
-    java_home = Config.get("java_home")
+def run_cmd(cmd, java_home=None):
     my_env = os.environ.copy()
     if java_home is not None:
         my_env["JAVA_HOME"] = java_home
@@ -110,26 +120,70 @@ def run_cmd(cmd):
     while True:
         proc = subprocess.Popen(shlex.split(" ".join(cmd)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env)
         try:
-            stdout, stderr = proc.communicate(timeout=30 * 60)
-            return proc.returncode, stdout.decode("utf-8")
+            stdout, stderr = proc.communicate(timeout=15 * 60)
+            return proc.returncode, stdout.decode("utf-8", errors="ignore")
         except TimeoutExpired as e:
             proc.kill()
             if retries < 1:
                 retries += 1
                 continue
-            return 124, e.stdout.decode("utf-8")
+            return 124, e.stdout.decode("utf-8", errors="ignore")
+
+
+def remove_unnecessary_plugins(pom_path):
+    if not pom_path.exists():
+        return
+    try:
+        pom = pom_path.read_text()
+    except Exception:
+        return
+    plugins = [
+        (r"org\.codehaus\.mojo", r"findbugs-maven-plugin"),
+        (r"pl\.project13\.maven", r"git-commit-id-plugin"),
+        (r"io\.github\.git-commit-id", r"git-commit-id-maven-plugin"),
+    ]
+    new_pom = pom
+    for groupId, artifactId in plugins:
+        regex = r"<plugin>\s*<groupId>{}</groupId>\s*<artifactId>{}</artifactId>.*?</plugin>".format(groupId, artifactId)
+        match = re.compile(regex, re.DOTALL).search(new_pom)
+        if match:
+            new_pom = new_pom.replace(match.group(), "")
+    if new_pom != pom:
+        pom_path.write_text(new_pom)
+
+
+MVN_SKIPS = [
+    "-Djacoco.skip",
+    "-Dcheckstyle.skip",
+    "-Dspotless.apply.skip",
+    "-Drat.skip",
+    "-Denforcer.skip",
+    "-Danimal.sniffer.skip",
+    "-Dmaven.javadoc.skip",
+    "-Dmaven.gitcommitid.skip",
+    "-Dfindbugs.skip",
+    "-Dwarbucks.skip",
+    "-Dmodernizer.skip",
+    "-Dimpsort.skip",
+    "-Dpmd.skip",
+    "-Dxjc.skip",
+    "-Dair.check.skip-all",
+    "-Dlicense.skip",
+    "-Dfindbugs.skip",
+    "-Denforcer.skip",
+    "-Dremoteresources.skip",
+]
 
 
 def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[]):
     log_file = log_path / "test.log"
-    rc_file = log_path / "returncode"
     test_path = project_path / test_rel_path
     if not test_path.exists():
         raise FileNotFoundError(f"Test file does not exist: {test_path}")
     test_class = test_path.stem
     if log_file.exists():
-        returncode = int(rc_file.read_text())
         log = log_file.read_text()
+        returncode = int(log.splitlines()[0])
     else:
         pom_path = find_parent_pom(test_path)
         if pom_path is None:
@@ -140,41 +194,29 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
             f"-pl {str(pom_path.relative_to(project_path))}",
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
+            "-DfailIfNoTests=false",
+            "-Dmaven.test.skip=false",
+            "-DskipTests=false",
             f'-Dtest="{test_class}#{test_method}"',
             "--batch-mode",
         ]
         if len(mvn_args) > 0:
             cmd.extend(mvn_args)
-        MVN_SKIPS = [
-            "-Djacoco.skip",
-            "-Dcheckstyle.skip",
-            "-Dspotless.apply.skip",
-            "-Drat.skip",
-            "-Denforcer.skip",
-            "-Danimal.sniffer.skip",
-            "-Dmaven.javadoc.skip",
-            "-Dfindbugs.skip",
-            "-Dwarbucks.skip",
-            "-Dmodernizer.skip",
-            "-Dimpsort.skip",
-            "-Dpmd.skip",
-            "-Dxjc.skip",
-            "-Dair.check.skip-all",
-        ]
         cmd.extend(MVN_SKIPS)
         m2_path = Config.get("m2_path")
         if m2_path is not None:
             cmd.append(f"-Dmaven.repo.local={m2_path}")
+        jvd = JavaVersionDetector(project_path / "pom.xml")
+        java_home = jvd.get_java_home()
+        remove_unnecessary_plugins(project_path / "pom.xml")
+        remove_unnecessary_plugins(pom_path)
         original_cwd = os.getcwd()
         os.chdir(str(project_path.absolute()))
-        returncode, log = run_cmd(cmd)
+        returncode, log = run_cmd(cmd, java_home)
         os.chdir(original_cwd)
         if save_logs:
             log_path.mkdir(parents=True, exist_ok=True)
-            rc_file.write_text(str(returncode))
-            log_file.write_text(log)
-            cmd_file = log_path / "command"
-            cmd_file.write_text(" ".join(cmd))
+            log_file.write_text("\n".join([str(returncode), " ".join(cmd), f"JAVA_HOME={java_home}", log]))
 
     if returncode == 0:
         return parse_successful_execution(log)

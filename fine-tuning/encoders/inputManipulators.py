@@ -1,5 +1,9 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
-from .testRepair import TestRepairDataEncoder, Tokens
+from joblib import Parallel, delayed
+from encoders.testRepair import TestRepairDataEncoder, Tokens
+from encoders.preprocessing.commentRemoval import line_is_comment
+from encoders.preprocessing.textDiff import get_hunk_diffs
+from encoders.preprocessing.utils import get_hunk_lines
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -28,6 +32,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         changes = self.get_covered_change_documents(row)
         changes = self.remove_duplicate_documents(changes)
 
+        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
         broken_code = self.get_broken_code(row)
         test_repr = broken_code if broken_code != "" else row["bSource"]["code"]
@@ -41,34 +46,23 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def preprocess(self, ds):
         ds = super().preprocess(ds)
-        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
+        ds["prioritized_changes"] = Parallel(n_jobs=-1)(
+            delayed(self.prioritize_changed_documents)(r) for _, r in ds.iterrows()
+        )
         return ds
 
     def create_input(self, row, covered_changes):
         test_code = row["bSource"]["code"]
-        if "sourceChanges" not in row["hunk"]:
-            test_context = " ".join([l.strip() for l in test_code.split("\n")])
-        else:
-            breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-            breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-            TEST_CONTEXT_SIZE = 10
-            backward_offset = TEST_CONTEXT_SIZE // 2
-            forward_offset = TEST_CONTEXT_SIZE // 2
-            test_lines = test_code.split("\n")
-            if breakge_start < backward_offset:
-                forward_offset += backward_offset - breakge_start
-            if breakge_end > len(test_lines) - 1 - forward_offset:
-                backward_offset += breakge_end - (len(test_lines) - 1 - forward_offset)
-
-            context_start = max(0, breakge_start - backward_offset)
-            context_end = min(len(test_lines) - 1, breakge_end + forward_offset)
-            test_context = " ".join(test_lines[context_start : (context_end + 1)])
+        breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        test_lines = test_code.split("\n")
+        test_lines.insert(breakge_start, Tokens.BREAKAGE_START)
+        test_lines.insert(breakge_end + 2, Tokens.BREAKAGE_END)
+        test_lines = [l for l in test_lines if not line_is_comment(l)]
+        test_context = " ".join(test_lines)
 
         return " ".join(
-            [Tokens.BREAKAGE, self.get_broken_code(row)]
-            + [Tokens.TEST_CONTEXT, test_context]
-            + [Tokens.COVERED_CONTEXT]
-            + [cc["annotated_doc"] for cc in covered_changes]
+            [Tokens.TEST_CONTEXT, test_context] + [Tokens.REPAIR_CONTEXT] + [cc["annotated_doc"] for cc in covered_changes]
         )
 
     def create_output(self, row):
@@ -78,11 +72,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return repaired_code
 
     def create_inputs_and_outputs(self, ds):
-        self.log("Prioritizing changed documents and creating inputs ...")
-        included_change_cnt = 0
-        all_change_cnt = 0
-        inputs = []
-        for _, r in ds.iterrows():
+        def select_changes(r):
+            self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
             pr_changes_cnt = len(r["prioritized_changes"])
             selected_changes = []
             for i in range(pr_changes_cnt):
@@ -94,28 +85,24 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
             if len(selected_changes) == 0:
                 selected_changes = [r["prioritized_changes"][0]]
-            inputs.append(self.create_input(r, selected_changes))
+            return (self.create_input(r, selected_changes), selected_changes)
 
-            included_change_cnt += len(selected_changes)
-            all_change_cnt += pr_changes_cnt
+        self.log("Prioritizing changed documents and creating inputs ...")
+        ds_selected_changes = Parallel(n_jobs=-1)(delayed(select_changes)(r) for _, r in ds.iterrows())
 
+        all_change_cnt = sum([len(r["prioritized_changes"]) for _, r in ds.iterrows()])
+        included_change_cnt = sum([len(sc[1]) for sc in ds_selected_changes])
         included_change_p = round(100 * included_change_cnt / all_change_cnt, 1)
         self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
 
-        ds["input"] = inputs
+        ds["input"] = [sc[0] for sc in ds_selected_changes]
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
         return ds
 
 
 class HunksDataEncoder(PrioritizedChangesDataEncoder):
     def create_hunk_document(self, hunk):
-        source_lines = []
-        target_lines = []
-        if "sourceChanges" in hunk:
-            source_lines = [l["line"] for l in hunk["sourceChanges"]]
-        if "targetChanges" in hunk:
-            target_lines = [l["line"] for l in hunk["targetChanges"]]
-
+        source_lines, target_lines = get_hunk_lines(hunk)
         doc = " ".join(source_lines + target_lines)
 
         if len(source_lines) > 0:
@@ -139,6 +126,25 @@ class HunksDataEncoder(PrioritizedChangesDataEncoder):
         method_docs = self.create_documents(row["coveredMethodChanges"], 0)
         class_docs = self.create_documents(row["coveredClassChanges"], 1)
         return method_docs + class_docs
+
+
+class FineGrainedHunksDataEncoder(HunksDataEncoder):
+    def create_hunk_document(self, hunk):
+        diffs = get_hunk_diffs(hunk)
+        body = []
+        annotated_body = []
+        for type, text in diffs:
+            body.append(text)
+            if type == 0:
+                annotated_body.append(text)
+            elif type == -1:
+                annotated_body.extend([Tokens.DELETE, text, Tokens.DELETE_END])
+            elif type == 1:
+                annotated_body.extend([Tokens.ADD, text, Tokens.ADD_END])
+        doc = " ".join(body)
+        annotated_doc = " ".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
+
+        return doc, annotated_doc
 
 
 BEST_INPUT_MANIPULATOR = HunksDataEncoder

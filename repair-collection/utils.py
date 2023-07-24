@@ -1,4 +1,5 @@
 import re
+import hashlib
 
 
 def save_file(content, file_path):
@@ -41,3 +42,7 @@ def hunk_to_string(hunk):
     for l in hunk.get("targetChanges", []):
         output = output + f' + {l["line"]}'
     return output.strip()
+
+
+def get_short_hash(s):
+    return hashlib.sha256(s.encode()).hexdigest()[:8]

@@ -21,7 +21,7 @@ public class CommandDiff {
   public String outputPath;
 
   @Parameter(names = {"-cl", "--compliance-level"}, description = "Java version compliance level")
-  public Integer complianceLevel = 10;
+  public Integer complianceLevel = 11;
 
   public static void cDiff(CommandDiff args) {
     var repairPatches = IOUtils.readCsv(Path.of(args.outputPath, "repair_patches.csv").toString(),

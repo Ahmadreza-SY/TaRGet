@@ -4,15 +4,23 @@ import git_api as ghapi
 from tqdm import tqdm
 import json
 import copy
-from utils import save_file, is_test_class, get_java_diffs, no_covered_changes, hunk_to_string, get_hunk_lines
+from utils import (
+    save_file,
+    is_test_class,
+    get_java_diffs,
+    no_covered_changes,
+    hunk_to_string,
+    get_hunk_lines,
+    get_short_hash,
+)
 import jparser
 import shutil
 import maven_parser as mvnp
 from config import Config
 from coverage_repository import ClassChangesRepository, MethodChangesRepository
 import multiprocessing as mp
-from trace_utils import configure_poms, parse_trace
 from trivial_detector import TrivialDetector
+from error_stats import ErrorStats
 
 
 def pool_init(_lock):
@@ -42,9 +50,12 @@ class DataCollector:
         repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
         self.find_changed_sut_classes(repair_commits)
         jparser.extract_covered_changes_info(self.output_path)
+        ghapi.cleanup_worktrees(self.repo_name)
         print()
 
         self.make_dataset(repaired_tests)
+
+        ErrorStats.report()
 
     def get_commit_changed_test_classes(self, commit_sha):
         commit = ghapi.get_commit(commit_sha, self.repo_name)
@@ -63,8 +74,21 @@ class DataCollector:
                 )
                 b_copy_path = self.output_path / "codeMining" / "testClasses" / b_commit / diff.b_path
                 a_copy_path = self.output_path / "codeMining" / "testClasses" / a_commit / diff.a_path
-                save_file(before, b_copy_path)
-                save_file(after, a_copy_path)
+                try:
+                    save_file(before, b_copy_path)
+                    save_file(after, a_copy_path)
+                except UnicodeEncodeError:
+                    lock.acquire()
+                    b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, "0")
+                    b_copy_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(str(b_commit_path / diff.b_path), str(b_copy_path))
+                    ghapi.remove_commit_code(self.repo_name, b_commit_path)
+
+                    a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
+                    a_copy_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(str(a_commit_path / diff.a_path), str(a_copy_path))
+                    ghapi.remove_commit_code(self.repo_name, a_commit_path)
+                    lock.release()
 
         return commit_changed_test_classes
 
@@ -77,7 +101,7 @@ class DataCollector:
         commits_sha = [c.hexsha for c in commits]
 
         changed_test_classes = []
-        with mp.Pool() as pool:
+        with mp.Pool(initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for commit_changed_test_classes in tqdm(
                 pool.imap_unordered(self.get_commit_changed_test_classes, commits_sha),
                 total=len(commits_sha),
@@ -89,34 +113,16 @@ class DataCollector:
         changed_test_classes = pd.DataFrame(changed_test_classes)
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
 
-    def extract_covered_lines(self, project_path, change):
+    def run_original_test(self, project_path, change):
         test_b_path = Path(change["bPath"])
-        pom_path = configure_poms(project_path, test_b_path)
-        if pom_path is None:
-            return mvnp.TestVerdict(mvnp.TestVerdict.POM_NOT_FOUND, None), None
-
         test_name = change["name"]
         b_commit = change["bCommit"]
         test_method_name = test_name.split(".")[-1].replace("()", "")
-        log_path = Path(b_commit) / test_b_path.stem / test_method_name / test_b_path.parent
+        log_path = Path(b_commit) / test_b_path.stem / test_method_name / get_short_hash(str(test_b_path.parent))
         original_log_path = self.output_path / "testExecution" / "originalExeLogs" / log_path
 
-        selogger_path = Path(Config.get("selogger_path")).absolute()
-        trace_path = (original_log_path / "trace").absolute()
-        selogger_mvn_arg = f'-DargLine="-javaagent:{selogger_path}=format=nearomni,exlocation=.m2,e=jdk,e=com/gradle,output={trace_path}"'
-
-        verdict = mvnp.compile_and_run_test(
-            project_path, test_b_path, test_method_name, original_log_path, mvn_args=[selogger_mvn_arg]
-        )
-        covered_lines = None
-        if verdict.succeeded():
-            if not (trace_path / "trace.json").exists():
-                print(f"\nNo trace.json file found! {test_name} {b_commit}")
-                return verdict, None
-
-            covered_lines = parse_trace(trace_path, project_path)
-
-        return verdict, covered_lines
+        verdict = mvnp.compile_and_run_test(project_path, test_b_path, test_method_name, original_log_path)
+        return verdict, None
 
     def run_changed_tests(self, change_group):
         changed_tests_verdicts = []
@@ -126,8 +132,10 @@ class DataCollector:
         changes = changes.reset_index(drop=True)
         b_commit = changes.iloc[0]["bCommit"]
 
+        lock.acquire()
         a_commit_path = ghapi.copy_commit_code(self.repo_name, a_commit, "0")
         b_commit_path = ghapi.copy_commit_code(self.repo_name, b_commit, a_commit)
+        lock.release()
 
         for _, change in changes.iterrows():
             test_name = change["name"]
@@ -135,7 +143,7 @@ class DataCollector:
             test_a_path = Path(change["aPath"])
             original_file = self.output_path / "codeMining" / "testClasses" / a_commit / test_a_path
             if not original_file.exists():
-                print(f"Original test file expected but not found, skipping test execution: {original_file}")
+                ErrorStats.update(ErrorStats.missing_tf, str(original_file))
                 continue
             broken_file = (
                 self.output_path
@@ -147,17 +155,20 @@ class DataCollector:
                 / test_a_path
             )
             if not broken_file.exists():
-                print(f"Broken test file expected but not found, skipping test execution: {broken_file}")
+                ErrorStats.update(ErrorStats.missing_tf, str(broken_file))
                 continue
-            log_path = Path(a_commit) / original_file.stem / test_method_name / test_a_path.parent
+            log_path = Path(a_commit) / original_file.stem / test_method_name / get_short_hash(str(test_a_path.parent))
 
-            # Running T on P to trace test coverage
-            original_verdict, covered_lines = self.extract_covered_lines(b_commit_path, change)
+            # Running T on P to check original test success (todo trace test coverage)
+            original_verdict, covered_lines = self.run_original_test(b_commit_path, change)
             if not original_verdict.succeeded():
                 changed_tests_verdicts.append(
                     {
                         "name": test_name,
+                        "aPath": change["aPath"],
+                        "bPath": change["bPath"],
                         "aCommit": a_commit,
+                        "bCommit": b_commit,
                         "original_verdict": original_verdict.to_dict(),
                     }
                 )
@@ -185,15 +196,20 @@ class DataCollector:
             changed_tests_verdicts.append(
                 {
                     "name": test_name,
+                    "aPath": change["aPath"],
+                    "bPath": change["bPath"],
                     "aCommit": a_commit,
+                    "bCommit": b_commit,
                     "verdict": before_verdict.to_dict(),
                     "broken": before_verdict.is_broken(),
                     "correctly_repaired": after_verdict.succeeded() if after_verdict is not None else None,
                 }
             )
 
+        lock.acquire()
         ghapi.remove_commit_code(self.repo_name, a_commit_path)
         ghapi.remove_commit_code(self.repo_name, b_commit_path)
+        lock.release()
 
         return changed_tests_verdicts, repaired_tests, tests_coverage
 
@@ -249,7 +265,7 @@ class DataCollector:
         repaired_tests = []
         tests_coverage = []
 
-        proc_cnt = round(mp.cpu_count() / 2) if mp.cpu_count() > 2 else 1
+        proc_cnt = round(mp.cpu_count() / 3) if mp.cpu_count() > 2 else 1
         proc_cnt = min(proc_cnt, len(change_groups))
         with mp.Pool(proc_cnt, initializer=pool_init, initargs=(mp.Lock(),)) as pool:
             for verdicts, repaired, test_coverage in tqdm(

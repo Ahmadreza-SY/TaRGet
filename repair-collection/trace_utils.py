@@ -19,6 +19,19 @@ def get_parent_class_name(cname):
         return cname
     return "$".join(cname.split("$")[:-1]) + ".java"
 
+def get_module_path(loaded_from_path):
+    loaded_from_path = loaded_from_path.replace('jar:file://', '').replace('file:', '')
+    module_path = Path(loaded_from_path)
+    if 'target' not in str(module_path):
+        return module_path
+    
+    current_path = module_path
+    while True:
+        if current_path.name == 'target':
+            return current_path.parent
+        current_path = current_path.parent
+        if current_path == current_path.parent:
+            return module_path
 
 def parse_trace(trace_path, project_path):
     project_path = project_path.absolute()
@@ -33,7 +46,7 @@ def parse_trace(trace_path, project_path):
     src_module_path = dict(
         zip(
             classes["ClassName"].apply(lambda cn: parse_class_name(cn)),
-            classes["LoadedFrom"].apply(lambda lf: Path(lf.replace("file:", "")).parent.parent),
+            classes["LoadedFrom"].apply(lambda lf: get_module_path(lf)),
         )
     )
     line_events = [event for event in trace["events"] if event["event"] == "LINE_NUMBER"]
@@ -55,9 +68,6 @@ def parse_trace(trace_path, project_path):
         if src_path is None and k_parent in covered_lines:
             src_path = next(module_path.glob(f"**/{k_parent}"), None)
         if src_path is None:
-            # ignoring auto-generated src files by Antlr
-            if "/autogen/" not in k:
-                print(f"Covered source file not found: {k} {module_path}")
             continue
         src_path = src_path.relative_to(project_path)
         final_covered_lines[str(src_path)] = v

@@ -36,7 +36,7 @@ def main():
     parser.add_argument("-e", "--epochs", required=True, type=int)
     parser.add_argument("-m", "--max_seq", required=True, type=int)
     parser.add_argument("-ebs", "--eval_batch_size", default=16, type=int)
-    parser.add_argument("-c", "--checkpoint_interval", default=3, type=int)
+    parser.add_argument("-c", "--checkpoint_interval", default=2, type=int)
     parser.add_argument("-lr", "--learning_rate", default=5e-05, type=float)
     parser.add_argument("-ls", "--label_smoothing", default=0.1, type=float)
     parser.add_argument("-ts", "--train_size", default=0.8, type=float)
@@ -88,9 +88,9 @@ def run(gpu, args):
     if args.rank == 0:
         logger.info("All processes joined!")
 
-    load_data(args)
-
     torch.cuda.set_device(gpu)
+
+    load_data(args)
 
     if not args.test_only:
         train(gpu, args)
@@ -100,7 +100,13 @@ def run(gpu, args):
 
 def load_data(args):
     data_encoder = args.data_encoder_class(args)
-    args.train_dataset, args.valid_dataset, args.test_dataset = data_encoder.load_dataset()
+    if args.rank == 0:
+        dataset_splits = list(data_encoder.load_dataset())
+    else:
+        dataset_splits = [None, None, None]
+
+    dist.broadcast_object_list(dataset_splits, src=0)
+    args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
     args.tokenizer = data_encoder.tokenizer
 
     if (args.output_dir / "stats.json").exists():

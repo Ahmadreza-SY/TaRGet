@@ -14,6 +14,7 @@ from eval import eval
 
 def train(gpu, args):
     logger = logging.getLogger(args.pname)
+    args.logger = logger
     train_loader = create_loader(args.train_dataset, args)
     train_steps = round(args.epochs * (len(args.train_dataset) / (args.batch_size * args.world_size)))
     # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
@@ -100,31 +101,14 @@ def train(gpu, args):
                 )
             )
 
-        valid_start = datetime.now()
-        valid_output_dir = args.output_dir / f"checkpoint-last"
-        # if args.rank == 0:
-        #     save_model(model, optimizer, scheduler, valid_output_dir)
+        if epoch % args.checkpoint_interval == 0:
+            valid_start = datetime.now()
+            validate(args, model, epoch, epoch_stats)
+            valid_time = datetime.now() - valid_start
+            epoch_stats["valid_duration"] = str(valid_time)
+            elapsed_time += valid_time
 
-        bleu_score, em, loss = eval(model, "valid", args, valid_output_dir)
-        if args.scoring == "em":
-            sel_score = em
-        elif args.scoring == "bleu":
-            sel_score = bleu_score
-        if sel_score > args.best_checkpoint[0]:
-            args.best_checkpoint = (sel_score, epoch)
-            if args.rank == 0:
-                logger.info(f"    # Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; EM {em}")
-                args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "bleu": bleu_score, "em": em}
-                save_model(model, optimizer, scheduler, args.output_dir / f"checkpoint-best")
-
-        valid_time = datetime.now() - valid_start
-        epoch_stats["bleu"] = bleu_score
-        epoch_stats["em"] = em
-        epoch_stats["valid_loss"] = loss
-        epoch_stats["valid_duration"] = str(valid_time)
         args.stats["training_stats"]["epochs"].append(epoch_stats)
-        elapsed_time += valid_time
-
         if (epoch - args.best_checkpoint[1]) >= args.early_stop:
             if args.rank == 0:
                 logger.info(
@@ -141,18 +125,35 @@ def train(gpu, args):
     save_stats(args)
 
 
-def save_model(model, optimizer, scheduler, output_dir):
+def validate(args, model, epoch, epoch_stats):
+    bleu_score, code_bleu_score, em, loss = eval(model, "valid", args, args.output_dir / f"checkpoint-last")
+    if args.scoring == "em":
+        sel_score = em
+    elif args.scoring == "bleu":
+        sel_score = bleu_score
+    elif args.scoring == "code_bleu":
+        sel_score = code_bleu_score
+    if sel_score > args.best_checkpoint[0]:
+        args.best_checkpoint = (sel_score, epoch)
+        if args.rank == 0:
+            args.logger.info(
+                f"    # Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM {em}"
+            )
+            args.stats["training_stats"]["best_epoch"] = {
+                "epoch": epoch,
+                "bleu": bleu_score,
+                "code_bleu": code_bleu_score,
+                "em": em,
+            }
+            save_model(model, args.output_dir / f"checkpoint-best")
+
+    epoch_stats["bleu"] = bleu_score
+    epoch_stats["code_bleu"] = code_bleu_score
+    epoch_stats["em"] = em
+    epoch_stats["valid_loss"] = loss
+
+
+def save_model(model, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     model_to_save = model.module if hasattr(model, "module") else model
-    model_to_save.config.save_pretrained(output_dir)
-    torch.save(model_to_save.state_dict(), output_dir / "pytorch_model.bin")
-    torch.save(
-        optimizer.state_dict(),
-        output_dir / "optimizer.pt",
-        _use_new_zipfile_serialization=False,
-    )
-    torch.save(
-        scheduler.state_dict(),
-        output_dir / "scheduler.pt",
-        _use_new_zipfile_serialization=False,
-    )
+    model_to_save.save_pretrained(output_dir)
