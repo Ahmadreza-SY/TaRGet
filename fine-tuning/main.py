@@ -2,7 +2,7 @@ import sys
 
 sys.path.append("../common")
 from pathlib import Path
-from transformers import PLBartForConditionalGeneration, PLBartTokenizer, RobertaTokenizer
+from transformers import PLBartForConditionalGeneration, PLBartTokenizer, RobertaTokenizer, T5ForConditionalGeneration
 import torch
 import argparse
 import torch.multiprocessing as mp
@@ -56,10 +56,15 @@ def main():
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
     args.world_size = args.gpus * args.nodes
+    ##### PLBART
     # args.model_name_or_path = "uclanlp/plbart-base"
-    args.model_name_or_path = "salesforce/codet5-base"
-    args.model_class = PLBartForConditionalGeneration
-    args.model_tokenizer_class = RobertaTokenizer
+    # args.model_class = PLBartForConditionalGeneration
+    # args.model_tokenizer_class = PLBartTokenizer
+
+    ##### CodeT5
+    # args.model_name_or_path = "salesforce/codet5-base"
+    # args.model_class = T5ForConditionalGeneration
+    # args.model_tokenizer_class = RobertaTokenizer
     try:
         args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
     except AttributeError:
