@@ -4,7 +4,10 @@ from encoders.testRepair import TestRepairDataEncoder, Tokens
 from encoders.preprocessing.commentRemoval import line_is_comment
 from encoders.preprocessing.textDiff import get_hunk_diffs
 from encoders.preprocessing.utils import get_hunk_lines
+from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
+from pathlib import Path
+import json
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -17,11 +20,11 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             unique_lines.add(change["doc"])
         return unique_changes
 
-    def get_covered_change_documents(self, row):
+    def get_changed_documents(self, row):
         pass
 
     def get_sort_key(self, changed_doc):
-        return (changed_doc["depth"], changed_doc["element"], -changed_doc["tfidf_sim"])
+        return (changed_doc["depth"], changed_doc["element"], -changed_doc["tfidf_breakage"])
 
     def get_broken_code(self, row):
         broken_code = ""
@@ -29,27 +32,34 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             broken_code = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
         return broken_code
 
-    def prioritize_changed_documents(self, row):
-        changes = self.get_covered_change_documents(row)
-        changes = self.remove_duplicate_documents(changes)
-
+    def get_tfidf_sim(self, target, changes):
         self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         vectorizer = TfidfVectorizer(tokenizer=lambda d: self.tokenizer.tokenize(d))
-        broken_code = self.get_broken_code(row)
-        test_repr = broken_code if broken_code != "" else row["bSource"]["code"]
-        vectors = vectorizer.fit_transform([test_repr] + [c["doc"] for c in changes])
+        vectors = vectorizer.fit_transform([target] + [c["doc"] for c in changes])
         dense = vectors.todense()
         cosine_sim = (dense * dense[0].T).T.tolist()[0]
-        for i, c in enumerate(changes):
-            c["tfidf_sim"] = cosine_sim[i + 1]
+        return [cosine_sim[i + 1] for i in range(len(changes))]
 
+    def prioritize_changed_documents(self, row):
+        changes = self.get_changed_documents(row)
+        changes = self.remove_duplicate_documents(changes)
+
+        tfidf_breakage = self.get_tfidf_sim(self.get_broken_code(row), changes)
+        tfidf_testsrc = self.get_tfidf_sim(row["bSource"]["code"], changes)
+        for i, c in enumerate(changes):
+            c["tfidf_breakage"] = round(tfidf_breakage[i], 1)
+            c["tfidf_testsrc"] = round(tfidf_testsrc[i], 2)
+        changes = [c for c in changes if c["tfidf_breakage"] > 0.0]
         return sorted(changes, key=lambda c: self.get_sort_key(c))
 
     def preprocess(self, ds):
         ds = super().preprocess(ds)
+        self.log("Prioritizing changes")
         ds["prioritized_changes"] = Parallel(n_jobs=-1)(
             delayed(self.prioritize_changed_documents)(r) for _, r in ds.iterrows()
         )
+        ds = ds.drop(columns=["allClassChanges", "coveredMethodChanges", "coveredClassChanges"])
+        ds = super().apply_processor(Processors.remove_empty_prioritized_changes, ds)
         return ds
 
     def create_input(self, row, covered_changes):
@@ -88,7 +98,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
                 selected_changes = [r["prioritized_changes"][0]]
             return (self.create_input(r, selected_changes), selected_changes)
 
-        self.log("Prioritizing changed documents and creating inputs ...")
+        self.log("Creating inputs and outputs")
         ds_selected_changes = Parallel(n_jobs=-1)(delayed(select_changes)(r) for _, r in ds.iterrows())
 
         all_change_cnt = sum([len(r["prioritized_changes"]) for _, r in ds.iterrows()])
@@ -123,7 +133,7 @@ class HunksDataEncoder(PrioritizedChangesDataEncoder):
                 change_docs.append({"doc": doc, "annotated_doc": annotated_doc, "depth": depth, "element": element})
         return change_docs
 
-    def get_covered_change_documents(self, row):
+    def get_changed_documents(self, row):
         method_docs = self.create_documents(row["coveredMethodChanges"], 0)
         class_docs = self.create_documents(row["coveredClassChanges"], 1)
         return method_docs + class_docs
@@ -146,6 +156,52 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
         annotated_doc = " ".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
 
         return doc, annotated_doc
+
+
+class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
+    def __init__(self, args):
+        super().__init__(args)
+        self.changes_cache = {}
+
+    def get_all_class_changes(self, project, a_commit):
+        key = f"{project}/{a_commit}"
+
+        if key not in self.changes_cache:
+            ds_path = Path(self.args.dataset_dir) / project
+            changes_path = list(ds_path.rglob("sut_class_changes.json"))
+            if len(changes_path) == 1:
+                changes = json.loads(changes_path[0].read_text())
+                for commit_changes in changes:
+                    self.changes_cache[f"{project}/{commit_changes['aCommit']}"] = commit_changes["changes"]
+
+        return self.changes_cache.get(key, [])
+
+    def read_data(self):
+        ds = super().read_data()
+        all_class_changes = []
+        for _, row in ds.iterrows():
+            changes = self.get_all_class_changes(row["project"], row["aCommit"])
+            all_class_changes.append(changes)
+        ds["allClassChanges"] = all_class_changes
+        return ds
+
+    def get_changed_documents(self, row):
+        changes = row["allClassChanges"]
+        change_docs = []
+        change_repeat = {}
+        for change in changes:
+            for hunk in change["hunks"]:
+                doc, annotated_doc = self.create_hunk_document(hunk)
+                change_docs.append({"doc": doc, "annotated_doc": annotated_doc})
+                if doc not in change_repeat:
+                    change_repeat[doc] = 0
+                change_repeat[doc] = change_repeat[doc] + 1
+        for change_doc in change_docs:
+            change_doc["repeat"] = change_repeat[change_doc["doc"]]
+        return change_docs
+
+    def get_sort_key(self, changed_doc):
+        return (-changed_doc["tfidf_breakage"], -changed_doc["repeat"], -changed_doc["tfidf_testsrc"])
 
 
 BEST_INPUT_MANIPULATOR = HunksDataEncoder

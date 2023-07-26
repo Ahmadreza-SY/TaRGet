@@ -68,6 +68,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
     def apply_processor(self, processor, ds):
         before_len = len(ds)
+        self.log(f"Applying processor {processor.__name__}")
         ds = processor(ds)
         if before_len != len(ds):
             self.log(f"Removed {before_len - len(ds)} rows by the {processor.__name__} processor")
@@ -79,7 +80,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             Processors.format_code,
             Processors.remove_whitespace_hunks,
             Processors.remove_empty_hunks,
-            Processors.remove_empty_covered_changes,
+            Processors.remove_empty_changes,
             Processors.remove_no_source_changes,
         ]
         for processor in processors:

@@ -5,6 +5,7 @@ from encoders.preprocessing.commentRemoval import (
 from encoders.preprocessing.codeFormatter import format_hunk, format_covered_changes, format_source
 from encoders.preprocessing.textDiff import get_hunk_diffs
 from diff_match_patch import diff_match_patch as dmp
+from joblib import Parallel, delayed
 
 
 class Processors:
@@ -18,8 +19,13 @@ class Processors:
     @staticmethod
     def format_code(ds):
         ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
-        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: format_covered_changes(c))
-        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: format_covered_changes(m))
+        ds["allClassChanges"] = Parallel(n_jobs=-1)(delayed(format_covered_changes)(c) for c in ds["allClassChanges"])
+        ds["coveredClassChanges"] = Parallel(n_jobs=-1)(
+            delayed(format_covered_changes)(c) for c in ds["coveredClassChanges"]
+        )
+        ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(
+            delayed(format_covered_changes)(c) for c in ds["coveredMethodChanges"]
+        )
         ds["aSource"] = ds["aSource"].apply(lambda s: format_source(s))
         ds["bSource"] = ds["bSource"].apply(lambda s: format_source(s))
         return ds
@@ -38,8 +44,13 @@ class Processors:
             covered_changes = [c for c in covered_changes if len(c["hunks"]) > 0]
             return covered_changes
 
-        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: _remove_whitespace_hunks(c))
-        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: _remove_whitespace_hunks(m))
+        ds["allClassChanges"] = Parallel(n_jobs=-1)(delayed(_remove_whitespace_hunks)(c) for c in ds["allClassChanges"])
+        ds["coveredClassChanges"] = Parallel(n_jobs=-1)(
+            delayed(_remove_whitespace_hunks)(c) for c in ds["coveredClassChanges"]
+        )
+        ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(
+            delayed(_remove_whitespace_hunks)(c) for c in ds["coveredMethodChanges"]
+        )
         return ds
 
     @staticmethod
@@ -50,14 +61,18 @@ class Processors:
             covered_changes = [c for c in covered_changes if len(c["hunks"]) > 0]
             return covered_changes
 
-        ds["coveredClassChanges"] = ds["coveredClassChanges"].apply(lambda c: _remove_empty_hunks(c))
-        ds["coveredMethodChanges"] = ds["coveredMethodChanges"].apply(lambda m: _remove_empty_hunks(m))
+        ds["allClassChanges"] = Parallel(n_jobs=-1)(delayed(_remove_empty_hunks)(c) for c in ds["allClassChanges"])
+        ds["coveredClassChanges"] = Parallel(n_jobs=-1)(delayed(_remove_empty_hunks)(c) for c in ds["coveredClassChanges"])
+        ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(delayed(_remove_empty_hunks)(c) for c in ds["coveredMethodChanges"])
         return ds
 
     @staticmethod
-    def remove_empty_covered_changes(ds):
+    def remove_empty_changes(ds):
         ds["cov_is_empty"] = ds.apply(
-            lambda r: len(r["coveredClassChanges"]) == 0 and len(r["coveredMethodChanges"]) == 0, axis=1
+            lambda r: len(r["coveredClassChanges"]) == 0
+            and len(r["allClassChanges"]) == 0
+            and len(r["coveredMethodChanges"]) == 0,
+            axis=1,
         )
         ds = ds[~ds["cov_is_empty"]].reset_index(drop=True).drop(columns=["cov_is_empty"])
         return ds
@@ -71,4 +86,9 @@ class Processors:
     @staticmethod
     def remove_trivial_repairs(ds):
         ds = ds[ds["trivial"].isna()].reset_index(drop=True)
+        return ds
+
+    @staticmethod
+    def remove_empty_prioritized_changes(ds):
+        ds = ds[ds["prioritized_changes"].map(len) > 0].reset_index(drop=True)
         return ds
