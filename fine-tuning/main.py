@@ -16,7 +16,7 @@ from eval import test
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
-    datefmt="%m-%d-%Y %H:%M:%S",
+    datefmt="%Y-%m-%d %H:%M:%S",
     level=logging.INFO,
 )
 
@@ -65,6 +65,8 @@ def main():
         print(f"Invalid data encoder '{args.data_encoder}'")
         sys.exit()
 
+    load_data(args)
+
     mp.spawn(run, nprocs=args.gpus, args=(args,))
 
     logger.info("All jobs done!")
@@ -89,8 +91,6 @@ def run(gpu, args):
 
     torch.cuda.set_device(gpu)
 
-    load_data(args)
-
     if not args.test_only:
         train(gpu, args)
 
@@ -99,15 +99,9 @@ def run(gpu, args):
 
 def load_data(args):
     data_encoder = args.data_encoder_class(args)
-    if args.rank == 0:
-        dataset_splits = list(data_encoder.load_dataset())
-    else:
-        dataset_splits = [None, None, None]
-
-    dist.broadcast_object_list(dataset_splits, src=0)
+    dataset_splits = list(data_encoder.load_dataset())
     args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
     args.tokenizer = data_encoder.tokenizer
-
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
             args.stats = json.load(f)
