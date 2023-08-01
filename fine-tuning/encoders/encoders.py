@@ -24,7 +24,7 @@ class BaseDataEncoder:
     def log(self, msg):
         self.logger.info(msg)
 
-    def tokenize(self, dataset, return_tensors):
+    def tokenize(self, dataset, return_tensors, truncation=False):
         padding = False
         max_length = None
         if return_tensors is not None:
@@ -33,7 +33,7 @@ class BaseDataEncoder:
         
         self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         model_inputs = self.tokenizer(
-            dataset["input"].values.tolist(), return_tensors=return_tensors, padding=padding, max_length=max_length
+            dataset["input"].values.tolist(), return_tensors=return_tensors, padding=padding, max_length=max_length, truncation=truncation
         )
         model_labels = self.tokenizer(
             text_target=dataset["output"].values.tolist(),
@@ -63,8 +63,8 @@ class BaseDataEncoder:
 
         return validsize_ind
 
-    def create_tensor_ds(self, dataset):
-        inputs = self.tokenize(dataset, "pt")
+    def create_tensor_ds(self, dataset, truncation=False):
+        inputs = self.tokenize(dataset, "pt", truncation=truncation)
         return TensorDataset(inputs["input_ids"], inputs["attention_mask"], inputs["labels"], dataset["ID"].values)
 
     def load_dataset(self):

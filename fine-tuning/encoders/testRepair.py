@@ -8,6 +8,7 @@ from encoders.preprocessing.commentRemoval import (
     remove_hunk_comments,
     hunk_is_empty,
 )
+import re
 
 
 class Tokens:
@@ -216,3 +217,30 @@ class TestRepairDataEncoder(BaseDataEncoder):
         self.log(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / ds_len, 1)} %)")
 
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
+
+    def load_and_update_test_set(self, ids=[], new_inputs=[]):
+        self.log("Loading test repair datasets ...")
+
+        ds_output_dir = self.args.output_dir / "splits"
+        test_file = ds_output_dir / "test.json"
+
+        if len(ids) < 1 or len(ids) != len(new_inputs):
+            return None
+
+        if test_file.exists():
+            test_ds = pd.read_json(test_file)
+
+        # Not sure how to deal with yet
+        # if self.args.sub_sample:
+        #     ratio = self.args.sample_ratio
+        #     self.log(f"Subsampling with ration {ratio}")
+        #     test_ds = test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+
+        new_test_df = []
+        for i in range(len(ids)):
+            for _, row in test_ds[test_ds['ID'] == ids[i]].iterrows():
+                row['input'] = re.sub('(<breakage>).*(?:<\/breakage>)', f'<breakage>  {new_inputs[i]}  </breakage>', row['input'])
+                new_test_df.append(row)
+
+        new_test_df = pd.DataFrame(new_test_df)
+        return self.create_tensor_ds(new_test_df, truncation=True)

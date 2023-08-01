@@ -51,6 +51,9 @@ def main():
     parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
     parser.set_defaults(eval_full_beam=False)
 
+    parser.add_argument("-mpr", "--multi_predict_rounds", default=1, type=int)
+    parser.add_argument("-sri", "--subsequent_round_inputs", default=10, type=int)
+
     logger = logging.getLogger("MAIN")
 
     args = parser.parse_args()
@@ -106,6 +109,7 @@ def load_data(args):
 
     dist.broadcast_object_list(dataset_splits, src=0)
     args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
+    args.data_encoder_instance = data_encoder
     args.tokenizer = data_encoder.tokenizer
 
     if (args.output_dir / "stats.json").exists():
