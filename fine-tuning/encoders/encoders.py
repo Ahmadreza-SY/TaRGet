@@ -18,7 +18,7 @@ class TensorDataset(Dataset):
 class BaseDataEncoder:
     def __init__(self, args):
         self.args = args
-        self.logger = logging.getLogger(args.pname)
+        self.logger = logging.getLogger("MAIN")
         self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
 
     def log(self, msg):
@@ -30,7 +30,7 @@ class BaseDataEncoder:
         if return_tensors is not None:
             padding = "max_length"
             max_length = self.args.max_seq
-        
+
         self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         model_inputs = self.tokenizer(
             dataset["input"].values.tolist(), return_tensors=return_tensors, padding=padding, max_length=max_length, truncation=truncation

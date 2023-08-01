@@ -364,7 +364,6 @@ class DataCollector:
             self.remove_common_hunks(_repair)
             if no_covered_changes(_repair):
                 zero_cov_cnt += 1
-                continue
 
             _repair["aCommitTime"] = ghapi.get_commit_time(_repair["aCommit"], self.repo_name)
             _repair["ID"] = f"{self.repo_name}:{i}"
@@ -386,7 +385,7 @@ class DataCollector:
                 dataset[repair_key] = _repair
 
         zero_cov_per = round(100 * zero_cov_cnt / len(repaired_tests), 1)
-        print(f"Removed {zero_cov_per}% ({zero_cov_cnt} / {len(repaired_tests)}) repairs due to zero coverage.")
+        print(f"Found {zero_cov_per}% ({zero_cov_cnt} / {len(repaired_tests)}) repairs with zero changed coverage.")
         dup_per = round(100 * dup_cnt / len(repaired_tests), 1)
         print(f"Removed {dup_per}% ({dup_cnt} / {len(repaired_tests)}) duplicate repairs.")
 
