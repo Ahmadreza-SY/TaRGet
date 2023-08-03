@@ -5,7 +5,7 @@ import inspect
 from encoders.encoders import BaseDataEncoder
 import re
 from encoders.preprocessing.processors import Processors
-
+from encoders.preprocessing.codeFormatter import add_padding_to_chars
 
 class Tokens:
     BREAKAGE_START = "<breakage>"
@@ -186,17 +186,17 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
 
-    def load_and_update_test_set(self, ids=[], new_inputs=[]):
-        self.log("Loading test repair datasets ...")
+    def load_and_update_split(self, split, ids=[], new_inputs=[]):
+        self.log(f'Generating new {split} dataset ...')
 
         ds_output_dir = self.args.output_dir / "splits"
-        test_file = ds_output_dir / "test.json"
+        file = ds_output_dir / f'{split}.json'
 
         if len(ids) < 1 or len(ids) != len(new_inputs):
             return None
 
-        if test_file.exists():
-            test_ds = pd.read_json(test_file)
+        if file.exists():
+            base_df = pd.read_json(file)
 
         # Not sure how to deal with yet
         # if self.args.sub_sample:
@@ -204,11 +204,16 @@ class TestRepairDataEncoder(BaseDataEncoder):
         #     self.log(f"Subsampling with ration {ratio}")
         #     test_ds = test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
 
-        new_test_df = []
-        for i in range(len(ids)):
-            for _, row in test_ds[test_ds['ID'] == ids[i]].iterrows():
-                row['input'] = re.sub('(<breakage>).*(?:<\/breakage>)', f'<breakage>  {new_inputs[i]}  </breakage>', row['input'])
-                new_test_df.append(row)
+        new_inputs = [add_padding_to_chars(i) for i in new_inputs]
 
-        new_test_df = pd.DataFrame(new_test_df)
+        new_df = []
+        for i in range(len(ids)):
+            for _, row in base_df[base_df['ID'] == ids[i]].iterrows():
+
+                row['input'] = (f'{row["input"][:row["input"].index("<breakage>") + len("<breakage>")]} {new_inputs[i]} '
+                                f'{row["input"][row["input"].index("</breakage>"):]}')
+
+                new_df.append(row)
+
+        new_test_df = pd.DataFrame(new_df)
         return self.create_tensor_ds(new_test_df, truncation=True)

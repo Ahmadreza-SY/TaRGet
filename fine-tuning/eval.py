@@ -33,13 +33,14 @@ def test(gpu, args):
 
     save_stats(args)
 
-def get_predictions(loader, model_module, args, beam_size=None):
+def get_predictions(loader, model_module, args, beam_size=None, limit=None):
     local_preds = []
     local_targets = []
     local_ids = []
     local_loss = []
 
     beam_size = beam_size if beam_size is not None else args.beam_size
+    limit = limit if limit is not None else args.beam_size
 
     for _, data in enumerate(loader, 1):
         source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
@@ -68,7 +69,7 @@ def get_predictions(loader, model_module, args, beam_size=None):
             curr_batch_size = target_ids.shape[0]
             outputs = outputs.view(curr_batch_size, beam_size, -1).cpu().tolist()
             for i, beam_preds in enumerate(outputs):
-                for pred in beam_preds:
+                for pred in beam_preds[:limit]:
                     local_preds.append(pred)
                     local_targets.append(target_ids[i])
                     local_ids.append(data_ids[i])
@@ -113,10 +114,7 @@ def eval(model, split, args, save_dir):
     global_ids = [None for _ in range(args.world_size)]
     global_loss = [None for _ in range(args.world_size)]
 
-    if split == "test" and args.multi_predict_rounds > 1:
-        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args, beam_size=preds_per_round + args.subsequent_round_inputs)
-    else:
-        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args)
+    local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args)
 
     dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
@@ -136,67 +134,63 @@ def eval(model, split, args, save_dir):
         target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
         pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
 
-        ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
-        if split != "test":
-            pred_df = {"id": all_ids, "pred": pred_codes, "target": target_codes, "rank": ranks * len(dataset)}
-        else:
-            pred_df = {
+        pred_df = {
+            "id": [],
+            "pred": [],
+            "target": [],
+            "rank": [],
+            "round": []
+        }
+
+        for curr_id in set(all_ids):
+            indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][:preds_per_round]
+            pred_df["id"].extend([all_ids[i] for i in indicies])
+            pred_df["pred"].extend([pred_codes[i] for i in indicies])
+            pred_df["target"].extend([target_codes[i] for i in indicies])
+            pred_df["rank"].extend([i for i in range(1, preds_per_round + 1)])
+            pred_df["round"].extend([1] * preds_per_round)
+
+        for iteration in range(args.multi_predict_rounds - 1):
+            new_inputs = {
                 "id": [],
-                "pred": [],
-                "target": [],
-                "rank": [],
-                "round": []
+                "code": []
             }
+
+            for curr_id in set(all_ids):
+                new_input_indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][preds_per_round:preds_per_round + args.subsequent_round_inputs]
+                new_inputs["id"].extend([all_ids[i] for i in new_input_indicies])
+                new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
+
+            loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True)
+
+            global_preds = [None for _ in range(args.world_size)]
+            global_targets = [None for _ in range(args.world_size)]
+            global_ids = [None for _ in range(args.world_size)]
+            global_loss = [None for _ in range(args.world_size)]
+
+            local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args, limit=subsequent_round_preds)
+
+            dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
+            dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
+            dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
+            dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
+
+            all_targets = [item for sub in global_targets for item in sub]
+            all_preds = [item for sub in global_preds for item in sub]
+            all_ids = [item for sub in global_ids for item in sub]
+            all_loss = [item for sub in global_loss for item in sub]
+            logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
+
+            target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
+            pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
 
             for curr_id in set(all_ids):
                 indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][:preds_per_round]
                 pred_df["id"].extend([all_ids[i] for i in indicies])
                 pred_df["pred"].extend([pred_codes[i] for i in indicies])
                 pred_df["target"].extend([target_codes[i] for i in indicies])
-                pred_df["rank"].extend([i for i in range(1, preds_per_round + 1)])
-                pred_df["round"].extend([1] * preds_per_round)
-
-            for iteration in range(args.multi_predict_rounds - 1):
-                new_inputs = {
-                    "id": [],
-                    "code": []
-                }
-
-                for curr_id in set(all_ids):
-                    new_input_indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][preds_per_round:preds_per_round + args.subsequent_round_inputs]
-                    new_inputs["id"].extend([all_ids[i] for i in new_input_indicies])
-                    new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
-
-                loader = create_loader(args.data_encoder_instance.load_and_update_test_set(new_inputs["id"], new_inputs["code"]), args, True)
-
-                global_preds = [None for _ in range(args.world_size)]
-                global_targets = [None for _ in range(args.world_size)]
-                global_ids = [None for _ in range(args.world_size)]
-                global_loss = [None for _ in range(args.world_size)]
-
-                local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args, beam_size=subsequent_round_preds)
-
-                dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
-                dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
-                dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
-                dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
-
-                all_targets = [item for sub in global_targets for item in sub]
-                all_preds = [item for sub in global_preds for item in sub]
-                all_ids = [item for sub in global_ids for item in sub]
-                all_loss = [item for sub in global_loss for item in sub]
-                logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
-
-                target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
-                pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
-
-                for curr_id in set(all_ids):
-                    indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][:preds_per_round]
-                    pred_df["id"].extend([all_ids[i] for i in indicies])
-                    pred_df["pred"].extend([pred_codes[i] for i in indicies])
-                    pred_df["target"].extend([target_codes[i] for i in indicies])
-                    pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
-                    pred_df["round"].extend([iteration + 2] * len(indicies))
+                pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
+                pred_df["round"].extend([iteration + 2] * len(indicies))
 
             all_bleus, all_code_bleus = compute_single_bleus(pred_df['target'], pred_df['pred'])
             pred_df["bleu"] = all_bleus
