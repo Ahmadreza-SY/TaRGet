@@ -51,17 +51,14 @@ def eval(model, split, args, save_dir):
     global_targets = [None for _ in range(args.world_size)]
     global_ids = [None for _ in range(args.world_size)]
     global_loss = [None for _ in range(args.world_size)]
-    global_counters = [None for _ in range(args.world_size)]
 
     local_preds = []
     local_targets = []
     local_ids = []
     local_loss = []
-    local_counter = 0
 
-    if args.rank == 0:
-        logger.info("Starting inference")
-        steps = [0]
+    logger.info("Starting inference")
+    steps = [0]
 
     for _, data in enumerate(loader, 1):
         source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
@@ -111,15 +108,12 @@ def eval(model, split, args, save_dir):
             local_targets.extend(target_ids)
             local_ids.extend(data_ids)
 
-        local_counter += len(source_ids)
-        dist.gather_object(local_counter, global_counters if args.rank == 0 else None, dst=0)
-        if args.rank == 0:
-            progress = round(100 * sum(global_counters) / len(dataset))
-            step = (progress // 20) * 20
-            if step not in steps:
-                steps.append(step)
-                logger.info(f"Inference progress {progress}%")
-
+        progress = round(100 * len(set(local_ids)) / len(dataset))
+        step = (progress // 20) * 20
+        if step not in steps:
+            steps.append(step)
+            logger.info(f"Inference progress {progress}%")
+    
     if args.rank == 0:
         logger.info(f"Inference finished")
         logger.info(f"Gathering predictions")
