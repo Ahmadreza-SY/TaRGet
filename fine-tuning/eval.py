@@ -16,6 +16,7 @@ def test(gpu, args):
         logger.info("***** Testing *****")
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path)
+    args.tokenizer = args.model_tokenizer_class.from_pretrained(best_checkpoint_path)
     model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)

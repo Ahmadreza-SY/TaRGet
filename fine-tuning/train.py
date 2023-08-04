@@ -145,7 +145,7 @@ def validate(args, model, epoch, epoch_stats):
                 "code_bleu": code_bleu_score,
                 "em": em,
             }
-            save_model(model, args.output_dir / f"checkpoint-best")
+            save_model(model, args.tokenizer, args.output_dir / f"checkpoint-best")
 
     epoch_stats["bleu"] = bleu_score
     epoch_stats["code_bleu"] = code_bleu_score
@@ -153,7 +153,8 @@ def validate(args, model, epoch, epoch_stats):
     epoch_stats["valid_loss"] = loss
 
 
-def save_model(model, output_dir):
+def save_model(model, tokenizer, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     model_to_save = model.module if hasattr(model, "module") else model
     model_to_save.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)

@@ -34,10 +34,9 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return broken_code
 
     def get_tfidf_sim(self, target, changes):
-        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False)
-        tokenized_target = self.tokenizer.tokenize(target)
-        vectors = vectorizer.fit_transform([tokenized_target] + [c["tokenized_annotated_doc"] for c in changes])
+        tokenized_docs = self.tokenizer([target] + [c["annotated_doc"] for c in changes])["input_ids"]
+        vectors = vectorizer.fit_transform(tokenized_docs)
         dense = vectors.todense()
         cosine_sim = (dense * dense[0].T).T.tolist()[0]
         return [cosine_sim[i + 1] for i in range(len(changes))]
@@ -56,10 +55,9 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def preprocess(self, ds):
         ds = super().preprocess(ds)
+        self.create_tokenizer()
         self.log("Prioritizing changes")
-        ds["prioritized_changes"] = Parallel(n_jobs=-1)(
-            delayed(self.prioritize_changed_documents)(r) for _, r in list(ds.iterrows())
-        )
+        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
         ds = ds.drop(columns=["allClassChanges", "coveredMethodChanges", "coveredClassChanges", "astActions"])
         ds = super().apply_processor(Processors.remove_empty_prioritized_changes, ds)
         return ds
@@ -86,14 +84,13 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_inputs_and_outputs(self, ds):
         def select_changes(r):
-            self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
             pr_changes_cnt = len(r["prioritized_changes"])
             selected_changes = []
-            test_context_size = len(self.tokenizer.encode(self.create_input(r, [])))
             for i in range(pr_changes_cnt):
                 new_selected_changes = selected_changes + [r["prioritized_changes"][i]]
-                repair_context_size = sum([len(c["tokenized_annotated_doc"]) for c in new_selected_changes])
-                if test_context_size + repair_context_size <= self.args.max_seq:
+                new_inp = self.create_input(r, new_selected_changes)
+                e_new_inp = self.tokenizer.encode(new_inp)
+                if len(e_new_inp) <= self.args.max_seq:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:
@@ -101,7 +98,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             return (self.create_input(r, selected_changes), selected_changes)
 
         self.log("Creating inputs and outputs")
-        ds_selected_changes = Parallel(n_jobs=-1)(delayed(select_changes)(r) for _, r in list(ds.iterrows()))
+        ds_selected_changes = [select_changes(r) for _, r in list(ds.iterrows())]
 
         all_change_cnt = sum([len(r["prioritized_changes"]) for _, r in ds.iterrows()])
         included_change_cnt = sum([len(sc[1]) for sc in ds_selected_changes])
@@ -110,7 +107,6 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
-        ds["prioritized_changes"].apply(lambda p: [c.pop("tokenized_annotated_doc") for c in p])
         return ds
 
 
@@ -186,15 +182,13 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         return ds
 
     def get_changed_documents(self, row):
-        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         changes = row["allClassChanges"]
         change_docs = []
         change_repeat = {}
         for change in changes:
             for hunk in change["hunks"]:
                 doc, annotated_doc = self.create_hunk_document(hunk)
-                tokenized_doc = self.tokenizer.tokenize(annotated_doc)
-                change_docs.append({"doc": doc, "annotated_doc": annotated_doc, "tokenized_annotated_doc": tokenized_doc})
+                change_docs.append({"doc": doc, "annotated_doc": annotated_doc})
                 if doc not in change_repeat:
                     change_repeat[doc] = 0
                 change_repeat[doc] = change_repeat[doc] + 1

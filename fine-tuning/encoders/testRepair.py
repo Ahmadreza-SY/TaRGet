@@ -20,10 +20,11 @@ class Tokens:
 
 
 class TestRepairDataEncoder(BaseDataEncoder):
-    def __init__(self, args):
-        super().__init__(args)
+    def create_tokenizer(self):
+        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
         new_tokens = [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
         self.tokenizer.add_tokens(new_tokens, special_tokens=True)
+        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
 
     def shuffle(self, ds):
         return ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
@@ -149,6 +150,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             train_ds = pd.read_json(train_file)
             valid_ds = pd.read_json(valid_file)
             test_ds = pd.read_json(test_file)
+            self.create_tokenizer()
         else:
             original_ds = self.read_data()
             self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
