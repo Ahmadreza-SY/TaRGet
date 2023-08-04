@@ -29,7 +29,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
     def shuffle(self, ds):
         return ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
 
-    def split_by_tag(self, ds):
+    def split_by_commit(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
         for project in projects:
@@ -45,7 +45,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
 
             # stratified test and valid split
-            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("aCommit")]
+            p_eval_list = [np.split(g, [int(0.25 * len(g))]) for _, g in p_eval_ds.groupby("aCommit")]
             p_valid_ds = pd.concat([t[0] for t in p_eval_list])
             p_test_ds = pd.concat([t[1] for t in p_eval_list])
 
@@ -163,7 +163,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             self.log("Preparing main dataset")
             ds = self.prepare_inputs_and_outputs(ds)
 
-            train_ds, valid_ds, test_ds = self.split_by_tag(ds)
+            train_ds, valid_ds, test_ds = self.split_by_commit(ds)
 
             train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
 
