@@ -111,7 +111,7 @@ def parse_successful_execution(log):
     return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
 
 
-def run_cmd(cmd, java_home=None):
+def run_cmd(cmd, timeout, java_home=None):
     my_env = os.environ.copy()
     if java_home is not None:
         my_env["JAVA_HOME"] = java_home
@@ -120,7 +120,7 @@ def run_cmd(cmd, java_home=None):
     while True:
         proc = subprocess.Popen(shlex.split(" ".join(cmd)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env)
         try:
-            stdout, stderr = proc.communicate(timeout=15 * 60)
+            stdout, stderr = proc.communicate(timeout=timeout)
             return proc.returncode, stdout.decode("utf-8", errors="ignore")
         except TimeoutExpired as e:
             proc.kill()
@@ -175,7 +175,7 @@ MVN_SKIPS = [
 ]
 
 
-def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[]):
+def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[], timeout=15 * 60):
     log_file = log_path / "test.log"
     test_path = project_path / test_rel_path
     if not test_path.exists():
@@ -212,7 +212,7 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         remove_unnecessary_plugins(pom_path)
         original_cwd = os.getcwd()
         os.chdir(str(project_path.absolute()))
-        returncode, log = run_cmd(cmd, java_home)
+        returncode, log = run_cmd(cmd, timeout=timeout, java_home=java_home)
         os.chdir(original_cwd)
         if save_logs:
             log_path.mkdir(parents=True, exist_ok=True)

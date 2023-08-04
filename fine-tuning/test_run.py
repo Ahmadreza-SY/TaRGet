@@ -136,7 +136,7 @@ def apply_and_run_preds(preds, test, args):
     worktree_path = gapi.copy_commit_code(repo_name, a_commit, test["ID"].split(":")[-1])
 
     verdicts = []
-    for _, pred in tqdm(
+    for i, pred in tqdm(
         preds.iterrows(),
         total=len(preds),
         ascii=True,
@@ -160,8 +160,9 @@ def apply_and_run_preds(preds, test, args):
                 / test_rel_path.parent
                 / str(pred["rank"])
             )
+            timeout = 15 * 60 if i > 2 else 240 * 60
             verdict = mvnp.compile_and_run_test(
-                worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs
+                worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
             )
             verdict = verdict.to_dict()
             with open(test_file, "w") as orig_file:
