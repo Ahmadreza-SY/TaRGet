@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from test_run import analyze_verdicts
 import shutil
+from tqdm import tqdm
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -33,11 +34,10 @@ def main():
     test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
     if len(verdict_paths) != len(test_ds):
         logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}! Aborting ...")
-        return
 
     logger.info(f"Analyzing {len(verdict_paths)} verdict files")
     verdicts = []
-    for verdict_file in verdict_paths:
+    for verdict_file in tqdm(verdict_paths):
         verdicts.extend(json.loads(verdict_file.read_text()))
     verdicts = [(v["verdict"], v["id"], v["rank"]) for v in verdicts]
     verdict_df, plausible_rate = analyze_verdicts(verdicts)
