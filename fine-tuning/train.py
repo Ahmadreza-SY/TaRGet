@@ -39,8 +39,8 @@ def train(gpu, args):
 
     if args.rank == 0:
         logger.info("***** Training *****")
-        logger.info(f"    Train data: {len(args.train_dataset)}")
-        logger.info(f"    Epochs: {args.epochs}")
+        logger.info(f"Train data: {len(args.train_dataset)}")
+        logger.info(f"Epochs: {args.epochs}")
 
     start = datetime.now()
     global_step = 0
@@ -91,7 +91,7 @@ def train(gpu, args):
             epoch_stats["loss"] = avg_loss
             epoch_stats["train_duration"] = str(train_time)
             logger.info(
-                "    Step [{}/{}] ; Epoch [{}/{}] ; Train loss {} ; Elapsed time {}".format(
+                "Step [{}/{}] ; Epoch [{}/{}] ; Train loss {} ; Elapsed time {}".format(
                     global_step,
                     train_steps,
                     epoch,
@@ -137,7 +137,7 @@ def validate(args, model, epoch, epoch_stats):
         args.best_checkpoint = (sel_score, epoch)
         if args.rank == 0:
             args.logger.info(
-                f"    # Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM {em}"
+                f"# Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM {em}"
             )
             args.stats["training_stats"]["best_epoch"] = {
                 "epoch": epoch,

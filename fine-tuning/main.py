@@ -2,7 +2,7 @@ import sys
 
 sys.path.append("../common")
 from pathlib import Path
-from transformers import PLBartForConditionalGeneration, PLBartTokenizer, RobertaTokenizer, T5ForConditionalGeneration
+from transformers import PLBartForConditionalGeneration, PLBartTokenizer, RobertaTokenizerFast, T5ForConditionalGeneration
 import torch
 import argparse
 import torch.multiprocessing as mp
@@ -59,10 +59,11 @@ def main():
     args.output_dir = Path(args.output_dir)
     args.world_size = args.gpus * args.nodes
 
+    os.environ["TOKENIZERS_PARALLELISM"] = "true"
     if args.model == "codet5":
         args.model_name_or_path = "salesforce/codet5-base"
         args.model_class = T5ForConditionalGeneration
-        args.model_tokenizer_class = RobertaTokenizer
+        args.model_tokenizer_class = RobertaTokenizerFast
     else:
         args.model_name_or_path = "uclanlp/plbart-base"
         args.model_class = PLBartForConditionalGeneration

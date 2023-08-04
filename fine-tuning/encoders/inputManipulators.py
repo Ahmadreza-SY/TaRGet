@@ -186,6 +186,7 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         return ds
 
     def get_changed_documents(self, row):
+        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         changes = row["allClassChanges"]
         change_docs = []
         change_repeat = {}
