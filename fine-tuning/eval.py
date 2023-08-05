@@ -2,7 +2,6 @@ import torch.distributed as dist
 import logging
 from encoders import *
 import pandas as pd
-from joblib import Parallel, delayed
 from datetime import datetime
 from torch.nn.parallel import DistributedDataParallel
 from torch.nn import CrossEntropyLoss
@@ -17,16 +16,17 @@ def test(gpu, args):
         logger.info("***** Testing *****")
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path)
+    args.tokenizer = args.model_tokenizer_class.from_pretrained(best_checkpoint_path)
     model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(gpu)
     model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
 
     if args.rank == 0:
-        logger.info(f"    Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
+        logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
     bleu_score, code_bleu_score, em, _ = eval(model, "valid", args, best_checkpoint_path)
 
     if args.rank == 0:
-        logger.info(f"    Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
+        logger.info(f"Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
     bleu_score, code_bleu_score, em, test_loss = eval(model, "test", args, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em, "loss": test_loss}
 
@@ -56,6 +56,9 @@ def eval(model, split, args, save_dir):
     local_targets = []
     local_ids = []
     local_loss = []
+
+    logger.info("Starting inference")
+    steps = [0]
 
     for _, data in enumerate(loader, 1):
         source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
@@ -105,6 +108,16 @@ def eval(model, split, args, save_dir):
             local_targets.extend(target_ids)
             local_ids.extend(data_ids)
 
+        progress = round(100 * len(set(local_ids)) / len(dataset))
+        step = (progress // 20) * 20
+        if step not in steps:
+            steps.append(step)
+            logger.info(f"Inference progress {progress}%")
+    
+    if args.rank == 0:
+        logger.info(f"Inference finished")
+        logger.info(f"Gathering predictions")
+
     dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
     dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
@@ -114,13 +127,11 @@ def eval(model, split, args, save_dir):
         all_preds = [item for sub in global_preds for item in sub]
         all_ids = [item for sub in global_ids for item in sub]
         all_loss = [item for sub in global_loss for item in sub]
-        logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
+        logger.info(f"Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
 
-        def decode(tokens):
-            return tokenizer.decode(tokens, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
-        target_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_targets)
-        pred_codes = Parallel(n_jobs=-1)(delayed(decode)(tokens) for tokens in all_preds)
+        target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        logger.info(f"Decoding finished")
 
         ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
         pred_df = {"id": all_ids, "pred": pred_codes, "target": target_codes, "rank": ranks * len(dataset)}
@@ -133,7 +144,7 @@ def eval(model, split, args, save_dir):
         bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
         avg_loss = round(sum(all_loss) / len(all_loss), 3)
         logger.info(
-            f"    * BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}"
+            f"* BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}"
         )
         save_dir.mkdir(parents=True, exist_ok=True)
         pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)

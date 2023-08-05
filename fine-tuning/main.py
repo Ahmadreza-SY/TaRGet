@@ -2,7 +2,7 @@ import sys
 
 sys.path.append("../common")
 from pathlib import Path
-from transformers import PLBartForConditionalGeneration, PLBartTokenizer
+from transformers import PLBartForConditionalGeneration, PLBartTokenizer, RobertaTokenizerFast, T5ForConditionalGeneration
 import torch
 import argparse
 import torch.multiprocessing as mp
@@ -34,7 +34,7 @@ def main():
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
-    parser.add_argument("-m", "--max_seq", required=True, type=int)
+    parser.add_argument("-ms", "--max_seq", required=True, type=int)
     parser.add_argument("-ebs", "--eval_batch_size", default=16, type=int)
     parser.add_argument("-c", "--checkpoint_interval", default=2, type=int)
     parser.add_argument("-lr", "--learning_rate", default=5e-05, type=float)
@@ -51,14 +51,25 @@ def main():
     parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
     parser.set_defaults(eval_full_beam=False)
 
+    parser.add_argument("-m", "--model", default="plbart", type=str, choices=["plbart", "codet5"])
+
     logger = logging.getLogger("MAIN")
 
     args = parser.parse_args()
     args.output_dir = Path(args.output_dir)
     args.world_size = args.gpus * args.nodes
-    args.model_name_or_path = "uclanlp/plbart-base"
-    args.model_class = PLBartForConditionalGeneration
-    args.model_tokenizer_class = PLBartTokenizer
+
+    os.environ["TOKENIZERS_PARALLELISM"] = "true"
+    if args.model == "codet5":
+        args.model_name_or_path = "salesforce/codet5-base"
+        args.model_class = T5ForConditionalGeneration
+        args.model_tokenizer_class = RobertaTokenizerFast
+    else:
+        args.model_name_or_path = "uclanlp/plbart-base"
+        args.model_class = PLBartForConditionalGeneration
+        args.model_tokenizer_class = PLBartTokenizer
+
+
     try:
         args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
     except AttributeError:

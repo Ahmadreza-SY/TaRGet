@@ -20,15 +20,16 @@ class Tokens:
 
 
 class TestRepairDataEncoder(BaseDataEncoder):
-    def __init__(self, args):
-        super().__init__(args)
+    def create_tokenizer(self):
+        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
         new_tokens = [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
         self.tokenizer.add_tokens(new_tokens, special_tokens=True)
+        self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
 
     def shuffle(self, ds):
         return ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
 
-    def split_by_tag(self, ds):
+    def split_by_commit(self, ds):
         projects = ds["project"].unique().tolist()
         train_ds_list, valid_ds_list, test_ds_list = [], [], []
         for project in projects:
@@ -44,7 +45,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             p_train_ds, p_eval_ds = np.split(project_ds, [train_split_i])
 
             # stratified test and valid split
-            p_eval_list = [np.split(g, [int(0.5 * len(g))]) for _, g in p_eval_ds.groupby("aCommit")]
+            p_eval_list = [np.split(g, [int(0.25 * len(g))]) for _, g in p_eval_ds.groupby("aCommit")]
             p_valid_ds = pd.concat([t[0] for t in p_eval_list])
             p_test_ds = pd.concat([t[1] for t in p_eval_list])
 
@@ -149,6 +150,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             train_ds = pd.read_json(train_file)
             valid_ds = pd.read_json(valid_file)
             test_ds = pd.read_json(test_file)
+            self.create_tokenizer()
         else:
             original_ds = self.read_data()
             self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
@@ -161,7 +163,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
             self.log("Preparing main dataset")
             ds = self.prepare_inputs_and_outputs(ds)
 
-            train_ds, valid_ds, test_ds = self.split_by_tag(ds)
+            train_ds, valid_ds, test_ds = self.split_by_commit(ds)
 
             train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
 
