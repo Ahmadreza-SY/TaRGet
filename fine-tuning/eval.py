@@ -57,7 +57,7 @@ def eval(model, split, args, save_dir):
     local_ids = []
     local_loss = []
 
-    logger.info("Starting inference")
+    logger.debug("Starting inference")
     steps = [0]
 
     for _, data in enumerate(loader, 1):
@@ -112,11 +112,11 @@ def eval(model, split, args, save_dir):
         step = (progress // 20) * 20
         if step not in steps:
             steps.append(step)
-            logger.info(f"Inference progress {progress}%")
+            logger.debug(f"Inference progress {progress}%")
     
     if args.rank == 0:
-        logger.info(f"Inference finished")
-        logger.info(f"Gathering predictions")
+        logger.debug(f"Inference finished")
+        logger.debug(f"Gathering predictions")
 
     dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
     dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
@@ -127,11 +127,11 @@ def eval(model, split, args, save_dir):
         all_preds = [item for sub in global_preds for item in sub]
         all_ids = [item for sub in global_ids for item in sub]
         all_loss = [item for sub in global_loss for item in sub]
-        logger.info(f"Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
+        logger.debug(f"Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
 
         target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        logger.info(f"Decoding finished")
+        logger.debug(f"Decoding finished")
 
         ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
         pred_df = {"id": all_ids, "pred": pred_codes, "target": target_codes, "rank": ranks * len(dataset)}
