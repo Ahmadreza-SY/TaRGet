@@ -33,7 +33,7 @@ def test(gpu, args):
 
     save_stats(args)
 
-def get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args,
+def get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, dataset,
                     beam_size=None, limit=None):
     logger = logging.getLogger(args.pname)
     local_preds = []
@@ -134,7 +134,7 @@ def eval(model, split, args, save_dir):
     global_ids = [None for _ in range(args.world_size)]
     global_loss = [None for _ in range(args.world_size)]
 
-    get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args)
+    get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, dataset)
 
     if args.rank == 0:
         all_targets = [item for sub in global_targets for item in sub]
@@ -182,7 +182,7 @@ def eval(model, split, args, save_dir):
         global_ids = [None for _ in range(args.world_size)]
         global_loss = [None for _ in range(args.world_size)]
 
-        get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, limit=subsequent_round_preds)
+        get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, dataset, limit=subsequent_round_preds)
 
         if args.rank == 0:
             all_targets = [item for sub in global_targets for item in sub]
