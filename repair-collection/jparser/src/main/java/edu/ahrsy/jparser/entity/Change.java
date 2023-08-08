@@ -4,11 +4,7 @@ import com.github.difflib.DiffUtils;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Patch;
 import edu.ahrsy.jparser.spoon.Spoon;
-import spoon.reflect.code.CtComment;
-import spoon.reflect.declaration.CtExecutable;
 import spoon.reflect.declaration.CtNamedElement;
-import spoon.reflect.visitor.filter.TypeFilter;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
