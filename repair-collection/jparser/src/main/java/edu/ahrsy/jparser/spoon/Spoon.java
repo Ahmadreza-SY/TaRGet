@@ -1,7 +1,6 @@
 package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.TestElements;
-import gumtree.spoon.AstComparator;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.SpoonModelBuilder;

@@ -6,8 +6,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import spoon.reflect.declaration.CtExecutable;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 

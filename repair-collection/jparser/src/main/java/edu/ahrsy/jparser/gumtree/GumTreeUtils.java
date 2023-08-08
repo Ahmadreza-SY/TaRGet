@@ -1,7 +1,6 @@
 package edu.ahrsy.jparser.gumtree;
 
 import com.github.gumtreediff.tree.Tree;
-import edu.ahrsy.jparser.cli.CommandDiff;
 import edu.ahrsy.jparser.spoon.Spoon;
 import gumtree.spoon.AstComparator;
 import spoon.reflect.declaration.CtElement;
