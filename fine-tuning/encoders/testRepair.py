@@ -4,6 +4,7 @@ from pathlib import Path
 import inspect
 from encoders.encoders import BaseDataEncoder
 from encoders.preprocessing.processors import Processors
+import sys
 
 
 class Tokens:
@@ -135,6 +136,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
         if len(ds_list) == 0:
             raise Exception(f"No datasets found in {ds_path}")
         ds = pd.concat(ds_list)
+        ds["allClassChanges"] = [[] for _ in range(len(ds))]
         return ds
 
     def load_dataset(self):
@@ -159,6 +161,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
             trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
             ds = self.apply_processor(Processors.remove_trivial_repairs, ds)
             self.log(f"Got {len(ds)} samples after preprocessing")
+            if len(ds) == 0:
+                self.log(f"Aborting ...")
+                sys.exit()
 
             self.log("Preparing main dataset")
             ds = self.prepare_inputs_and_outputs(ds)
