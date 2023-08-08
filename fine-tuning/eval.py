@@ -33,7 +33,8 @@ def test(gpu, args):
 
     save_stats(args)
 
-def get_predictions(loader, model_module, args, beam_size=None, limit=None):
+def get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args,
+                    beam_size=None, limit=None):
     local_preds = []
     local_targets = []
     local_ids = []
@@ -90,6 +91,11 @@ def get_predictions(loader, model_module, args, beam_size=None, limit=None):
             local_targets.extend(target_ids)
             local_ids.extend(data_ids)
 
+    dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
+    dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
+    dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
+    dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
+
     return local_preds, local_targets, local_ids, local_loss
 
 def eval(model, split, args, save_dir):
@@ -114,12 +120,7 @@ def eval(model, split, args, save_dir):
     global_ids = [None for _ in range(args.world_size)]
     global_loss = [None for _ in range(args.world_size)]
 
-    local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args)
-
-    dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
+    get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args)
 
     if args.rank == 0:
         all_targets = [item for sub in global_targets for item in sub]
@@ -150,7 +151,8 @@ def eval(model, split, args, save_dir):
             pred_df["rank"].extend([i for i in range(1, preds_per_round + 1)])
             pred_df["round"].extend([1] * preds_per_round)
 
-        for iteration in range(args.multi_predict_rounds - 1):
+    for iteration in range(args.multi_predict_rounds - 1):
+        if args.rank == 0:
             new_inputs = {
                 "id": [],
                 "code": []
@@ -161,20 +163,16 @@ def eval(model, split, args, save_dir):
                 new_inputs["id"].extend([all_ids[i] for i in new_input_indicies])
                 new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
 
-            loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True)
+        loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True)
 
-            global_preds = [None for _ in range(args.world_size)]
-            global_targets = [None for _ in range(args.world_size)]
-            global_ids = [None for _ in range(args.world_size)]
-            global_loss = [None for _ in range(args.world_size)]
+        global_preds = [None for _ in range(args.world_size)]
+        global_targets = [None for _ in range(args.world_size)]
+        global_ids = [None for _ in range(args.world_size)]
+        global_loss = [None for _ in range(args.world_size)]
 
-            local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args, limit=subsequent_round_preds)
+        get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, limit=subsequent_round_preds)
 
-            dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
-            dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
-            dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
-            dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
-
+        if args.rank == 0:
             all_targets = [item for sub in global_targets for item in sub]
             all_preds = [item for sub in global_preds for item in sub]
             all_ids = [item for sub in global_ids for item in sub]
@@ -192,9 +190,11 @@ def eval(model, split, args, save_dir):
                 pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
                 pred_df["round"].extend([iteration + 2] * len(indicies))
 
-            all_bleus, all_code_bleus = compute_single_bleus(pred_df['target'], pred_df['pred'])
-            pred_df["bleu"] = all_bleus
-            pred_df["code_bleu"] = all_code_bleus
+    if args.rank == 0:
+        all_bleus, all_code_bleus = compute_single_bleus(pred_df['target'], pred_df['pred'])
+        pred_df["bleu"] = all_bleus
+        pred_df["code_bleu"] = all_code_bleus
+
         pred_df = pd.DataFrame(pred_df)
 
         bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
