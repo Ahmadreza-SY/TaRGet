@@ -77,11 +77,12 @@ def main():
     logger.info(f"Starting to execute {len(pred_df)} candidate repair patches - test ID {selected_test['ID']}")
     results = apply_and_run_preds(pred_df, selected_test, args)
 
-    logger.info(f"Execution finished!")
     verdict_df, _ = analyze_verdicts(results)
-    verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
-    verdicts_file.parent.mkdir(exist_ok=True, parents=True)
-    verdict_df.to_json(verdicts_file, orient="records", indent=2)
+    if len(verdict_df) > 0:
+        verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
+        verdicts_file.parent.mkdir(exist_ok=True, parents=True)
+        verdict_df.to_json(verdicts_file, orient="records", indent=2)
+        logger.info(f"Execution finished!")
 
 
 def analyze_verdicts(verdicts):
