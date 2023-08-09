@@ -28,6 +28,11 @@ def main():
 
     verdicts_dir = args.output_path / "test_verdicts"
     verdict_paths = list(verdicts_dir.glob("*.json"))
+    before_len = len(verdict_paths)
+    verdict_paths = [p for p in verdict_paths if p.stat().st_size != 0]
+    empty_files = before_len - len(verdict_paths)
+    if empty_files > 0:
+        logger.info(f"Found {empty_files} empty verdict files. Excluding them...")
     if len(verdict_paths) == 0:
         logger.info("No verdict files found! Aborting ...")
         return
