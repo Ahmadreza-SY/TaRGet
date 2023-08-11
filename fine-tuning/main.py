@@ -78,6 +78,8 @@ def main():
 
     load_data(args)
 
+    logger.info(f"Arguments:\n {args}")
+    logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
     mp.spawn(run, nprocs=args.gpus, args=(args,))
 
     logger.info("All jobs done!")
@@ -89,9 +91,6 @@ def run(gpu, args):
     args.gpu = gpu
     args.pname = f"{args.node_rank}-{args.rank}"
     logger = logging.getLogger(args.pname)
-    if args.rank == 0:
-        logger.info(f"Arguments:\n {args}")
-        logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
     # Wait unitl all processes join
     logger.info(f"Joining process group ...")
     dist.init_process_group(backend="nccl", init_method="env://", world_size=args.world_size, rank=args.rank)

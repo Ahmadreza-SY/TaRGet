@@ -50,3 +50,18 @@ def get_hunk_diffs(hunk):
     source = " ".join(source_lines)
     target = " ".join(target_lines)
     return get_word_diffs(source, target)
+
+
+def _remove_whitespace_hunks(sut_changes):
+    for c in sut_changes:
+        hunks = []
+        for h in c["hunks"]:
+            diffs = get_hunk_diffs(h)
+            change_cnt = sum(
+                [1 for type, _ in diffs if type in [diff_match_patch.DIFF_INSERT, diff_match_patch.DIFF_DELETE]]
+            )
+            if change_cnt > 0:
+                hunks.append(h)
+        c["hunks"] = hunks
+    sut_changes = [c for c in sut_changes if len(c["hunks"]) > 0]
+    return sut_changes

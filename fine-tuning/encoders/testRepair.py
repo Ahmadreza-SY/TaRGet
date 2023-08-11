@@ -141,6 +141,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
     def load_dataset(self):
         self.log("Loading test repair datasets ...")
+        self.create_tokenizer()
 
         ds_output_dir = self.args.output_dir / "splits"
         train_file = ds_output_dir / "train.json"
@@ -152,7 +153,6 @@ class TestRepairDataEncoder(BaseDataEncoder):
             train_ds = pd.read_json(train_file)
             valid_ds = pd.read_json(valid_file)
             test_ds = pd.read_json(test_file)
-            self.create_tokenizer()
         else:
             original_ds = self.read_data()
             self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
