@@ -43,7 +43,7 @@ def get_predictions(loader, model_module, global_loss, args, dataset,
     local_loss = []
 
     beam_size = beam_size if beam_size is not None else args.beam_size
-    limit = limit if limit is not None else args.beam_size
+    limit = limit if limit is not None else beam_size
 
     logger.debug("Starting inference")
     steps = [0]
@@ -112,9 +112,7 @@ def get_predictions(loader, model_module, global_loss, args, dataset,
 
 def eval(model, split, args, save_dir):
     preds_per_round = math.ceil(args.beam_size / args.multi_predict_rounds)
-    preds_per_round_per_gpu = math.ceil(preds_per_round / torch.cuda.device_count())
     subsequent_round_preds = math.ceil(preds_per_round / args.subsequent_round_inputs) + 1
-
 
     logger = logging.getLogger(args.pname)
     if split == "valid":
@@ -167,9 +165,9 @@ def eval(model, split, args, save_dir):
             new_inputs["id"].extend([local_ids[i] for i in new_input_indicies])
             new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
 
-        loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True)
+        loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True, seq=True)
 
-        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset, limit=subsequent_round_preds)
+        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset, beam_size=subsequent_round_preds)
 
         all_loss = [item for sub in global_loss for item in sub]
 
@@ -177,7 +175,7 @@ def eval(model, split, args, save_dir):
         pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
         for curr_id in set(local_ids):
-            indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round_per_gpu]
+            indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round]
             pred_df["id"].extend([local_ids[i] for i in indicies])
             pred_df["pred"].extend([pred_codes[i] for i in indicies])
             pred_df["target"].extend([target_codes[i] for i in indicies])

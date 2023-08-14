@@ -4,9 +4,9 @@ from DES import DistributedEvalSampler
 import json
 
 
-def create_loader(dataset, args, eval_mode=False):
+def create_loader(dataset, args, eval_mode=False, seq=False):
     if eval_mode:
-        if args.world_size == 1:
+        if args.world_size == 1 or seq:
             sampler = SequentialSampler(dataset)
         else:
             sampler = DistributedEvalSampler(dataset, num_replicas=args.world_size, rank=args.rank)
