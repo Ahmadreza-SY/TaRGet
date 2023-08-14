@@ -1,3 +1,4 @@
+import torch.cuda
 import torch.distributed as dist
 import logging
 from encoders import *
@@ -33,7 +34,7 @@ def test(gpu, args):
 
     save_stats(args)
 
-def get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, dataset,
+def get_predictions(loader, model_module, global_loss, args, dataset,
                     beam_size=None, limit=None):
     logger = logging.getLogger(args.pname)
     local_preds = []
@@ -105,16 +106,16 @@ def get_predictions(loader, model_module, global_preds, global_targets, global_i
         logger.debug(f"Inference finished")
         logger.debug(f"Gathering predictions")
 
-    dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
     dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
 
     return local_preds, local_targets, local_ids, local_loss
 
 def eval(model, split, args, save_dir):
-    preds_per_round = math.ceil(args.beam_size / (args.multi_predict_rounds))
+    preds_per_round = math.ceil(args.beam_size / args.multi_predict_rounds)
+    preds_per_round_per_gpu = math.ceil(preds_per_round / torch.cuda.device_count())
     subsequent_round_preds = math.ceil(preds_per_round / args.subsequent_round_inputs) + 1
+    subsequent_round_preds_per_gpu = math.ceil(subsequent_round_preds / torch.cuda.device_count())
+
 
     logger = logging.getLogger(args.pname)
     if split == "valid":
@@ -129,93 +130,95 @@ def eval(model, split, args, save_dir):
     model_module = model.module if hasattr(model, "module") else model
     loader = create_loader(dataset, args, True)
 
-    global_preds = [None for _ in range(args.world_size)]
-    global_targets = [None for _ in range(args.world_size)]
-    global_ids = [None for _ in range(args.world_size)]
     global_loss = [None for _ in range(args.world_size)]
 
-    get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, dataset)
+    local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset)
 
-    if args.rank == 0:
-        all_targets = [item for sub in global_targets for item in sub]
-        all_preds = [item for sub in global_preds for item in sub]
-        all_ids = [item for sub in global_ids for item in sub]
-        all_loss = [item for sub in global_loss for item in sub]
-        logger.debug(f"Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
+    all_loss = [item for sub in global_loss for item in sub]
 
-        target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        logger.debug(f"Decoding finished")
+    target_codes = tokenizer.batch_decode(local_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    logger.debug(f"Decoding finished")
 
-        pred_df = {
-            "id": [],
-            "pred": [],
-            "target": [],
-            "rank": [],
-            "round": []
-        }
 
-        for curr_id in set(all_ids):
-            indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][:preds_per_round]
-            pred_df["id"].extend([all_ids[i] for i in indicies])
-            pred_df["pred"].extend([pred_codes[i] for i in indicies])
-            pred_df["target"].extend([target_codes[i] for i in indicies])
-            pred_df["rank"].extend([i for i in range(1, preds_per_round + 1)])
-            pred_df["round"].extend([1] * preds_per_round)
+    pred_df = {
+        "id": [],
+        "pred": [],
+        "target": [],
+        "rank": [],
+        "round": []
+    }
+
+    for curr_id in set(local_ids):
+        indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round]
+        pred_df["id"].extend([local_ids[i] for i in indicies])
+        pred_df["pred"].extend([pred_codes[i] for i in indicies])
+        pred_df["target"].extend([target_codes[i] for i in indicies])
+        pred_df["rank"].extend([i for i in range(1, preds_per_round + 1)])
+        pred_df["round"].extend([1] * preds_per_round)
 
     for iteration in range(args.multi_predict_rounds - 1):
-        if args.rank == 0:
-            new_inputs = {
-                "id": [],
-                "code": []
-            }
+        new_inputs = {
+            "id": [],
+            "code": []
+        }
 
-            for curr_id in set(all_ids):
-                new_input_indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][preds_per_round:preds_per_round + args.subsequent_round_inputs]
-                new_inputs["id"].extend([all_ids[i] for i in new_input_indicies])
-                new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
+        for curr_id in set(local_ids):
+            new_input_indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][preds_per_round:preds_per_round + args.subsequent_round_inputs]
+            new_inputs["id"].extend([local_ids[i] for i in new_input_indicies])
+            new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
 
         loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True)
 
-        global_preds = [None for _ in range(args.world_size)]
-        global_targets = [None for _ in range(args.world_size)]
-        global_ids = [None for _ in range(args.world_size)]
-        global_loss = [None for _ in range(args.world_size)]
+        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset, limit=subsequent_round_preds_per_gpu)
 
-        get_predictions(loader, model_module, global_preds, global_targets, global_ids, global_loss, args, dataset, limit=subsequent_round_preds)
+        all_loss = [item for sub in global_loss for item in sub]
+
+        target_codes = tokenizer.batch_decode(local_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
         if args.rank == 0:
-            all_targets = [item for sub in global_targets for item in sub]
-            all_preds = [item for sub in global_preds for item in sub]
-            all_ids = [item for sub in global_ids for item in sub]
-            all_loss = [item for sub in global_loss for item in sub]
-            logger.debug(f"    Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
-
-            target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-            pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
-            for curr_id in set(all_ids):
-                indicies = [i for i in range(len(all_ids)) if all_ids[i] == curr_id][:preds_per_round]
-                pred_df["id"].extend([all_ids[i] for i in indicies])
+            for curr_id in set(local_ids):
+                indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round_per_gpu]
+                pred_df["id"].extend([local_ids[i] for i in indicies])
                 pred_df["pred"].extend([pred_codes[i] for i in indicies])
                 pred_df["target"].extend([target_codes[i] for i in indicies])
                 pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
                 pred_df["round"].extend([iteration + 2] * len(indicies))
 
+    final_pred_df = {
+        "id": [None for _ in range(args.world_size)],
+        "pred": [None for _ in range(args.world_size)],
+        "target": [None for _ in range(args.world_size)],
+        "rank": [None for _ in range(args.world_size)],
+        "round": [None for _ in range(args.world_size)]
+    }
+    dist.gather_object(pred_df["id"], final_pred_df["id"] if args.rank == 0 else None, dst=0)
+    dist.gather_object(pred_df["pred"], final_pred_df["pred"] if args.rank == 0 else None, dst=0)
+    dist.gather_object(pred_df["target"], final_pred_df["target"] if args.rank == 0 else None, dst=0)
+    dist.gather_object(pred_df["rank"], final_pred_df["rank"] if args.rank == 0 else None, dst=0)
+    dist.gather_object(pred_df["round"], final_pred_df["round"] if args.rank == 0 else None, dst=0)
+
     if args.rank == 0:
-        all_bleus, all_code_bleus = compute_single_bleus(pred_df['target'], pred_df['pred'])
-        pred_df["bleu"] = all_bleus
-        pred_df["code_bleu"] = all_code_bleus
+        final_pred_df["id"] = [item for sub in final_pred_df["id"] for item in sub]
+        final_pred_df["pred"] = [item for sub in final_pred_df["pred"] for item in sub]
+        final_pred_df["target"] = [item for sub in final_pred_df["target"] for item in sub]
+        final_pred_df["rank"] = [item for sub in final_pred_df["rank"] for item in sub]
+        final_pred_df["round"] = [item for sub in final_pred_df["round"] for item in sub]
 
-        pred_df = pd.DataFrame(pred_df)
+        all_bleus, all_code_bleus = compute_single_bleus(final_pred_df['target'], final_pred_df['pred'])
+        final_pred_df["bleu"] = all_bleus
+        final_pred_df["code_bleu"] = all_code_bleus
 
-        bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
+        final_pred_df = pd.DataFrame(final_pred_df)
+
+        bleu_score, code_bleu_score, em = compute_scores(final_pred_df["target"], final_pred_df["pred"], final_pred_df["id"])
         avg_loss = round(sum(all_loss) / len(all_loss), 3)
         logger.info(
             f"* BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}"
         )
         save_dir.mkdir(parents=True, exist_ok=True)
-        pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
+        final_pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
 
         scores = [bleu_score, code_bleu_score, em, avg_loss]
     else:
