@@ -114,7 +114,6 @@ def eval(model, split, args, save_dir):
     preds_per_round = math.ceil(args.beam_size / args.multi_predict_rounds)
     preds_per_round_per_gpu = math.ceil(preds_per_round / torch.cuda.device_count())
     subsequent_round_preds = math.ceil(preds_per_round / args.subsequent_round_inputs) + 1
-    subsequent_round_preds_per_gpu = math.ceil(subsequent_round_preds / torch.cuda.device_count())
 
 
     logger = logging.getLogger(args.pname)
@@ -170,21 +169,20 @@ def eval(model, split, args, save_dir):
 
         loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True)
 
-        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset, limit=subsequent_round_preds_per_gpu)
+        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset, limit=subsequent_round_preds)
 
         all_loss = [item for sub in global_loss for item in sub]
 
         target_codes = tokenizer.batch_decode(local_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
-        if args.rank == 0:
-            for curr_id in set(local_ids):
-                indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round_per_gpu]
-                pred_df["id"].extend([local_ids[i] for i in indicies])
-                pred_df["pred"].extend([pred_codes[i] for i in indicies])
-                pred_df["target"].extend([target_codes[i] for i in indicies])
-                pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
-                pred_df["round"].extend([iteration + 2] * len(indicies))
+        for curr_id in set(local_ids):
+            indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round_per_gpu]
+            pred_df["id"].extend([local_ids[i] for i in indicies])
+            pred_df["pred"].extend([pred_codes[i] for i in indicies])
+            pred_df["target"].extend([target_codes[i] for i in indicies])
+            pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
+            pred_df["round"].extend([iteration + 2] * len(indicies))
 
     final_pred_df = {
         "id": [None for _ in range(args.world_size)],
