@@ -35,7 +35,7 @@ def test(gpu, args):
     save_stats(args)
 
 
-def get_predictions(loader, model_module, global_loss, args, dataset, beam_size=None, limit=None):
+def get_predictions(loader, model_module, args, dataset, beam_size=None, limit=None):
     logger = logging.getLogger(args.pname)
     local_preds = []
     local_targets = []
@@ -106,8 +106,6 @@ def get_predictions(loader, model_module, global_loss, args, dataset, beam_size=
         logger.debug(f"Inference finished")
         logger.debug(f"Gathering predictions")
 
-    dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
-
     return local_preds, local_targets, local_ids, local_loss
 
 
@@ -128,11 +126,7 @@ def eval(model, split, args, save_dir):
     model_module = model.module if hasattr(model, "module") else model
     loader = create_loader(dataset, args, True)
 
-    global_loss = [None for _ in range(args.world_size)]
-
-    local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset)
-
-    all_loss = [item for sub in global_loss for item in sub]
+    local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, args, dataset)
 
     target_codes = tokenizer.batch_decode(local_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
     pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
@@ -161,11 +155,9 @@ def eval(model, split, args, save_dir):
         updated_dataset = args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"])
         loader = create_loader(updated_dataset, args, True, seq=True)
 
-        local_preds, local_targets, local_ids, local_loss = get_predictions(
-            loader, model_module, global_loss, args, dataset, beam_size=subsequent_round_preds
+        local_preds, local_targets, local_ids, _ = get_predictions(
+            loader, model_module, args, dataset, beam_size=subsequent_round_preds
         )
-
-        all_loss = [item for sub in global_loss for item in sub]
 
         target_codes = tokenizer.batch_decode(local_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
@@ -185,11 +177,13 @@ def eval(model, split, args, save_dir):
         "rank": [None for _ in range(args.world_size)],
         "round": [None for _ in range(args.world_size)],
     }
+    global_loss = [None for _ in range(args.world_size)]
     dist.gather_object(pred_df["id"], final_pred_df["id"] if args.rank == 0 else None, dst=0)
     dist.gather_object(pred_df["pred"], final_pred_df["pred"] if args.rank == 0 else None, dst=0)
     dist.gather_object(pred_df["target"], final_pred_df["target"] if args.rank == 0 else None, dst=0)
     dist.gather_object(pred_df["rank"], final_pred_df["rank"] if args.rank == 0 else None, dst=0)
     dist.gather_object(pred_df["round"], final_pred_df["round"] if args.rank == 0 else None, dst=0)
+    dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
 
     if args.rank == 0:
         final_pred_df["id"] = [item for sub in final_pred_df["id"] for item in sub]
@@ -197,6 +191,7 @@ def eval(model, split, args, save_dir):
         final_pred_df["target"] = [item for sub in final_pred_df["target"] for item in sub]
         final_pred_df["rank"] = [item for sub in final_pred_df["rank"] for item in sub]
         final_pred_df["round"] = [item for sub in final_pred_df["round"] for item in sub]
+        all_loss = [item for sub in global_loss for item in sub]
 
         all_bleus, all_code_bleus = compute_single_bleus(final_pred_df["target"], final_pred_df["pred"])
         final_pred_df["bleu"] = all_bleus
