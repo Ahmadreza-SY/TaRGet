@@ -34,8 +34,8 @@ def test(gpu, args):
 
     save_stats(args)
 
-def get_predictions(loader, model_module, global_loss, args, dataset,
-                    beam_size=None, limit=None):
+
+def get_predictions(loader, model_module, global_loss, args, dataset, beam_size=None, limit=None):
     logger = logging.getLogger(args.pname)
     local_preds = []
     local_targets = []
@@ -101,7 +101,7 @@ def get_predictions(loader, model_module, global_loss, args, dataset,
         if step not in steps:
             steps.append(step)
             logger.debug(f"Inference progress {progress}%")
-    
+
     if args.rank == 0:
         logger.debug(f"Inference finished")
         logger.debug(f"Gathering predictions")
@@ -109,6 +109,7 @@ def get_predictions(loader, model_module, global_loss, args, dataset,
     dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
 
     return local_preds, local_targets, local_ids, local_loss
+
 
 def eval(model, split, args, save_dir):
     preds_per_round = math.ceil(args.beam_size / args.multi_predict_rounds)
@@ -137,14 +138,7 @@ def eval(model, split, args, save_dir):
     pred_codes = tokenizer.batch_decode(local_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
     logger.debug(f"Decoding finished")
 
-
-    pred_df = {
-        "id": [],
-        "pred": [],
-        "target": [],
-        "rank": [],
-        "round": []
-    }
+    pred_df = {"id": [], "pred": [], "target": [], "rank": [], "round": []}
 
     for curr_id in set(local_ids):
         indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][:preds_per_round]
@@ -155,19 +149,21 @@ def eval(model, split, args, save_dir):
         pred_df["round"].extend([1] * preds_per_round)
 
     for iteration in range(args.multi_predict_rounds - 1):
-        new_inputs = {
-            "id": [],
-            "code": []
-        }
+        new_inputs = {"id": [], "code": []}
 
         for curr_id in set(local_ids):
-            new_input_indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][preds_per_round:preds_per_round + args.subsequent_round_inputs]
+            new_input_indicies = [i for i in range(len(local_ids)) if local_ids[i] == curr_id][
+                preds_per_round : preds_per_round + args.subsequent_round_inputs
+            ]
             new_inputs["id"].extend([local_ids[i] for i in new_input_indicies])
             new_inputs["code"].extend([pred_codes[i] for i in new_input_indicies])
 
-        loader = create_loader(args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"]), args, True, seq=True)
+        updated_dataset = args.data_encoder_instance.load_and_update_split(split, new_inputs["id"], new_inputs["code"])
+        loader = create_loader(updated_dataset, args, True, seq=True)
 
-        local_preds, local_targets, local_ids, local_loss = get_predictions(loader, model_module, global_loss, args, dataset, beam_size=subsequent_round_preds)
+        local_preds, local_targets, local_ids, local_loss = get_predictions(
+            loader, model_module, global_loss, args, dataset, beam_size=subsequent_round_preds
+        )
 
         all_loss = [item for sub in global_loss for item in sub]
 
@@ -187,7 +183,7 @@ def eval(model, split, args, save_dir):
         "pred": [None for _ in range(args.world_size)],
         "target": [None for _ in range(args.world_size)],
         "rank": [None for _ in range(args.world_size)],
-        "round": [None for _ in range(args.world_size)]
+        "round": [None for _ in range(args.world_size)],
     }
     dist.gather_object(pred_df["id"], final_pred_df["id"] if args.rank == 0 else None, dst=0)
     dist.gather_object(pred_df["pred"], final_pred_df["pred"] if args.rank == 0 else None, dst=0)
@@ -202,7 +198,7 @@ def eval(model, split, args, save_dir):
         final_pred_df["rank"] = [item for sub in final_pred_df["rank"] for item in sub]
         final_pred_df["round"] = [item for sub in final_pred_df["round"] for item in sub]
 
-        all_bleus, all_code_bleus = compute_single_bleus(final_pred_df['target'], final_pred_df['pred'])
+        all_bleus, all_code_bleus = compute_single_bleus(final_pred_df["target"], final_pred_df["pred"])
         final_pred_df["bleu"] = all_bleus
         final_pred_df["code_bleu"] = all_code_bleus
 

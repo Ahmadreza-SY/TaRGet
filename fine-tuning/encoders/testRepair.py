@@ -8,6 +8,7 @@ from encoders.preprocessing.processors import Processors
 from encoders.preprocessing.codeFormatter import add_padding_to_chars
 import sys
 
+
 class Tokens:
     BREAKAGE_START = "<breakage>"
     BREAKAGE_END = "</breakage>"
@@ -194,10 +195,10 @@ class TestRepairDataEncoder(BaseDataEncoder):
         return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
 
     def load_and_update_split(self, split, ids=[], new_inputs=[]):
-        self.log(f'Generating new {split} dataset ...')
+        self.log(f"Generating new {split} dataset ...")
 
         ds_output_dir = self.args.output_dir / "splits"
-        file = ds_output_dir / f'{split}.json'
+        file = ds_output_dir / f"{split}.json"
 
         if len(ids) < 1 or len(ids) != len(new_inputs):
             return None
@@ -205,20 +206,15 @@ class TestRepairDataEncoder(BaseDataEncoder):
         if file.exists():
             base_df = pd.read_json(file)
 
-        # Not sure how to deal with yet
-        # if self.args.sub_sample:
-        #     ratio = self.args.sample_ratio
-        #     self.log(f"Subsampling with ration {ratio}")
-        #     test_ds = test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
-
         new_inputs = [add_padding_to_chars(i) for i in new_inputs]
 
         new_df = []
         for i in range(len(ids)):
-            for _, row in base_df[base_df['ID'] == ids[i]].iterrows():
-
-                row['input'] = (f'{row["input"][:row["input"].index("<breakage>") + len("<breakage>")]} {new_inputs[i]} '
-                                f'{row["input"][row["input"].index("</breakage>"):]}')
+            for _, row in base_df[base_df["ID"] == ids[i]].iterrows():
+                row["input"] = (
+                    f'{row["input"][:row["input"].index("<breakage>") + len("<breakage>")]} {new_inputs[i]} '
+                    f'{row["input"][row["input"].index("</breakage>"):]}'
+                )
 
                 new_df.append(row)
 
