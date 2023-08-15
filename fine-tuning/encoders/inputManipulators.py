@@ -1,8 +1,8 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
-from joblib import Parallel, delayed
 from encoders.testRepair import TestRepairDataEncoder, Tokens
-from encoders.preprocessing.commentRemoval import line_is_comment
-from encoders.preprocessing.textDiff import get_hunk_diffs
+from encoders.preprocessing.commentRemoval import line_is_comment, _remove_empty_hunks
+from encoders.preprocessing.textDiff import get_hunk_diffs, _remove_whitespace_hunks
+from encoders.preprocessing.codeFormatter import remove_repeating_whitespaces, format_sut_changes
 from encoders.preprocessing.utils import get_hunk_lines
 from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
@@ -35,7 +35,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def get_tfidf_sim(self, target, changes):
         vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False)
-        tokenized_docs = self.tokenizer([target] + [c["annotated_doc"] for c in changes])["input_ids"]
+        tokenized_docs = [self.tokenizer.encode(target)] + [c["annotated_doc_seq"] for c in changes]
         vectors = vectorizer.fit_transform(tokenized_docs)
         dense = vectors.todense()
         cosine_sim = (dense * dense[0].T).T.tolist()[0]
@@ -55,14 +55,13 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def preprocess(self, ds):
         ds = super().preprocess(ds)
-        self.create_tokenizer()
         self.log("Prioritizing changes")
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
         ds = ds.drop(columns=["allClassChanges", "coveredMethodChanges", "coveredClassChanges", "astActions"])
         ds = super().apply_processor(Processors.remove_empty_prioritized_changes, ds)
         return ds
 
-    def create_input(self, row, covered_changes):
+    def create_test_context(self, row):
         test_code = row["bSource"]["code"]
         breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
@@ -71,7 +70,10 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         test_lines.insert(breakge_end + 2, Tokens.BREAKAGE_END)
         test_lines = [l for l in test_lines if not line_is_comment(l)]
         test_context = " ".join(test_lines)
+        test_context = remove_repeating_whitespaces(test_context)
+        return test_context
 
+    def create_input(self, test_context, covered_changes):
         return " ".join(
             [Tokens.TEST_CONTEXT, test_context] + [Tokens.REPAIR_CONTEXT] + [cc["annotated_doc"] for cc in covered_changes]
         )
@@ -86,16 +88,18 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         def select_changes(r):
             pr_changes_cnt = len(r["prioritized_changes"])
             selected_changes = []
+            test_context = self.create_test_context(r)
+            test_context_e = self.tokenizer.encode(test_context)
             for i in range(pr_changes_cnt):
                 new_selected_changes = selected_changes + [r["prioritized_changes"][i]]
-                new_inp = self.create_input(r, new_selected_changes)
-                e_new_inp = self.tokenizer.encode(new_inp)
-                if len(e_new_inp) <= self.args.max_seq:
+                # The +2 is for Tokens.TEST_CONTEXT and Tokens.REPAIR_CONTEXT
+                new_input_len = len(test_context_e) + sum(len(c["annotated_doc_seq"]) for c in new_selected_changes) + 2
+                if new_input_len <= self.args.max_seq:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:
                 selected_changes = [r["prioritized_changes"][0]]
-            return (self.create_input(r, selected_changes), selected_changes)
+            return (self.create_input(test_context, selected_changes), selected_changes)
 
         self.log("Creating inputs and outputs")
         ds_selected_changes = [select_changes(r) for _, r in list(ds.iterrows())]
@@ -107,6 +111,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
+        ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
         return ds
 
 
@@ -144,6 +149,7 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
         body = []
         annotated_body = []
         for type, text in diffs:
+            text = text.strip()
             body.append(text)
             if type == dmp.DIFF_EQUAL:
                 annotated_body.append(text)
@@ -158,6 +164,18 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
 
 
 class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
+    def preprocess_all_class_changes(self, changes):
+        changes = format_sut_changes(changes)
+        changes = _remove_whitespace_hunks(changes)
+        changes = _remove_empty_hunks(changes)
+        for change in changes:
+            for hunk in change["hunks"]:
+                doc, annotated_doc = self.create_hunk_document(hunk)
+                hunk["doc"] = doc
+                hunk["annotated_doc"] = annotated_doc
+                hunk["annotated_doc_seq"] = self.tokenizer.encode(annotated_doc)
+        return changes
+
     def get_all_class_changes(self, project, a_commit, changes_cache):
         key = f"{project}/{a_commit}"
 
@@ -167,12 +185,19 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
             if len(changes_path) == 1:
                 changes = json.loads(changes_path[0].read_text())
                 for commit_changes in changes:
-                    changes_cache[f"{project}/{commit_changes['aCommit']}"] = commit_changes["changes"]
+                    test_src_prefix = "src/test"
+                    sut_commit_changes = [c for c in commit_changes["changes"] if test_src_prefix not in c["filePath"]]
+                    sut_commit_changes = self.preprocess_all_class_changes(sut_commit_changes)
+                    changes_cache[f"{project}/{commit_changes['aCommit']}"] = sut_commit_changes
+
+        if key not in changes_cache:
+            changes_cache[key] = []
 
         return copy.deepcopy(changes_cache.get(key, []))
 
     def read_data(self):
         ds = super().read_data()
+        self.log(f"Reading and preprocessing all class changes")
         changes_cache = {}
         all_class_changes = []
         for _, row in ds.iterrows():
@@ -187,8 +212,10 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         change_repeat = {}
         for change in changes:
             for hunk in change["hunks"]:
-                doc, annotated_doc = self.create_hunk_document(hunk)
-                change_docs.append({"doc": doc, "annotated_doc": annotated_doc})
+                doc = hunk["doc"]
+                change_docs.append(
+                    {"doc": doc, "annotated_doc": hunk["annotated_doc"], "annotated_doc_seq": hunk["annotated_doc_seq"]}
+                )
                 if doc not in change_repeat:
                     change_repeat[doc] = 0
                 change_repeat[doc] = change_repeat[doc] + 1
