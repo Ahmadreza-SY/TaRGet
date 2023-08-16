@@ -96,7 +96,7 @@ def get_predictions(loader, model_module, args, dataset, beam_size=None, limit=N
             local_targets.extend(target_ids)
             local_ids.extend(data_ids)
 
-        progress = round(100 * len(set(local_ids)) / len(dataset))
+        progress = round(100 * len(set(local_ids)) / (len(dataset) // args.world_size))
         step = (progress // 20) * 20
         if step not in steps:
             steps.append(step)
@@ -104,7 +104,6 @@ def get_predictions(loader, model_module, args, dataset, beam_size=None, limit=N
 
     if args.rank == 0:
         logger.debug(f"Inference finished")
-        logger.debug(f"Gathering predictions")
 
     return local_preds, local_targets, local_ids, local_loss
 
@@ -186,6 +185,7 @@ def eval(model, split, args, save_dir):
     dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
 
     if args.rank == 0:
+        logger.debug(f"Gathering predictions")
         final_pred_df["id"] = [item for sub in final_pred_df["id"] for item in sub]
         final_pred_df["pred"] = [item for sub in final_pred_df["pred"] for item in sub]
         final_pred_df["target"] = [item for sub in final_pred_df["target"] for item in sub]
