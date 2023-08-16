@@ -166,8 +166,9 @@ def eval(model, split, args, save_dir):
             pred_df["id"].extend([local_ids[i] for i in indicies])
             pred_df["pred"].extend([pred_codes[i] for i in indicies])
             pred_df["target"].extend([target_codes[i] for i in indicies])
-            pred_df["rank"].extend([i for i in range(1, len(indicies) + 1)])
-            pred_df["round"].extend([iteration + 2] * len(indicies))
+            round_no = iteration + 2
+            pred_df["rank"].extend([i + round_no * preds_per_round for i in range(1, len(indicies) + 1)])
+            pred_df["round"].extend([round_no] * len(indicies))
 
     final_pred_df = {
         "id": [None for _ in range(args.world_size)],
