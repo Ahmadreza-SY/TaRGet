@@ -27,7 +27,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Spoon {
-  private final SpoonAPI spoon;
+  public final SpoonAPI spoon;
   private boolean buildSucceeded;
   public String srcPath;
   private List<CtMethod<?>> testMethods = null;
