@@ -28,3 +28,10 @@ def remove_covered_changes_comments(covered_changes):
 
     covered_changes = [c for c in covered_changes if len(c["hunks"]) > 0]
     return covered_changes
+
+
+def _remove_empty_hunks(sut_changes):
+    for c in sut_changes:
+        c["hunks"] = [h for h in c["hunks"] if not hunk_is_empty(h)]
+    sut_changes = [c for c in sut_changes if len(c["hunks"]) > 0]
+    return sut_changes

@@ -37,8 +37,15 @@ def main():
 
     logger.info(f"Analyzing {len(verdict_paths)} verdict files")
     verdicts = []
+    empty_files = 0
     for verdict_file in tqdm(verdict_paths):
-        verdicts.extend(json.loads(verdict_file.read_text()))
+        text = verdict_file.read_text()
+        if len(text) == 0:
+            empty_files += 1
+            continue
+        verdicts.extend(json.loads(text))
+    if empty_files > 0:
+        logger.info(f"Found {empty_files} empty verdict files. Excluding them...")
     verdicts = [(v["verdict"], v["id"], v["rank"]) for v in verdicts]
     verdict_df, plausible_rate = analyze_verdicts(verdicts)
     verdicts_file = args.output_path / "test_verdicts.json"
