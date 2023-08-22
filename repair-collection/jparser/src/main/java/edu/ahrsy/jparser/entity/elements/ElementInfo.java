@@ -1,4 +1,4 @@
-package edu.ahrsy.jparser.entity;
+package edu.ahrsy.jparser.entity.elements;
 
 public class ElementInfo {
   String type;

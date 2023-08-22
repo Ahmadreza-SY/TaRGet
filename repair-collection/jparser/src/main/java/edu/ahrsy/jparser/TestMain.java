@@ -1,6 +1,7 @@
 package edu.ahrsy.jparser;
 
-import edu.ahrsy.jparser.entity.ElementInfo;
+import edu.ahrsy.jparser.entity.elements.ElementInfo;
+import edu.ahrsy.jparser.entity.elements.ElementValueHelper;
 import edu.ahrsy.jparser.spoon.Spoon;
 import spoon.reflect.code.CtConstructorCall;
 import spoon.reflect.declaration.CtConstructor;
@@ -8,8 +9,6 @@ import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.visitor.filter.AbstractFilter;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -29,18 +28,7 @@ public class TestMain {
 
   private static ElementInfo getElementInfo(CtElement element) {
     String type = element.getClass().getSimpleName().replace("Impl", "");
-    String value = null;
-    if (element instanceof CtConstructor) {
-      var _element = (CtConstructor<?>) element;
-      value = Spoon.getUniqueName(_element);
-    } else if (element instanceof CtConstructorCall) {
-      var _element = (CtConstructorCall<?>) element;
-      var decl = _element.getExecutable().getDeclaration();
-      if (decl != null)
-        value = getElementInfo(decl).getValue();
-      else
-        value = _element.getExecutable().toString();
-    }
+    String value = ElementValueHelper.getValue(element);
     return new ElementInfo(type, value);
   }
 
