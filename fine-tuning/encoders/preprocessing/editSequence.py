@@ -7,6 +7,8 @@ REPLACE_KEEP_BEFORE_OLD = "<replaceOldKeepBefore>"
 REPLACE_KEEP_BEFORE_NEW = "<replaceNewKeepBefore>"
 REPLACE_KEEP_AFTER_OLD = "<replaceOldKeepAfter>"
 REPLACE_KEEP_AFTER_NEW = "<replaceNewKeepAfter>"
+REPLACE_KEEP_BEFORE_AFTER_OLD = "<replaceOldKeepBeforeAfter>"
+REPLACE_KEEP_BEFORE_AFTER_NEW = "<replaceNewKeepBeforeAfter>"
 
 def build_edit_sequence(source, target):
     edit_sequence = []
@@ -47,27 +49,46 @@ def build_edit_sequence(source, target):
                         replace_found = True
 
 
-            if not replace_found:
-                if index == len(req_changes) - 1:
-                    pass
-                else:
-                    following_tokens = list(filter(None, source[req_changes[index + 1][1]:req_changes[index + 1][2]].split(' ')))
+            if not replace_found and index != len(req_changes) - 1:
+                following_tokens = list(filter(None, source[req_changes[index + 1][1]:req_changes[index + 1][2]].split(' ')))
 
-                    if len(following_tokens) > 0:
-                        replace = following_tokens[0]
-                        i = 1
+                if len(following_tokens) > 0:
+                    replace = following_tokens[0]
+                    i = 1
 
-                        while source.count(f'{source[source_start:source_end]} {replace}') > 1 and i <= len(following_tokens) - 1:
-                            replace = f'{replace} {following_tokens[i]}'
-                            i += 1
+                    while source.count(f'{source[source_start:source_end].strip()} {replace}') > 1 and i <= len(following_tokens) - 1:
+                        replace = f'{replace} {following_tokens[i]}'
+                        i += 1
 
-                        if source.count(f'{source[source_start:source_end]} {replace}') == 1:
-                            edit_sequence.extend([REPLACE_KEEP_AFTER_OLD,
-                                                  f'{source[source_start:source_end].strip()} {replace}'.strip(),
-                                                  REPLACE_KEEP_AFTER_NEW,
-                                                  f'{target[target_start:target_end].strip()} {replace}'.strip(),
-                                                  REPLACE_END])
-                            replace_found = True
+                    if source.count(f'{source[source_start:source_end]} {replace}') == 1:
+                        edit_sequence.extend([REPLACE_KEEP_AFTER_OLD,
+                                              f'{source[source_start:source_end].strip()} {replace}'.strip(),
+                                              REPLACE_KEEP_AFTER_NEW,
+                                              f'{target[target_start:target_end].strip()} {replace}'.strip(),
+                                              REPLACE_END])
+                        replace_found = True
+
+            if not replace_found and index != len(req_changes) - 1 and index != 0:
+                preceding_tokens = list(filter(None, source[req_changes[index - 1][1]:req_changes[index - 1][2]].split(' ')))
+                following_tokens = list(filter(None, source[req_changes[index + 1][1]:req_changes[index + 1][2]].split(' ')))
+
+                if len(preceding_tokens) > 0 and len(following_tokens) > 0:
+                    replace_before = preceding_tokens[-1]
+                    replace_after = following_tokens[0]
+                    i = 1
+
+                    while source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') > 1 and i <= len(following_tokens) - 1:
+                        replace_after = f'{replace_after} {following_tokens[i]}'
+                        replace_before = f'{preceding_tokens[-1-i]} {replace_before}'
+                        i += 1
+
+                    if source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') == 1:
+                        edit_sequence.extend([REPLACE_KEEP_BEFORE_AFTER_OLD,
+                                              f'{replace_before} {source[source_start:source_end].strip()} {replace_after}'.strip(),
+                                              REPLACE_KEEP_BEFORE_AFTER_NEW,
+                                              f'{replace_before} {target[target_start:target_end].strip()} {replace_after}'.strip(),
+                                              REPLACE_END])
+                        replace_found = True
 
         all_replaces = all_replaces and replace_found
 
