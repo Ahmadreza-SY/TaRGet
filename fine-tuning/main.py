@@ -50,6 +50,8 @@ def main():
     parser.set_defaults(test_only=False)
     parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
     parser.set_defaults(eval_full_beam=False)
+    parser.add_argument("-eds", "--edit_sequence", dest="edit_sequence", action="store_true")
+    parser.set_defaults(edit_sequence=False)
 
     parser.add_argument("-m", "--model", default="plbart", type=str, choices=["plbart", "codet5"])
 
