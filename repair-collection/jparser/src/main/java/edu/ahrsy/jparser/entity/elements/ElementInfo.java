@@ -18,10 +18,20 @@ public class ElementInfo {
   }
 
   @Override
+  public boolean equals(Object obj) {
+    if (this == obj)
+      return true;
+    if (!(obj instanceof ElementInfo))
+      return false;
+    var cObj = (ElementInfo) obj;
+    return type.equals(cObj.getType()) && value.equals(cObj.getValue());
+  }
+
+  @Override
   public String toString() {
-    return "ElementInfo{" +
+    return "ElementInfo(" +
         "type='" + type + '\'' +
         ", value='" + value + '\'' +
-        '}';
+        ')';
   }
 }
