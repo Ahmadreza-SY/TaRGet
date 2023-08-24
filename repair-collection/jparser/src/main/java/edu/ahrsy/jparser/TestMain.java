@@ -4,13 +4,14 @@ import edu.ahrsy.jparser.entity.elements.ElementInfo;
 import edu.ahrsy.jparser.entity.elements.ElementValueHelper;
 import edu.ahrsy.jparser.spoon.Spoon;
 import spoon.reflect.code.CtConstructorCall;
+import spoon.reflect.code.CtFieldRead;
+import spoon.reflect.code.CtTypeAccess;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.visitor.filter.AbstractFilter;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class TestMain {
@@ -42,12 +43,33 @@ public class TestMain {
             return element.getPosition().isValidPosition();
           }
         }).stream().map(TestMain::getElementInfo).filter(e -> e.getValue() != null)
-        .collect(Collectors.groupingBy(ElementInfo::getValue));
-//    }).stream().collect(Collectors.groupingBy(e -> e.getClass().getName()))
-//        .values().stream().map(group -> group.get(0)).collect(Collectors.toList());
-    uniqueTypes = uniqueTypes.entrySet().stream()
-        .filter(entry -> entry.getValue().size() > 1)
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        .collect(Collectors.groupingBy(ElementInfo::getType));
+    var uniqueValues = uniqueTypes.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getKey,
+            entry -> entry.getValue().stream().map(ElementInfo::getValue).distinct().collect(Collectors.toList())));
+
+    Map<String, List<String>> intersectionMap = new HashMap<>();
+    List<String> keys = new ArrayList<>(uniqueValues.keySet());
+    // Generate combinations of key pairs
+    for (int i = 0; i < keys.size(); i++) {
+      for (int j = i + 1; j < keys.size(); j++) {
+        String key1 = keys.get(i);
+        String key2 = keys.get(j);
+        List<String> intersection = uniqueValues.get(key1).stream()
+            .filter(uniqueValues.get(key2)::contains)
+            .collect(Collectors.toList());
+        if (!intersection.isEmpty())
+          intersectionMap.put(String.format("%s,%s", key1, key2), intersection);
+      }
+    }
+    intersectionMap = intersectionMap.entrySet().stream()
+        .sorted(Comparator.comparingInt(entry -> entry.getValue().size()))
+        .collect(Collectors.toMap(
+            Map.Entry::getKey,
+            Map.Entry::getValue,
+            (e1, e2) -> e1,
+            LinkedHashMap::new
+        ));
 //    var changedFile = "dora/core/server/master/src/main/java/alluxio/master/block/meta/WorkerState.java";
 //    var testFile = "dora/core/server/master/src/test/java/alluxio/master/block/meta/MasterWorkerInfoTest.java";
 //    ArrayList<Integer> sutLines = new ArrayList<>(Arrays.asList(18, 19, 20));

@@ -4,7 +4,9 @@ import edu.ahrsy.jparser.spoon.Spoon;
 import spoon.reflect.code.*;
 import spoon.reflect.declaration.*;
 import spoon.reflect.reference.*;
+import spoon.support.reflect.declaration.InvisibleArrayConstructorImpl;
 
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class ElementValueHelper {
@@ -93,16 +95,32 @@ public class ElementValueHelper {
     }
   }
 
-  private static String getValue(CtReference reference) {
-    var declaration = reference.getDeclaration();
-    return declaration != null ? getValue(declaration) : referenceToString(reference);
+  private static boolean isValidDeclaration(CtElement element) {
+    if (element instanceof InvisibleArrayConstructorImpl)
+      return false;
+    return element != null;
   }
 
   private static String getValue(CtTypeReference<?> reference) {
-    if (reference == null)
+    if (reference instanceof CtTypeParameterReference)
       return null;
     var declaration = reference.getTypeDeclaration();
-    return declaration != null ? getValue(declaration) : referenceToString(reference);
+    return isValidDeclaration(declaration) ? getValue(declaration) : reference.getQualifiedName();
+  }
+
+  private static String getValue(CtVariableReference<?> reference) {
+    var declaration = reference.getDeclaration();
+    if (isValidDeclaration(declaration))
+      return getValue(declaration);
+    else {
+      var type = reference.getType();
+      return String.format("%s %s", type != null ? getValue(type) : "<unknown>", reference.getSimpleName());
+    }
+  }
+
+  private static String getValue(CtExecutableReference<?> reference) {
+    var declaration = reference.getExecutableDeclaration();
+    return isValidDeclaration(declaration) ? getValue(declaration) : referenceToString(reference);
   }
 
   private static String getValue(CtExecutable<?> element) {
@@ -125,17 +143,9 @@ public class ElementValueHelper {
     return getValue(element.getTarget());
   }
 
-  private static String getValue(CtArrayTypeReference<?> element) {
-    return getValue(element.getComponentType());
-  }
-
-  private static String getValue(CtFieldAccess<?> element) {
-    return String.format("%s %s", getValue(element.getVariable()), getValue(element.getTarget()));
-  }
-
   private static String getValue(CtVariable<?> element) {
     var type = element.getType();
-    return String.format("%s %s", type != null ? getValue(type) : "N/A", element.getSimpleName());
+    return String.format("%s %s", type != null ? getValue(type) : "<unknown>", element.getSimpleName());
   }
 
   private static String getValue(CtCatchVariable<?> element) {
@@ -145,6 +155,8 @@ public class ElementValueHelper {
   }
 
   private static String getValue(CtVariableAccess<?> element) {
+    if (element instanceof CtSuperAccess)
+      return null;
     return getValue(element.getVariable());
   }
 
@@ -153,11 +165,11 @@ public class ElementValueHelper {
   }
 
   private static String getValue(CtLiteral<?> element) {
-    return String.format("%s %s", getValue(element.getType()), element.getValue());
+    return String.format("%s '%s'", getValue(element.getType()), element.getValue());
   }
 
   private static String getValue(CtTypeAccess<?> element) {
-    return getValue(element.getType());
+    return getValue(element.getAccessedType());
   }
 
   private static String getValue(CtAnnotation<?> element) {
@@ -168,9 +180,9 @@ public class ElementValueHelper {
     var type = element.getType();
     if (type == null) {
       var expressions = element.getElements();
-      return expressions.size() > 0 ? getValue(expressions.get(0)) : "N/A";
+      return expressions.size() > 0 ? getValue(expressions.get(0)) : null;
     }
-    return getValue(element.getType());
+    return getValue(type);
   }
 
   private static String getValue(CtThrow element) {
