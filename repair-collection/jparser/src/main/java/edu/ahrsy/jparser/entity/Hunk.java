@@ -2,14 +2,19 @@ package edu.ahrsy.jparser.entity;
 
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Chunk;
+import edu.ahrsy.jparser.entity.elements.ElementInfo;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Hunk {
   public List<LineChange> sourceChanges;
   public List<LineChange> targetChanges;
   public ChangeType type;
+  public List<ElementInfo> sourceElements;
+  public List<ElementInfo> targetElements;
 
   private static List<LineChange> getLines(Chunk<String> chunk, ChangeType type) {
     var lineChanges = new ArrayList<LineChange>();
@@ -45,5 +50,25 @@ public class Hunk {
         throw new RuntimeException("No change detected!");
     }
     return hunk;
+  }
+
+  public boolean hasSourceChanges() {
+    return sourceChanges != null && !sourceChanges.isEmpty();
+  }
+
+  public List<Integer> getSourceLineNumbers() {
+    if (!hasSourceChanges())
+      return Collections.emptyList();
+    return sourceChanges.stream().map(c -> c.lineNo).collect(Collectors.toList());
+  }
+
+  public boolean hasTargetChanges() {
+    return targetChanges != null && !targetChanges.isEmpty();
+  }
+
+  public List<Integer> getTargetLineNumbers() {
+    if (!hasTargetChanges())
+      return Collections.emptyList();
+    return targetChanges.stream().map(c -> c.lineNo).collect(Collectors.toList());
   }
 }

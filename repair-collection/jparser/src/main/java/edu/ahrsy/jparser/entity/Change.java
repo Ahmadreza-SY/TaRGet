@@ -5,6 +5,7 @@ import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Patch;
 import edu.ahrsy.jparser.spoon.Spoon;
 import spoon.reflect.declaration.CtNamedElement;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -57,25 +58,29 @@ public class Change {
     for (var hunk : this.hunks) {
       if (hunk.sourceChanges != null && !sourceCommentLines.isEmpty()) {
         hunk.sourceChanges = hunk.sourceChanges.stream()
-                .filter(l -> !sourceCommentLines.contains(l.lineNo))
-                .collect(Collectors.toList());
+            .filter(l -> !sourceCommentLines.contains(l.lineNo))
+            .collect(Collectors.toList());
       }
       if (hunk.targetChanges != null && !targetCommentLines.isEmpty()) {
         hunk.targetChanges = hunk.targetChanges.stream()
-                .filter(l -> !targetCommentLines.contains(l.lineNo))
-                .collect(Collectors.toList());
+            .filter(l -> !targetCommentLines.contains(l.lineNo))
+            .collect(Collectors.toList());
       }
     }
 
     // Remove hunks that got empty after removing comments
     this.hunks = this.hunks.stream()
-            .filter(h -> !((h.sourceChanges == null || h.sourceChanges.isEmpty()) &&
-                    (h.targetChanges == null || h.targetChanges.isEmpty())))
-            .collect(Collectors.toList());
+        .filter(h -> !((h.sourceChanges == null || h.sourceChanges.isEmpty()) &&
+            (h.targetChanges == null || h.targetChanges.isEmpty())))
+        .collect(Collectors.toList());
   }
 
   public String getName() {
     return name;
+  }
+
+  public String getFilePath() {
+    return filePath;
   }
 
   public List<Hunk> getHunks() {
