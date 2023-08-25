@@ -186,7 +186,7 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
                 changes = json.loads(changes_path[0].read_text())
                 for commit_changes in changes:
                     test_src_prefix = "src/test"
-                    sut_commit_changes = [c for c in commit_changes["changes"] if test_src_prefix not in c["filePath"]]
+                    sut_commit_changes = [c for c in commit_changes["changes"] if test_src_prefix not in c["bPath"]]
                     sut_commit_changes = self.preprocess_all_class_changes(sut_commit_changes)
                     changes_cache[f"{project}/{commit_changes['aCommit']}"] = sut_commit_changes
 

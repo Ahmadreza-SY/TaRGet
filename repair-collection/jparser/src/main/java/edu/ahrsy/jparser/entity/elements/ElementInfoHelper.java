@@ -6,10 +6,15 @@ import spoon.reflect.declaration.*;
 import spoon.reflect.reference.*;
 import spoon.support.reflect.declaration.InvisibleArrayConstructorImpl;
 
-import java.util.Objects;
 import java.util.stream.Collectors;
 
-public class ElementValueHelper {
+public class ElementInfoHelper {
+  public static ElementInfo getElementInfo(CtElement element) {
+    String type = element.getClass().getSimpleName().replace("Impl", "");
+    String value = getValue(element);
+    return new ElementInfo(type, value);
+  }
+
   public static String getValue(CtElement element) {
     // Executables
     if (element instanceof CtConstructor)
@@ -150,7 +155,7 @@ public class ElementValueHelper {
 
   private static String getValue(CtCatchVariable<?> element) {
     return String.format("%s %s",
-        element.getMultiTypes().stream().map(ElementValueHelper::getValue).collect(Collectors.joining(" | ")),
+        element.getMultiTypes().stream().map(ElementInfoHelper::getValue).collect(Collectors.joining(" | ")),
         element.getSimpleName());
   }
 

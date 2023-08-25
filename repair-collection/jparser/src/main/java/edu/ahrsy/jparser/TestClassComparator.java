@@ -103,7 +103,7 @@ public class TestClassComparator {
     var testChanges = new ArrayList<SingleHunkTestChange>();
     for (var test : changedTests) {
       var testName = Spoon.getUniqueName(test.getLeft());
-      var change = new Change(testClass.beforePath, testName);
+      var change = new Change(testClass.beforePath, testClass.afterPath, testName);
       change.extractHunks(test.getLeft(), test.getRight());
       if (change.getHunks().size() == 1) {
         var singleHunkChange = new SingleHunkTestChange(testName,

@@ -21,9 +21,10 @@ def get_hunk_lines(hunk):
     return source_lines, target_lines
 
 
-def get_java_diffs(commit, change_types=["R", "M"]):
+def get_java_diffs(commit, change_types=None):
     diffs = commit.diff(commit.parents[0].hexsha)
-    diffs = [d for d in diffs if d.change_type in change_types]
+    if change_types is not None:
+        diffs = [d for d in diffs if d.change_type in change_types]
     java_regex = r"^.*\.java$"
     diffs = [d for d in diffs if bool(re.search(java_regex, d.b_path)) and bool(re.search(java_regex, d.a_path))]
     return diffs

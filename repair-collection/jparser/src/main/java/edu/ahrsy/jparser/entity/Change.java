@@ -10,15 +10,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class Change {
-  String filePath;
+  String bPath;
+  String aPath;
   String name;
   List<Hunk> hunks;
 
-  public Change(String filePath, String name) {
-    this.filePath = filePath;
+  public Change(String bPath, String aPath, String name) {
+    this.bPath = bPath;
+    this.aPath = aPath;
     this.name = name;
     this.hunks = new ArrayList<>();
   }
@@ -34,11 +35,22 @@ public class Change {
   }
 
   public void extractHunks(CtNamedElement source, CtNamedElement target) {
+    if (!Spoon.codeIsModified(source, target))
+      return;
     var sourceCode = source == null ? "" : Spoon.print(source);
     var targetCode = target == null ? "" : Spoon.print(target);
     extractHunks(sourceCode, targetCode);
     applyHunkLineNoOffset(Spoon.getStartLine(source), Spoon.getStartLine(target));
-    removeCommentsFromHunks(source, target);
+    extractElements(source, target);
+  }
+
+  private void extractElements(CtNamedElement source, CtNamedElement target) {
+    for (var hunk : this.hunks) {
+      if (source != null)
+        hunk.sourceElements = Spoon.getElementsByLine(source, hunk.getSourceLineNumbers());
+      if (target != null)
+        hunk.targetElements = Spoon.getElementsByLine(target, hunk.getTargetLineNumbers());
+    }
   }
 
   public void applyHunkLineNoOffset(Integer srcOffset, Integer targetOffset) {
@@ -50,37 +62,12 @@ public class Change {
     }
   }
 
-  public void removeCommentsFromHunks(CtNamedElement source, CtNamedElement target) {
-    var sourceCommentLines = Spoon.getCommentsLineNumbers(source);
-    var targetCommentLines = Spoon.getCommentsLineNumbers(target);
-    if (sourceCommentLines.isEmpty() && targetCommentLines.isEmpty()) return;
-
-    for (var hunk : this.hunks) {
-      if (hunk.sourceChanges != null && !sourceCommentLines.isEmpty()) {
-        hunk.sourceChanges = hunk.sourceChanges.stream()
-            .filter(l -> !sourceCommentLines.contains(l.lineNo))
-            .collect(Collectors.toList());
-      }
-      if (hunk.targetChanges != null && !targetCommentLines.isEmpty()) {
-        hunk.targetChanges = hunk.targetChanges.stream()
-            .filter(l -> !targetCommentLines.contains(l.lineNo))
-            .collect(Collectors.toList());
-      }
-    }
-
-    // Remove hunks that got empty after removing comments
-    this.hunks = this.hunks.stream()
-        .filter(h -> !((h.sourceChanges == null || h.sourceChanges.isEmpty()) &&
-            (h.targetChanges == null || h.targetChanges.isEmpty())))
-        .collect(Collectors.toList());
-  }
-
   public String getName() {
     return name;
   }
 
-  public String getFilePath() {
-    return filePath;
+  public String getBPath() {
+    return bPath;
   }
 
   public List<Hunk> getHunks() {

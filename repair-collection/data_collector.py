@@ -63,7 +63,7 @@ class DataCollector:
             return []
 
         commit_changed_test_classes = []
-        diffs = get_java_diffs(commit)
+        diffs = get_java_diffs(commit, ["R", "M"])
         for diff in diffs:
             before, after = ghapi.get_file_versions(diff, commit, self.repo_name)
             if is_test_class(before) and before != after:
@@ -301,17 +301,11 @@ class DataCollector:
             return
 
         repo = ghapi.get_repo(self.repo_name)
-        changed_test_classes = pd.read_csv(self.output_path / "codeMining" / "changed_test_classes.csv")
-        changed_test_class_paths = set(
-            changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist()
-        )
         changed_classes = []
         for b_commit, a_commit in tqdm(commits, ascii=True, desc="Finding changed classes in the SUT"):
             diffs = get_java_diffs(repo.commit(a_commit))
             commit_changed_classes = []
             for diff in diffs:
-                if diff.a_path in changed_test_class_paths or diff.b_path in changed_test_class_paths:
-                    continue
                 commit_changed_classes.append((diff.b_path, diff.a_path))
             changed_classes.append({"bCommit": b_commit, "aCommit": a_commit, "changedClasses": commit_changed_classes})
 
@@ -327,7 +321,7 @@ class DataCollector:
         for class_change in covered_class_changes:
             common_hunks_i = set()
             for method_change in covered_method_changes:
-                if class_change["filePath"] != method_change["filePath"] or len(method_change["hunks"]) == 0:
+                if class_change["bPath"] != method_change["bPath"] or len(method_change["hunks"]) == 0:
                     continue
                 method_lines = [get_hunk_lines(h) for h in method_change["hunks"]]
                 method_source_lines = set.union(*[l[0] for l in method_lines])

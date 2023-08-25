@@ -1,6 +1,8 @@
 package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.TestElements;
+import edu.ahrsy.jparser.entity.elements.ElementInfo;
+import edu.ahrsy.jparser.entity.elements.ElementInfoHelper;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.SpoonModelBuilder;
@@ -272,5 +274,18 @@ public class Spoon {
       commentsLineNumbers.addAll(commentLines);
     }
     return commentsLineNumbers;
+  }
+
+  public static List<ElementInfo> getElementsByLine(CtElement element, List<Integer> lines) {
+    if (lines.isEmpty() || !element.getPosition().isValidPosition())
+      return Collections.emptyList();
+    return element.getElements(new AbstractFilter<>() {
+      @Override
+      public boolean matches(CtElement element) {
+        if (!element.getPosition().isValidPosition())
+          return false;
+        return lines.contains(element.getPosition().getLine());
+      }
+    }).stream().map(ElementInfoHelper::getElementInfo).filter(e -> e.getValue() != null).collect(Collectors.toList());
   }
 }
