@@ -364,6 +364,7 @@ class DataCollector:
             _repair["trivial"] = trivial_detector.detect_trivial_repair(
                 _repair["name"], _repair["aCommit"], _repair["bCommit"]
             )
+            _repair["hunk"] = method_change_repo.get_test_hunk(_repair["aCommit"], _repair["name"])
             repair_key = (
                 _repair["name"]
                 + "||"
