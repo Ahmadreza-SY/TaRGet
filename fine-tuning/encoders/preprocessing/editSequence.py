@@ -1,8 +1,8 @@
 import difflib
+import re
 
 REPLACE_OLD = "<replaceOld>"
 REPLACE_NEW = "<replaceNew>"
-REPLACE_END = "<replaceEnd>"
 REPLACE_KEEP_BEFORE_OLD = "<replaceOldKeepBefore>"
 REPLACE_KEEP_BEFORE_NEW = "<replaceNewKeepBefore>"
 REPLACE_KEEP_AFTER_OLD = "<replaceOldKeepAfter>"
@@ -11,6 +11,11 @@ REPLACE_KEEP_BEFORE_AFTER_OLD = "<replaceOldKeepBeforeAfter>"
 REPLACE_KEEP_BEFORE_AFTER_NEW = "<replaceNewKeepBeforeAfter>"
 REPLACE_GROUP_OLD = "<replaceOldGroup>"
 REPLACE_GROUP_NEW = "<replaceNewGroup>"
+
+REPLACE_END = "<replaceEnd>"
+
+REPLACE_OLDS = [REPLACE_OLD, REPLACE_KEEP_BEFORE_OLD, REPLACE_KEEP_AFTER_OLD, REPLACE_KEEP_BEFORE_AFTER_OLD, REPLACE_GROUP_OLD]
+REPLACE_NEWS = [REPLACE_NEW, REPLACE_KEEP_BEFORE_NEW, REPLACE_KEEP_AFTER_NEW, REPLACE_KEEP_BEFORE_AFTER_NEW, REPLACE_GROUP_NEW]
 
 def build_edit_sequence(source, target):
     edit_sequence = []
@@ -109,7 +114,6 @@ def build_edit_sequence(source, target):
 
 
         if not replace_found:
-            print("new block")
             replace_source, replace_target = source[source_start:source_end], target[target_start:target_end]
             new_next_index, prev_index, to_be_removed = index, index, 0
 
@@ -227,3 +231,36 @@ def find_token_diffs(source, target):
         index += 1
 
     return final_changes
+
+
+def apply_edit_sequence(original_code, edit_seq):
+    if REPLACE_END not in edit_seq:
+        return None
+
+    replaces = [r for r in edit_seq.split(f' {REPLACE_END}') if r]
+
+    for r in replaces:
+        orig, new = None, None
+        old_found = False
+        for old in REPLACE_OLDS:
+            if old in r:
+                r = re.sub(f'\s*{old}\s*', '', r)
+                old_found = True
+                break
+
+        if not old_found:
+            return None
+
+        for new in REPLACE_NEWS:
+            if new in r:
+                blocks = re.split(f'\s*{new}\s*', r)
+                if len(blocks) == 2:
+                    orig, new = blocks[0], blocks[1]
+                break
+
+        if orig is None or new is None:
+            return None
+
+        original_code = original_code.replace(orig, new)
+
+    return original_code
