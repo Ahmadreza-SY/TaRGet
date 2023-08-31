@@ -258,7 +258,7 @@ def apply_edit_sequence(original_code, edit_seq):
                     orig, new = blocks[0], blocks[1]
                 break
 
-        if orig is None or new is None:
+        if orig is None or new is None or orig not in original_code:
             return None
 
         original_code = original_code.replace(orig, new)
