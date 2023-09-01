@@ -190,6 +190,10 @@ public class Spoon {
       return element.toString();
     } catch (Exception ignored) {
     }
+    try {
+      return Spoon.print(element);
+    } catch (Exception ignored) {
+    }
     return element.getSimpleName();
   }
 

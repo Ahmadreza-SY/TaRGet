@@ -83,4 +83,5 @@ class MethodChangesRepository(ChangesRepository):
         for change in commit_changes:
             if change["name"] == test_name and len(change["hunks"]) == 1:
                 return change["hunks"][0]
+        print(f"Test hunk not found, {commit} {test_name}")
         return None
