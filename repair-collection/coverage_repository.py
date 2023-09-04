@@ -78,8 +78,10 @@ class MethodChangesRepository(ChangesRepository):
 
         return covered_methods
 
-    def get_test_hunk(self, commit, test_name):
+    def get_test_hunk(self, commit, test_name, original_hunk):
         commit_changes = self.get_changes(commit)
+        if len(commit_changes) == 0:
+            return original_hunk
         for change in commit_changes:
             if change["name"] == test_name and len(change["hunks"]) == 1:
                 return change["hunks"][0]

@@ -38,8 +38,9 @@ public class Spoon {
     this.srcPath = srcPath;
     spoon = new Launcher();
     spoon.getEnvironment().setCommentEnabled(false);
-    spoon.getEnvironment().setLevel("OFF");
     spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
+    spoon.getEnvironment().setIgnoreSyntaxErrors(true);
+    spoon.getEnvironment().setNoClasspath(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     if (new File(srcPath).isDirectory()) {
       SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
