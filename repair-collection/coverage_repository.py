@@ -78,12 +78,15 @@ class MethodChangesRepository(ChangesRepository):
 
         return covered_methods
 
-    def get_test_hunk(self, commit, test_name, original_hunk):
+    def get_test_hunk(self, repair):
+        commit = repair["aCommit"]
+        test_name = repair["name"]
+        original_hunk = repair["hunk"]
         commit_changes = self.get_changes(commit)
         if len(commit_changes) == 0:
             return original_hunk
         for change in commit_changes:
             if change["name"] == test_name and len(change["hunks"]) == 1:
                 return change["hunks"][0]
-        print(f"Test hunk not found, {commit} {test_name}")
-        return None
+        print(f"\nTest hunk not found, {commit} {test_name}")
+        return original_hunk
