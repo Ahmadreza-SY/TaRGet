@@ -19,6 +19,18 @@ class Tokens:
     HUNK = "<hunk>"
     HUNK_END = "</hunk>"
 
+    REPLACE_OLD = "<replaceOld>"
+    REPLACE_NEW = "<replaceNew>"
+    REPLACE_KEEP_BEFORE_OLD = "<replaceOldKeepBefore>"
+    REPLACE_KEEP_BEFORE_NEW = "<replaceNewKeepBefore>"
+    REPLACE_KEEP_AFTER_OLD = "<replaceOldKeepAfter>"
+    REPLACE_KEEP_AFTER_NEW = "<replaceNewKeepAfter>"
+    REPLACE_KEEP_BEFORE_AFTER_OLD = "<replaceOldKeepBeforeAfter>"
+    REPLACE_KEEP_BEFORE_AFTER_NEW = "<replaceNewKeepBeforeAfter>"
+    REPLACE_GROUP_OLD = "<replaceOldGroup>"
+    REPLACE_GROUP_NEW = "<replaceNewGroup>"
+    REPLACE_END = "<replaceEnd>"
+
 
 class TestRepairDataEncoder(BaseDataEncoder):
     def create_tokenizer(self):

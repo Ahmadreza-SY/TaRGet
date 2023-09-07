@@ -81,16 +81,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_output(self, row):
         repaired_code = ""
-
-        if self.args.edit_sequence:
-            row.bSource['code']
-            row.aSource['code']
-            output, success = build_edit_sequence(row.bSource['code'], row.aSource['code'])
-            if success:
-                repaired_code = output
-        else:
-            if "targetChanges" in row["hunk"]:
-                repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+        if "targetChanges" in row["hunk"]:
+            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
 
         return repaired_code
 
@@ -121,10 +113,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
-        if self.args.edit_sequence:
-            num_without_output = len(ds[ds["output"].str.len() == 0].index)
-            self.log(f'Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 1)} %) where output could not be generated')
-            ds = ds[ds['output'].str.len() > 0]
+
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
         return ds
 
@@ -239,6 +228,29 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
 
     def get_sort_key(self, changed_doc):
         return (-changed_doc["tfidf_breakage"], -changed_doc["repeat"], -changed_doc["tfidf_testsrc"])
+
+
+class AllHunksEditSequenceDataEncoder(AllHunksDataEncoder):
+    def create_output(self, row):
+        repaired_code = ""
+
+        row.bSource['code']
+        row.aSource['code']
+        output, success = build_edit_sequence(row.bSource['code'], row.aSource['code'])
+        if success:
+            repaired_code = output
+
+        return repaired_code
+
+    def create_inputs_and_outputs(self, ds):
+        print(1)
+        ds = super(AllHunksEditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
+        print(2)
+        num_without_output = len(ds[ds["output"].str.len() == 0].index)
+        self.log(f'Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 1)} %) where output could not be generated')
+        ds = ds[ds['output'].str.len() > 0]
+
+        return ds
 
 
 BEST_INPUT_MANIPULATOR = HunksDataEncoder

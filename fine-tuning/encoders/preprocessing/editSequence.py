@@ -1,21 +1,11 @@
 import difflib
 import re
 
-REPLACE_OLD = "<replaceOld>"
-REPLACE_NEW = "<replaceNew>"
-REPLACE_KEEP_BEFORE_OLD = "<replaceOldKeepBefore>"
-REPLACE_KEEP_BEFORE_NEW = "<replaceNewKeepBefore>"
-REPLACE_KEEP_AFTER_OLD = "<replaceOldKeepAfter>"
-REPLACE_KEEP_AFTER_NEW = "<replaceNewKeepAfter>"
-REPLACE_KEEP_BEFORE_AFTER_OLD = "<replaceOldKeepBeforeAfter>"
-REPLACE_KEEP_BEFORE_AFTER_NEW = "<replaceNewKeepBeforeAfter>"
-REPLACE_GROUP_OLD = "<replaceOldGroup>"
-REPLACE_GROUP_NEW = "<replaceNewGroup>"
+from encoders.testRepair import Tokens
 
-REPLACE_END = "<replaceEnd>"
 
-REPLACE_OLDS = [REPLACE_OLD, REPLACE_KEEP_BEFORE_OLD, REPLACE_KEEP_AFTER_OLD, REPLACE_KEEP_BEFORE_AFTER_OLD, REPLACE_GROUP_OLD]
-REPLACE_NEWS = [REPLACE_NEW, REPLACE_KEEP_BEFORE_NEW, REPLACE_KEEP_AFTER_NEW, REPLACE_KEEP_BEFORE_AFTER_NEW, REPLACE_GROUP_NEW]
+REPLACE_OLDS = [Tokens.REPLACE_OLD, Tokens.REPLACE_KEEP_BEFORE_OLD, Tokens.REPLACE_KEEP_AFTER_OLD, Tokens.REPLACE_KEEP_BEFORE_AFTER_OLD, Tokens.REPLACE_GROUP_OLD]
+REPLACE_NEWS = [Tokens.REPLACE_NEW, Tokens.REPLACE_KEEP_BEFORE_NEW, Tokens.REPLACE_KEEP_AFTER_NEW, Tokens.REPLACE_KEEP_BEFORE_AFTER_NEW, Tokens.REPLACE_GROUP_NEW]
 
 def build_edit_sequence(source, target):
     edit_sequence = []
@@ -32,11 +22,11 @@ def build_edit_sequence(source, target):
 
         # Only 1 possible replace in the source
         if source.count(source[source_start:source_end].strip()) == 1:
-            edit_sequence.append(([REPLACE_OLD,
+            edit_sequence.append(([Tokens.REPLACE_OLD,
                                   source[source_start:source_end].strip(),
-                                  REPLACE_NEW,
+                                  Tokens.REPLACE_NEW,
                                   target[target_start:target_end].strip(),
-                                  REPLACE_END],
+                                  Tokens.REPLACE_END],
                                   source_start, source_end,
                                   target_start, target_end))
             replace_found = True
@@ -56,11 +46,11 @@ def build_edit_sequence(source, target):
                         i -= 1
 
                     if source.count(f'{replace} {source[source_start:source_end].strip()}') == 1:
-                        edit_sequence.append(([REPLACE_KEEP_BEFORE_OLD,
+                        edit_sequence.append(([Tokens.REPLACE_KEEP_BEFORE_OLD,
                                               f'{replace} {source[source_start:source_end].strip()}'.strip(),
-                                              REPLACE_KEEP_BEFORE_NEW,
+                                              Tokens.REPLACE_KEEP_BEFORE_NEW,
                                               f'{replace} {target[target_start:target_end].strip()}'.strip(),
-                                              REPLACE_END],
+                                              Tokens.REPLACE_END],
                                               req_changes[index - 1][1], source_end,
                                               req_changes[index - 1][3], target_end))
                         replace_found = True
@@ -78,11 +68,11 @@ def build_edit_sequence(source, target):
                         i += 1
 
                     if source.count(f'{source[source_start:source_end]} {replace}') == 1:
-                        edit_sequence.append(([REPLACE_KEEP_AFTER_OLD,
+                        edit_sequence.append(([Tokens.REPLACE_KEEP_AFTER_OLD,
                                               f'{source[source_start:source_end].strip()} {replace}'.strip(),
-                                              REPLACE_KEEP_AFTER_NEW,
+                                              Tokens.REPLACE_KEEP_AFTER_NEW,
                                               f'{target[target_start:target_end].strip()} {replace}'.strip(),
-                                              REPLACE_END],
+                                              Tokens.REPLACE_END],
                                               source_start, req_changes[index - 1][2],
                                               target_start, req_changes[index - 1][4]))
                         replace_found = True
@@ -97,17 +87,21 @@ def build_edit_sequence(source, target):
                     replace_after = following_tokens[0]
                     i = 1
 
-                    while source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') > 1 and i <= len(following_tokens) - 1:
-                        replace_after = f'{replace_after} {following_tokens[i]}'
-                        replace_before = f'{preceding_tokens[-1-i]} {replace_before}'
+                    while source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') > 1:
+                        if i < len(following_tokens):
+                            replace_after = f'{replace_after} {following_tokens[i]}'
+                        if i < len(preceding_tokens):
+                            replace_before = f'{preceding_tokens[-1-i]} {replace_before}'
                         i += 1
+                        if i >= len(following_tokens) and i >= len(preceding_tokens):
+                            break
 
                     if source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') == 1:
-                        edit_sequence.append(([REPLACE_KEEP_BEFORE_AFTER_OLD,
+                        edit_sequence.append(([Tokens.REPLACE_KEEP_BEFORE_AFTER_OLD,
                                               f'{replace_before} {source[source_start:source_end].strip()} {replace_after}'.strip(),
-                                              REPLACE_KEEP_BEFORE_AFTER_NEW,
+                                              Tokens.REPLACE_KEEP_BEFORE_AFTER_NEW,
                                               f'{replace_before} {target[target_start:target_end].strip()} {replace_after}'.strip(),
-                                              REPLACE_END],
+                                              Tokens.REPLACE_END],
                                               req_changes[index - 1][1], req_changes[index - 1][2],
                                               req_changes[index - 1][3], req_changes[index - 1][4]))
                         replace_found = True
@@ -159,11 +153,11 @@ def build_edit_sequence(source, target):
                         count += 1
 
                 edit_sequence = edit_sequence[:len(edit_sequence)-count]
-                edit_sequence.append(([REPLACE_GROUP_OLD,
+                edit_sequence.append(([Tokens.REPLACE_GROUP_OLD,
                                       source[source_start:source_end],
-                                      REPLACE_GROUP_NEW,
+                                      Tokens.REPLACE_GROUP_NEW,
                                       target[target_start:target_end],
-                                      REPLACE_END],
+                                      Tokens.REPLACE_END],
                                       source_start, source_end,
                                       target_start, target_end))
                 next_index = new_next_index
@@ -234,24 +228,24 @@ def find_token_diffs(source, target):
 
 
 def apply_edit_sequence(original_code, edit_seq):
-    if REPLACE_END not in edit_seq:
+    if Tokens.REPLACE_END not in edit_seq:
         return None
 
-    replaces = [r for r in edit_seq.split(f' {REPLACE_END}') if r]
+    replaces = [r for r in edit_seq.split(f' {Tokens.REPLACE_END}') if r]
 
     for r in replaces:
         orig, new = None, None
         old_found = False
-        for old in REPLACE_OLDS:
+        for old in Tokens.REPLACE_OLDS:
             if old in r:
                 r = re.sub(f'\s*{old}\s*', '', r)
                 old_found = True
                 break
 
-        if not old_found:
+        if not old_found or original_code.count != 1:
             return None
 
-        for new in REPLACE_NEWS:
+        for new in Tokens.REPLACE_NEWS:
             if new in r:
                 blocks = re.split(f'\s*{new}\s*', r)
                 if len(blocks) == 2:
