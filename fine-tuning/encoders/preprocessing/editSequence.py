@@ -242,7 +242,7 @@ def apply_edit_sequence(original_code, edit_seq):
                 old_found = True
                 break
 
-        if not old_found or original_code.count != 1:
+        if not old_found:
             return None
 
         for new in Tokens.REPLACE_NEWS:
@@ -252,7 +252,7 @@ def apply_edit_sequence(original_code, edit_seq):
                     orig, new = blocks[0], blocks[1]
                 break
 
-        if orig is None or new is None or orig not in original_code:
+        if orig is None or new is None or original_code.count(orig) != 1:
             return None
 
         original_code = original_code.replace(orig, new)
