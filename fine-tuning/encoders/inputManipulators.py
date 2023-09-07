@@ -234,7 +234,6 @@ class AllHunksEditSequenceDataEncoder(AllHunksDataEncoder):
     def create_output(self, row):
         repaired_code = ""
 
-        row.bSource['code']
         row.aSource['code']
         output, success = build_edit_sequence(row.bSource['code'], row.aSource['code'])
         if success:
