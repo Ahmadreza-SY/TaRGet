@@ -10,6 +10,7 @@ from pathlib import Path
 from encoders.preprocessing.editSequence import build_edit_sequence
 import json
 import copy
+import swifter
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -112,7 +113,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
-        ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
+        ds["output"] = ds.swifter.apply(lambda r: self.create_output(r), axis=1)
 
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
         return ds
