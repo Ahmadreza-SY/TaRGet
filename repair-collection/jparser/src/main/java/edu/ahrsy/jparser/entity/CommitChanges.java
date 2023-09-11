@@ -17,4 +17,16 @@ public class CommitChanges {
   public void addChanges(List<Change> changes) {
     this.changes.addAll(changes);
   }
+
+  public String getBCommit() {
+    return bCommit;
+  }
+
+  public String getACommit() {
+    return aCommit;
+  }
+
+  public List<Change> getChanges() {
+    return changes;
+  }
 }
