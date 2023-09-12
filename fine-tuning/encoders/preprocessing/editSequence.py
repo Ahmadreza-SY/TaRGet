@@ -128,7 +128,7 @@ def build_edit_sequence(source, target):
                     if source.count(replace_source) == 1:
                         replace_found = True
 
-                if not replace_found and prev_index > 1:
+                if not replace_found and prev_index >= 1:
                     prev_equal = req_changes[prev_index - 1]
                     replace_source = source[prev_equal[1]:prev_equal[2]] + replace_source
                     replace_target = target[prev_equal[3]:prev_equal[4]] + replace_target
