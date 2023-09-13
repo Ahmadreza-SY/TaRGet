@@ -184,13 +184,14 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         key = f"{project}/{a_commit}"
 
         if key not in changes_cache:
-            ds_path = Path(self.args.dataset_dir) / project
+            ds_path = Path(self.args.dataset_dir)
+            if project not in self.args.dataset_dir:
+                ds_path = ds_path / project
             changes_path = list(ds_path.rglob("sut_class_changes.json"))
             if len(changes_path) == 1:
                 changes = json.loads(changes_path[0].read_text())
                 for commit_changes in changes:
-                    test_src_prefix = "src/test"
-                    sut_commit_changes = [c for c in commit_changes["changes"] if test_src_prefix not in c["filePath"]]
+                    sut_commit_changes = [c for c in commit_changes["changes"] if not c["is_test_source"]]
                     sut_commit_changes = self.preprocess_all_class_changes(sut_commit_changes)
                     changes_cache[f"{project}/{commit_changes['aCommit']}"] = sut_commit_changes
 
@@ -210,6 +211,10 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         ds["allClassChanges"] = all_class_changes
         return ds
 
+    def create_changed_document(self, row, hunk):
+        doc = hunk["doc"]
+        return {"doc": doc, "annotated_doc": hunk["annotated_doc"], "annotated_doc_seq": hunk["annotated_doc_seq"]}
+
     def get_changed_documents(self, row):
         changes = row["allClassChanges"]
         change_docs = []
@@ -217,9 +222,7 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         for change in changes:
             for hunk in change["hunks"]:
                 doc = hunk["doc"]
-                change_docs.append(
-                    {"doc": doc, "annotated_doc": hunk["annotated_doc"], "annotated_doc_seq": hunk["annotated_doc_seq"]}
-                )
+                change_docs.append(self.create_changed_document(row, hunk))
                 if doc not in change_repeat:
                     change_repeat[doc] = 0
                 change_repeat[doc] = change_repeat[doc] + 1
@@ -234,7 +237,7 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
 class AllHunksEditSequenceDataEncoder(AllHunksDataEncoder):
     def create_output(self, row):
         repaired_code = ""
-        output, success = build_edit_sequence(row.bSource['code'], row.aSource['code'])
+        output, success = build_edit_sequence(row.bSource["code"], row.aSource["code"])
         if success:
             repaired_code = output
 
@@ -243,10 +246,35 @@ class AllHunksEditSequenceDataEncoder(AllHunksDataEncoder):
     def create_inputs_and_outputs(self, ds):
         ds = super(AllHunksEditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
         num_without_output = len(ds[ds["output"].str.len() == 0].index)
-        self.log(f'Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where output could not be generated')
-        ds = ds[ds['output'].str.len() > 0]
+        self.log(
+            f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where output could not be generated"
+        )
+        ds = ds[ds["output"].str.len() > 0]
 
         return ds
 
 
-BEST_INPUT_MANIPULATOR = HunksDataEncoder
+class ASTElementsDataEncoder(AllHunksDataEncoder):
+    def create_changed_document(self, row, hunk):
+        changed_doc = super().create_changed_document(row, hunk)
+        changed_doc["equal_ast_elements"] = 0
+        changed_doc["similar_ast_elements"] = 0
+        if "sourceElements" not in row["hunk"]:
+            return changed_doc
+        for t_e in row["hunk"]["sourceElements"]:
+            for sut_e in hunk["sourceElements"]:
+                if t_e["value"] == sut_e["value"]:
+                    if t_e["type"] == sut_e["type"]:
+                        changed_doc["equal_ast_elements"] += 1
+                    else:
+                        changed_doc["similar_ast_elements"] += 1
+        return changed_doc
+
+    def get_sort_key(self, changed_doc):
+        return (
+            -changed_doc["equal_ast_elements"],
+            -changed_doc["similar_ast_elements"],
+            -changed_doc["tfidf_breakage"],
+            -changed_doc["repeat"],
+            -changed_doc["tfidf_testsrc"],
+        )

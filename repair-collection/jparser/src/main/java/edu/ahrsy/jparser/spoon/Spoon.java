@@ -1,6 +1,8 @@
 package edu.ahrsy.jparser.spoon;
 
 import edu.ahrsy.jparser.entity.TestElements;
+import edu.ahrsy.jparser.entity.elements.ElementInfo;
+import edu.ahrsy.jparser.entity.elements.ElementInfoHelper;
 import spoon.Launcher;
 import spoon.SpoonAPI;
 import spoon.SpoonModelBuilder;
@@ -27,7 +29,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Spoon {
-  private final SpoonAPI spoon;
+  public final SpoonAPI spoon;
   private boolean buildSucceeded;
   public String srcPath;
   private List<CtMethod<?>> testMethods = null;
@@ -36,8 +38,9 @@ public class Spoon {
     this.srcPath = srcPath;
     spoon = new Launcher();
     spoon.getEnvironment().setCommentEnabled(false);
-    spoon.getEnvironment().setLevel("OFF");
     spoon.getEnvironment().setIgnoreDuplicateDeclarations(true);
+    spoon.getEnvironment().setIgnoreSyntaxErrors(true);
+    spoon.getEnvironment().setNoClasspath(true);
     if (complianceLevel != null) spoon.getEnvironment().setComplianceLevel(complianceLevel);
     if (new File(srcPath).isDirectory()) {
       SpoonModelBuilder modelBuilder = ((Launcher) spoon).getModelBuilder();
@@ -188,6 +191,10 @@ public class Spoon {
       return element.toString();
     } catch (Exception ignored) {
     }
+    try {
+      return Spoon.print(element);
+    } catch (Exception ignored) {
+    }
     return element.getSimpleName();
   }
 
@@ -272,5 +279,18 @@ public class Spoon {
       commentsLineNumbers.addAll(commentLines);
     }
     return commentsLineNumbers;
+  }
+
+  public static List<ElementInfo> getElementsByLine(CtElement element, List<Integer> lines) {
+    if (lines.isEmpty() || !element.getPosition().isValidPosition())
+      return Collections.emptyList();
+    return element.getElements(new AbstractFilter<>() {
+      @Override
+      public boolean matches(CtElement element) {
+        if (!element.getPosition().isValidPosition())
+          return false;
+        return lines.contains(element.getPosition().getLine());
+      }
+    }).stream().map(ElementInfoHelper::getElementInfo).filter(e -> e.getValue() != null).collect(Collectors.toList());
   }
 }
