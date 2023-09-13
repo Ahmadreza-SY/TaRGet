@@ -12,6 +12,8 @@ import json
 import copy
 import swifter
 
+swifter.set_defaults(progress_bar=True)
+
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def remove_duplicate_documents(self, changes):
@@ -247,7 +249,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
         num_without_output = len(ds[ds["output"].str.len() == 0].index)
         self.log(
-            f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where output could not be generated"
+            f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where edit sequence output could not be generated"
         )
         ds = ds[ds["output"].str.len() > 0]
 

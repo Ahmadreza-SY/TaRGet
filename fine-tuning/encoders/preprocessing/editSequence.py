@@ -236,7 +236,7 @@ def apply_edit_sequence(original_code, edit_seq):
     for r in replaces:
         orig, new = None, None
         old_found = False
-        for old in Tokens.REPLACE_OLDS:
+        for old in REPLACE_OLDS:
             if old in r:
                 r = re.sub(f'\s*{old}\s*', '', r)
                 old_found = True
@@ -245,7 +245,7 @@ def apply_edit_sequence(original_code, edit_seq):
         if not old_found:
             return None
 
-        for new in Tokens.REPLACE_NEWS:
+        for new in REPLACE_NEWS:
             if new in r:
                 blocks = re.split(f'\s*{new}\s*', r)
                 if len(blocks) == 2:
