@@ -234,7 +234,7 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
         return (-changed_doc["tfidf_breakage"], -changed_doc["repeat"], -changed_doc["tfidf_testsrc"])
 
 
-class AllHunksEditSequenceDataEncoder(AllHunksDataEncoder):
+class EditSequenceDataEncoder(AllHunksDataEncoder):
     def create_output(self, row):
         repaired_code = ""
         output, success = build_edit_sequence(row.bSource["code"], row.aSource["code"])
@@ -244,7 +244,7 @@ class AllHunksEditSequenceDataEncoder(AllHunksDataEncoder):
         return repaired_code
 
     def create_inputs_and_outputs(self, ds):
-        ds = super(AllHunksEditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
+        ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
         num_without_output = len(ds[ds["output"].str.len() == 0].index)
         self.log(
             f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where output could not be generated"
