@@ -12,7 +12,7 @@ import json
 import copy
 import swifter
 
-swifter.set_defaults(progress_bar=True)
+swifter.set_defaults(progress_bar=False)
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -251,7 +251,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         self.log(
             f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where edit sequence output could not be generated"
         )
-        ds = ds[ds["output"].str.len() > 0]
+        ds = ds[ds["output"].str.len() > 0].reset_index(drop=True)
 
         return ds
 
