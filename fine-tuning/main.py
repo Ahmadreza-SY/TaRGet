@@ -27,7 +27,11 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-
+# TODO change tokenization and dataloading process. 
+# Do the padding and create attention masks in the collate_fn of the dataloader
+# Attention mask: 1 for input_tokens and 0 for the rest
+# For encoder-decoder the collate_fn returns, input: <tokens + PAD>, label: <tokens + EOS + -100>
+# For decoder-only the collate_fn returns, input: <PADtokens>, label: <tokens + EOS + -100>
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--nodes", default=1, type=int, metavar="N", help="number of data loading workers")
@@ -67,6 +71,7 @@ def main():
     args.world_size = args.gpus * args.nodes
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
+    args.padding_side = "right"
     if args.model == "codet5":
         args.model_name_or_path = "salesforce/codet5-base"
         args.model_class = T5ForConditionalGeneration
@@ -79,6 +84,7 @@ def main():
         args.model_name_or_path = "salesforce/codegen-350M-mono"
         args.model_class = CodeGenForCausalLM
         args.model_tokenizer_class = AutoTokenizer
+        args.padding_side = "left"
 
     try:
         args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")

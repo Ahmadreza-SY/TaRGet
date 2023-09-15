@@ -66,13 +66,14 @@ def eval(model, split, args, save_dir):
         source_ids, source_mask, target_ids = source_ids.to(args.gpu), source_mask.to(args.gpu), target_ids.to(args.gpu)
         outputs = model_module(input_ids=source_ids, attention_mask=source_mask, labels=target_ids, output_attentions=False)
         lm_logits = outputs.logits
-        pad_token_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
-        lm_loss_fct = CrossEntropyLoss(ignore_index=pad_token_id, label_smoothing=args.label_smoothing)
+        pad_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
+        lm_loss_fct = CrossEntropyLoss(ignore_index=pad_id, label_smoothing=args.label_smoothing)
         loss = lm_loss_fct(lm_logits.view(-1, lm_logits.size(-1)), target_ids.view(-1))
         local_loss.append(loss.item())
         target_ids = target_ids.to("cpu")
 
         max_gen_lengh = args.max_seq // 2
+        eos_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.eos_token)
         if args.eval_full_beam:
             outputs = model_module.generate(
                 input_ids=source_ids,
@@ -82,6 +83,8 @@ def eval(model, split, args, save_dir):
                 use_cache=True,
                 early_stopping=True,
                 num_return_sequences=args.beam_size,
+                pad_token_id=pad_id,
+                eos_token_id=eos_id,
             )
             # For prediction certainty
             # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
@@ -101,6 +104,8 @@ def eval(model, split, args, save_dir):
                     max_length=max_gen_lengh,
                     use_cache=True,
                     early_stopping=True,
+                    pad_token_id=pad_id,
+                    eos_token_id=eos_id,
                 )
                 .cpu()
                 .tolist()

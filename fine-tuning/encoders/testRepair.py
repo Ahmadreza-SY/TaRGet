@@ -22,14 +22,16 @@ class Tokens:
 
 class TestRepairDataEncoder(BaseDataEncoder):
     def create_tokenizer(self):
-        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
-        new_tokens = [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
-        self.tokenizer.add_tokens(new_tokens, special_tokens=True)
+        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(
+            self.args.model_name_or_path, padding_side=self.args.padding_side
+        )
+        new_special_tokens = {
+            "additional_special_tokens": [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
+        }
+        self.tokenizer.add_special_tokens(new_special_tokens)
         self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.log(f"Tokenizer:\n{self.tokenizer}")
-        
 
     def shuffle(self, ds):
         return ds.sample(frac=1.0, random_state=self.args.random_seed).reset_index(drop=True)
@@ -131,7 +133,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
     def read_data(self):
         ds_path = Path(self.args.dataset_dir)
         ds_list = []
-        for project_ds_path in list(ds_path.rglob("dataset.json"))[:3]:
+        for project_ds_path in ds_path.rglob("dataset.json"):
             project_ds = pd.read_json(project_ds_path)
             project_ds["project"] = f"{project_ds_path.parent.parent.name}/{project_ds_path.parent.name}"
             if len(project_ds) == 0:
