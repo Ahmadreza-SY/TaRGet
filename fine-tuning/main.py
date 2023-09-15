@@ -2,7 +2,14 @@ import sys
 
 sys.path.append("../common")
 from pathlib import Path
-from transformers import PLBartForConditionalGeneration, PLBartTokenizer, RobertaTokenizerFast, T5ForConditionalGeneration
+from transformers import (
+    PLBartForConditionalGeneration,
+    PLBartTokenizer,
+    RobertaTokenizerFast,
+    T5ForConditionalGeneration,
+    AutoTokenizer,
+    CodeGenForCausalLM,
+)
 import torch
 import argparse
 import torch.multiprocessing as mp
@@ -51,7 +58,7 @@ def main():
     parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
     parser.set_defaults(eval_full_beam=False)
 
-    parser.add_argument("-m", "--model", default="plbart", type=str, choices=["plbart", "codet5"])
+    parser.add_argument("-m", "--model", default="plbart", type=str, choices=["plbart", "codet5", "codegen"])
 
     logger = logging.getLogger("MAIN")
 
@@ -64,11 +71,14 @@ def main():
         args.model_name_or_path = "salesforce/codet5-base"
         args.model_class = T5ForConditionalGeneration
         args.model_tokenizer_class = RobertaTokenizerFast
-    else:
+    elif args.model == "plbart":
         args.model_name_or_path = "uclanlp/plbart-base"
         args.model_class = PLBartForConditionalGeneration
         args.model_tokenizer_class = PLBartTokenizer
-
+    elif args.model == "codegen":
+        args.model_name_or_path = "salesforce/codegen-350M-mono"
+        args.model_class = CodeGenForCausalLM
+        args.model_tokenizer_class = AutoTokenizer
 
     try:
         args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")

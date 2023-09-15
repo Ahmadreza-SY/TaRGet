@@ -68,9 +68,8 @@ def train(gpu, args):
             )
 
             lm_logits = outputs.logits
-            lm_loss_fct = CrossEntropyLoss(
-                ignore_index=model_module.config.pad_token_id, label_smoothing=args.label_smoothing
-            )
+            pad_token_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
+            lm_loss_fct = CrossEntropyLoss(ignore_index=pad_token_id, label_smoothing=args.label_smoothing)
             loss = lm_loss_fct(lm_logits.view(-1, lm_logits.size(-1)), target_ids.view(-1))
 
             loss.backward()

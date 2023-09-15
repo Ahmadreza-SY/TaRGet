@@ -66,7 +66,8 @@ def eval(model, split, args, save_dir):
         source_ids, source_mask, target_ids = source_ids.to(args.gpu), source_mask.to(args.gpu), target_ids.to(args.gpu)
         outputs = model_module(input_ids=source_ids, attention_mask=source_mask, labels=target_ids, output_attentions=False)
         lm_logits = outputs.logits
-        lm_loss_fct = CrossEntropyLoss(ignore_index=model_module.config.pad_token_id, label_smoothing=args.label_smoothing)
+        pad_token_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
+        lm_loss_fct = CrossEntropyLoss(ignore_index=pad_token_id, label_smoothing=args.label_smoothing)
         loss = lm_loss_fct(lm_logits.view(-1, lm_logits.size(-1)), target_ids.view(-1))
         local_loss.append(loss.item())
         target_ids = target_ids.to("cpu")
@@ -77,7 +78,7 @@ def eval(model, split, args, save_dir):
                 input_ids=source_ids,
                 attention_mask=source_mask,
                 num_beams=args.beam_size,
-                max_length=max_gen_lengh,
+                max_new_tokens=max_gen_lengh,
                 use_cache=True,
                 early_stopping=True,
                 num_return_sequences=args.beam_size,
@@ -113,7 +114,7 @@ def eval(model, split, args, save_dir):
         if step not in steps:
             steps.append(step)
             logger.debug(f"Inference progress {progress}%")
-    
+
     if args.rank == 0:
         logger.debug(f"Inference finished")
         logger.debug(f"Gathering predictions")
