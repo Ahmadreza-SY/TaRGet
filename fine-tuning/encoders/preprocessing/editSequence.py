@@ -2,6 +2,7 @@ import difflib
 import re
 
 from encoders.testRepair import Tokens
+from encoders.preprocessing.codeFormatter import remove_repeating_whitespaces, add_padding_to_chars
 
 
 REPLACE_OLDS = [Tokens.REPLACE_OLD, Tokens.REPLACE_KEEP_BEFORE_OLD, Tokens.REPLACE_KEEP_AFTER_OLD, Tokens.REPLACE_KEEP_BEFORE_AFTER_OLD, Tokens.REPLACE_GROUP_OLD]
@@ -9,6 +10,9 @@ REPLACE_NEWS = [Tokens.REPLACE_NEW, Tokens.REPLACE_KEEP_BEFORE_NEW, Tokens.REPLA
 
 def build_edit_sequence(source, target):
     edit_sequence = []
+
+    source = remove_repeating_whitespaces(add_padding_to_chars(source))
+    target = remove_repeating_whitespaces(add_padding_to_chars(target))
 
     req_changes = find_token_diffs(source, target)
     all_replaces = True
@@ -21,11 +25,11 @@ def build_edit_sequence(source, target):
         replace_found = False
 
         # Only 1 possible replace in the source
-        if source.count(source[source_start:source_end].strip()) == 1:
+        if source.count(source[source_start:source_end]) == 1:
             edit_sequence.append(([Tokens.REPLACE_OLD,
-                                  source[source_start:source_end].strip(),
+                                  source[source_start:source_end],
                                   Tokens.REPLACE_NEW,
-                                  target[target_start:target_end].strip(),
+                                  target[target_start:target_end],
                                   Tokens.REPLACE_END],
                                   source_start, source_end,
                                   target_start, target_end))
@@ -41,15 +45,16 @@ def build_edit_sequence(source, target):
                     replace = preceding_tokens[i]
                     i -= 1
 
-                    while source.count(f'{replace} {source[source_start:source_end].strip()}') > 1 and i >= 0:
+                    source_to_replace = (' ' if source_start != source_end else '') + source[source_start:source_end]
+                    while source.count(f'{replace}{source_to_replace}') > 1 and i >= 0:
                         replace = f'{preceding_tokens[i]} {replace}'
                         i -= 1
 
-                    if source.count(f'{replace} {source[source_start:source_end].strip()}') == 1:
+                    if source.count(f'{replace} {source[source_start:source_end]}') == 1:
                         edit_sequence.append(([Tokens.REPLACE_KEEP_BEFORE_OLD,
-                                              f'{replace} {source[source_start:source_end].strip()}'.strip(),
+                                              f'{replace}{source_to_replace}',
                                               Tokens.REPLACE_KEEP_BEFORE_NEW,
-                                              f'{replace} {target[target_start:target_end].strip()}'.strip(),
+                                              f'{replace} {target[target_start:target_end]}',
                                               Tokens.REPLACE_END],
                                               req_changes[index - 1][1], source_end,
                                               req_changes[index - 1][3], target_end))
@@ -63,15 +68,16 @@ def build_edit_sequence(source, target):
                     replace = following_tokens[0]
                     i = 1
 
-                    while source.count(f'{source[source_start:source_end].strip()} {replace}') > 1 and i <= len(following_tokens) - 1:
+                    source_to_replace = source[source_start:source_end] + (' ' if source_start != source_end else '')
+                    while source.count(f'{source_to_replace}{replace}') > 1 and i <= len(following_tokens) - 1:
                         replace = f'{replace} {following_tokens[i]}'
                         i += 1
 
                     if source.count(f'{source[source_start:source_end]} {replace}') == 1:
                         edit_sequence.append(([Tokens.REPLACE_KEEP_AFTER_OLD,
-                                              f'{source[source_start:source_end].strip()} {replace}'.strip(),
+                                              f'{source_to_replace}{replace}',
                                               Tokens.REPLACE_KEEP_AFTER_NEW,
-                                              f'{target[target_start:target_end].strip()} {replace}'.strip(),
+                                              f'{target[target_start:target_end]} {replace}',
                                               Tokens.REPLACE_END],
                                               source_start, req_changes[index - 1][2],
                                               target_start, req_changes[index - 1][4]))
@@ -87,7 +93,8 @@ def build_edit_sequence(source, target):
                     replace_after = following_tokens[0]
                     i = 1
 
-                    while source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') > 1:
+                    source_to_replace = (' ' if source_start != source_end else '') + source[source_start:source_end] + (' ' if source_start != source_end else '')
+                    while source.count(f'{replace_before}{source_to_replace}{replace_after}') > 1:
                         if i < len(following_tokens):
                             replace_after = f'{replace_after} {following_tokens[i]}'
                         if i < len(preceding_tokens):
@@ -96,11 +103,11 @@ def build_edit_sequence(source, target):
                         if i >= len(following_tokens) and i >= len(preceding_tokens):
                             break
 
-                    if source.count(f'{replace_before} {source[source_start:source_end].strip()} {replace_after}') == 1:
+                    if source.count(f'{replace_before} {source[source_start:source_end]} {replace_after}') == 1:
                         edit_sequence.append(([Tokens.REPLACE_KEEP_BEFORE_AFTER_OLD,
-                                              f'{replace_before} {source[source_start:source_end].strip()} {replace_after}'.strip(),
+                                              f'{replace_before}{source_to_replace}{replace_after}',
                                               Tokens.REPLACE_KEEP_BEFORE_AFTER_NEW,
-                                              f'{replace_before} {target[target_start:target_end].strip()} {replace_after}'.strip(),
+                                              f'{replace_before} {target[target_start:target_end]} {replace_after}',
                                               Tokens.REPLACE_END],
                                               req_changes[index - 1][1], req_changes[index - 1][2],
                                               req_changes[index - 1][3], req_changes[index - 1][4]))
@@ -164,6 +171,26 @@ def build_edit_sequence(source, target):
 
         all_replaces = all_replaces and replace_found
 
+    i = 0
+    while i < len(edit_sequence) - 1:
+        curr_e = edit_sequence[i]
+        next_e = edit_sequence[i + 1]
+
+        while curr_e[2] > next_e[1]:
+            curr_e = ([Tokens.REPLACE_GROUP_OLD,
+                      source[curr_e[1]:next_e[2]],
+                      Tokens.REPLACE_GROUP_NEW,
+                      target[curr_e[3]:next_e[4]],
+                      Tokens.REPLACE_END],
+                      curr_e[1], next_e[2], curr_e[3], next_e[4])
+
+            del edit_sequence[i + 1]
+            if i+1 < len(edit_sequence):
+                next_e = edit_sequence[i + 1]
+
+        edit_sequence[i] = curr_e
+        i += 1
+
     return ' '.join([e1 for e0 in edit_sequence for e1 in e0[0]]), all_replaces
 
 
@@ -176,53 +203,93 @@ def find_token_diffs(source, target):
     while index < len(req_changes):
         change_type, source_start, source_end, target_start, target_end = req_changes[index]
 
+        source_start_space = source_start >= len(source) or source_start <= 0 or source[source_start - 1].isspace() or source[source_start].isspace()
+        source_end_space = source_end >= len(source) or source_end <= 0 or (source[source_end - 1].isspace() and source_end != source_start) or source[source_end].isspace()
+        source_surrounded_by_spaces = source_start_space and source_end_space
+
+        target_start_space = target_start >= len(target) or target_start <= 0 or target[target_start - 1].isspace() or target[target_start].isspace()
+        target_end_space = target_end >= len(target) or target_end <= 0 or (target[target_end - 1].isspace() and target_start != target_end) or target[target_end].isspace()
+        target_surrounded_by_spaces = target_start_space and target_end_space
+
         if index < len(req_changes) - 1:
             next_change = req_changes[index + 1]
         else:
             next_change = None
 
         if change_type == "equal":
-            while source_start < source_end < len(source) and not source[source_end].isspace():
+            while source_start < source_end < len(source) and not source_end_space:
                 source_end -= 1
-                if next_change:
-                    next_change = (next_change[0], next_change[1] - 1, next_change[2], next_change[3], next_change[4])
-
-            while target_start < target_end < len(target) and not target[target_end].isspace():
+                source_end_space = source_end >= len(source) or source_end <= 0 or (source[source_end - 1].isspace() and source_end != source_start) or source[source_end].isspace()
                 target_end -= 1
-                if next_change:
-                    next_change = (next_change[0], next_change[1], next_change[2], next_change[3] - 1, next_change[4])
-        else:
-            while source_end < len(source)  and not source[source_end].isspace():
-                source_end += 1
-                if next_change:
-                    next_change = (next_change[0], next_change[1] + 1, next_change[2], next_change[3], next_change[4])
-                    if next_change[1] >= next_change[2]:
-                        next_t_start = next_change[3]
-                        req_changes.pop(index + 1)
-                        if index < len(req_changes) - 1:
-                            next_change = req_changes[index + 1]
-                            next_change = (next_change[0], next_change[1], next_change[2], next_t_start, next_change[4])
-                        else:
-                            next_change = None
 
-            while target_end < len(target) and not target[target_end].isspace():
-                target_end += 1
                 if next_change:
-                    next_change = (next_change[0], next_change[1], next_change[2], next_change[3] + 1, next_change[4])
-                    if next_change[3] >= next_change[4]:
-                        next_s_start = next_change[1]
-                        req_changes.pop(index + 1)
-                        if index < len(req_changes) - 1:
-                            next_change = req_changes[index + 1]
-                            next_change = (next_change[0], next_s_start, next_change[2], next_change[3], next_change[4])
-                        else:
-                            next_change = None
+                    next_change = (next_change[0], next_change[1] - 1, next_change[2], next_change[3] - 1, next_change[4])
+        else:
+            check_source = True
+            while check_source:
+                while source_end < len(source) and not (source_end_space or (change_type == "insert" and target_surrounded_by_spaces)):
+                    source_end += 1
+                    source_end_space = source_end >= len(source) or source_end <= 0 or (source[source_end - 1].isspace() and source_end != source_start) or source[source_end].isspace()
+                    source_surrounded_by_spaces = source_start_space and source_end_space
+
+                    if change_type == "delete":
+                        target_end += 1
+
+                    if next_change:
+                        next_change = (next_change[0], next_change[1] + 1, next_change[2], next_change[3] + (1 if change_type == "delete" else 0), next_change[4])
+                        if next_change[1] >= next_change[2]:
+                            target_end = next_change[4]
+                            target_end_space = target_end >= len(target) or target_end <= 0 or (target[target_end - 1].isspace() and target_start != target_end) or target[target_end].isspace()
+                            target_surrounded_by_spaces = target_start_space and target_end_space
+
+                            req_changes.pop(index + 1)
+                            if index < len(req_changes) - 1:
+                                next_change = req_changes[index + 1]
+                                next_change = (next_change[0], next_change[1], next_change[2], target_end, next_change[4])
+                            else:
+                                next_change = None
+                check_source = False
+
+                while target_start != target_end < len(target) and not (target_end_space or (change_type == "delete" and source_surrounded_by_spaces)):
+                    target_end += 1
+                    target_end_space = target_end >= len(target) or target_end <= 0 or (target[target_end - 1].isspace() and target_start != target_end) or target[target_end].isspace()
+
+                    if next_change:
+                        next_change = (next_change[0], next_change[1] + (1 if change_type == "insert" else 0), next_change[2], next_change[3] + 1, next_change[4])
+                        if next_change[3] >= next_change[4]:
+                            source_end = next_change[2]
+                            source_end_space = source_end >= len(source) or source_end <= 0 or (source[source_end - 1].isspace() and source_end != source_start) or source[source_end].isspace()
+                            source_surrounded_by_spaces = source_start_space and source_end_space
+                            check_source = True
+
+                            req_changes.pop(index + 1)
+                            if index < len(req_changes) - 1:
+                                next_change = req_changes[index + 1]
+                                next_change = (next_change[0], source_end, next_change[2], next_change[3], next_change[4])
+                            else:
+                                next_change = None
 
         if next_change:
-            req_changes[index + 1] = next_change
+            req_changes[index + 1] = (next_change[0], source_end, next_change[2], target_end, next_change[4])
 
         final_changes.append((change_type, source_start, source_end, target_start, target_end))
         index += 1
+
+
+    i = 0
+    while i < len(final_changes) - 1:
+        curr_e = final_changes[i]
+        next_e = final_changes[i + 1]
+
+        while curr_e[0] == next_e[0] == "equal" or (curr_e[0] != "equal" and next_e[0] != "equal"):
+            curr_e = ("equal" if curr_e[0] == "equal" else "replace", curr_e[1], next_e[2], curr_e[3], next_e[4])
+
+            del final_changes[i + 1]
+            if i+1 < len(final_changes):
+                next_e = final_changes[i + 1]
+
+        final_changes[i] = curr_e
+        i += 1
 
     return final_changes
 
@@ -233,7 +300,8 @@ def apply_edit_sequence(original_code, edit_seq):
 
     replaces = [r for r in edit_seq.split(f' {Tokens.REPLACE_END}') if r]
 
-    for r in replaces:
+    last_index = len(original_code)
+    for r in reversed(replaces):
         orig, new = None, None
         old_found = False
         for old in REPLACE_OLDS:
@@ -252,9 +320,10 @@ def apply_edit_sequence(original_code, edit_seq):
                     orig, new = blocks[0], blocks[1]
                 break
 
-        if orig is None or new is None or original_code.count(orig) != 1:
+        if orig is None or new is None or original_code[:last_index].count(orig) != 1:
             return None
 
-        original_code = original_code.replace(orig, new)
+        last_index = original_code.index(orig)
+        original_code = original_code.replace(orig, new, 1)
 
     return original_code
