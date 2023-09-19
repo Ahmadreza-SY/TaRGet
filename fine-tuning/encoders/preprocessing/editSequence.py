@@ -217,22 +217,25 @@ def find_token_diffs(source, target):
             next_change = None
 
         if change_type == "equal":
-            while source_start < source_end < len(source) and not source_end_space:
+            while source_start < source_end < len(source) and (not source_end_space or (next_change and next_change[0] == "insert" and not target_surrounded_by_spaces)):
                 source_end -= 1
                 source_end_space = source_end >= len(source) or source_end <= 0 or (source[source_end - 1].isspace() and source_end != source_start) or source[source_end].isspace()
                 target_end -= 1
+                target_end_space = target_end >= len(target) or target_end <= 0 or (target[target_end - 1].isspace() and target_start != target_end) or target[target_end].isspace()
+                target_surrounded_by_spaces = target_start_space and target_end_space
 
                 if next_change:
                     next_change = (next_change[0], next_change[1] - 1, next_change[2], next_change[3] - 1, next_change[4])
         else:
             check_source = True
+            target_changed = False
             while check_source:
-                while source_end < len(source) and not (source_end_space or (change_type == "insert" and target_surrounded_by_spaces)):
+                while source_end < len(source) and not (source_end_space or (change_type == "insert" and target_surrounded_by_spaces and source_start == source_end)):
                     source_end += 1
                     source_end_space = source_end >= len(source) or source_end <= 0 or (source[source_end - 1].isspace() and source_end != source_start) or source[source_end].isspace()
                     source_surrounded_by_spaces = source_start_space and source_end_space
 
-                    if change_type == "delete":
+                    if change_type == "delete" and not target_changed:
                         target_end += 1
 
                     if next_change:
@@ -250,9 +253,13 @@ def find_token_diffs(source, target):
                                 next_change = None
                 check_source = False
 
-                while target_start != target_end < len(target) and not (target_end_space or (change_type == "delete" and source_surrounded_by_spaces)):
+                while target_start != target_end < len(target) and not (target_end_space or (change_type == "delete" and source_surrounded_by_spaces and target_start == target_end)):
                     target_end += 1
                     target_end_space = target_end >= len(target) or target_end <= 0 or (target[target_end - 1].isspace() and target_start != target_end) or target[target_end].isspace()
+                    target_changed = True
+
+                    if change_type == "delete":
+                        source_end += 1
 
                     if next_change:
                         next_change = (next_change[0], next_change[1] + (1 if change_type == "insert" else 0), next_change[2], next_change[3] + 1, next_change[4])
@@ -275,18 +282,26 @@ def find_token_diffs(source, target):
         final_changes.append((change_type, source_start, source_end, target_start, target_end))
         index += 1
 
+    final_changes = [f for f in final_changes if not (f[1] >= f[2] and f[3] >= f[4])]
 
     i = 0
     while i < len(final_changes) - 1:
         curr_e = final_changes[i]
+
+        if curr_e[1] == curr_e[2] and target[curr_e[4] - 1] == ' ':
+            curr_e = (curr_e[0], curr_e[1], next_e[2], curr_e[3], next_e[4]-1)
+            final_changes[i + 1] = (final_changes[i + 1][0], final_changes[i + 1][1], final_changes[i + 1][2], final_changes[i + 1][3] + 1, final_changes[i + 1][4])
         next_e = final_changes[i + 1]
 
-        while curr_e[0] == next_e[0] == "equal" or (curr_e[0] != "equal" and next_e[0] != "equal"):
+        while next_e and (curr_e[0] == next_e[0] == "equal" or (curr_e[0] != "equal" and next_e[0] != "equal")):
             curr_e = ("equal" if curr_e[0] == "equal" else "replace", curr_e[1], next_e[2], curr_e[3], next_e[4])
 
-            del final_changes[i + 1]
+            if i+1 < len(final_changes):
+                del final_changes[i + 1]
             if i+1 < len(final_changes):
                 next_e = final_changes[i + 1]
+            else:
+                next_e = None
 
         final_changes[i] = curr_e
         i += 1
@@ -306,7 +321,7 @@ def apply_edit_sequence(original_code, edit_seq):
         old_found = False
         for old in REPLACE_OLDS:
             if old in r:
-                r = re.sub(f'\s*{old}\s*', '', r)
+                r = re.sub(f'\s*{old} ', '', r)
                 old_found = True
                 break
 
@@ -315,15 +330,18 @@ def apply_edit_sequence(original_code, edit_seq):
 
         for new in REPLACE_NEWS:
             if new in r:
-                blocks = re.split(f'\s*{new}\s*', r)
+                blocks = re.split(f' {new} ', r)
                 if len(blocks) == 2:
                     orig, new = blocks[0], blocks[1]
                 break
 
-        if orig is None or new is None or original_code[:last_index].count(orig) != 1:
+        if orig is None or new is None or original_code[:last_index+len(orig)-1].count(orig) != 1:
             return None
 
         last_index = original_code.index(orig)
         original_code = original_code.replace(orig, new, 1)
 
     return original_code
+
+
+
