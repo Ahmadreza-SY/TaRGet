@@ -94,7 +94,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
                 new_selected_changes = selected_changes + [r["prioritized_changes"][i]]
                 # The +2 is for Tokens.TEST_CONTEXT and Tokens.REPAIR_CONTEXT
                 new_input_len = len(test_context_e) + sum(len(c["annotated_doc_seq"]) for c in new_selected_changes) + 2
-                if new_input_len <= self.args.max_seq:
+                if new_input_len <= self.args.max_length:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:

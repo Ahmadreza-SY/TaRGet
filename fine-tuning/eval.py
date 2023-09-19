@@ -72,7 +72,7 @@ def eval(model, split, args, save_dir):
         local_loss.append(loss.item())
         target_ids = target_ids.to("cpu")
 
-        max_gen_lengh = args.max_seq // 2
+        max_gen_lengh = args.max_length // 2
         eos_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.eos_token)
         if args.eval_full_beam:
             outputs = model_module.generate(

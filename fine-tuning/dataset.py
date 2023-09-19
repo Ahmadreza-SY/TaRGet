@@ -18,8 +18,9 @@ class ATRDataset(torch.utils.data.Dataset):
             valid_length_ind.add(i)
 
         ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
-        ds_output_dir = args.output_dir / "splits" / f"{split}.json"
-        ds.to_json(ds_output_dir, orient="records", indent=2)
+        ds_output_dir = args.output_dir / "splits"
+        ds_output_dir.mkdir(exist_ok=True, parents=True)
+        ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
 
     def __len__(self):
         return len(self.data)
@@ -39,13 +40,17 @@ class ATRDataset(torch.utils.data.Dataset):
     def has_valid_length(self, input, output):
         pass
 
-# TODO add model encoders and collate_fn
+
 class EncDecDataset(ATRDataset):
+    def __init__(self, ds, tokenizer, split, args):
+        super().__init__(ds, tokenizer, split, args)
+        args.pad_id = tokenizer.convert_tokens_to_ids(tokenizer.special_tokens_map["pad_token"])
+
     def get_input(self, row):
         return row["input"]
 
     def get_output(self, row):
-        return row["output"] + self.tokenizer.eos_token
+        return row["output"]
 
     def create_item(self, input, output):
         return {"input_ids": input, "labels": output, "attention_mask": torch.ones(input.size()).long()}
@@ -64,9 +69,27 @@ class DecoderDataset(ATRDataset):
     def create_item(self, input, output):
         return {
             "input_ids": input,
-            "labels": torch.cat([torch.zeros(1, input.size(1) - output.size(1)).fill_(-100).long(), output]),
+            "labels": torch.cat([torch.zeros(1, input.size(1) - output.size(1)).fill_(-100).long(), output], dim=1),
             "attention_mask": torch.ones(input.size()).long(),
         }
 
     def has_valid_length(self, input, output):
         return input.size(1) <= self.max_length
+
+
+class CodeGenDataset(DecoderDataset):
+    def __init__(self, ds, tokenizer, split, args):
+        super().__init__(ds, tokenizer, split, args)
+        args.pad_id = tokenizer.eos_token_id
+
+
+class IncoderDataset(DecoderDataset):
+    def __init__(self, ds, tokenizer, split, args):
+        super().__init__(ds, tokenizer, split, args)
+        args.pad_id = tokenizer.convert_tokens_to_ids("<|endofmask|>")
+
+    def get_input(self, row):
+        return row["input"] + row["output"] + "<|endofmask|>"
+
+    def get_output(self, row):
+        return row["output"] + "<|endofmask|>"

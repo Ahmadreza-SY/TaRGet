@@ -1,41 +1,32 @@
 from transformers import (
-    get_linear_schedule_with_warmup,
+    get_cosine_schedule_with_warmup,
 )
 from torch.optim import AdamW
 import torch.distributed as dist
 import torch
-from torch.nn import CrossEntropyLoss
 from torch.nn.parallel import DistributedDataParallel
 from datetime import datetime, timedelta
 from encoders import *
 from utils import create_loader, save_stats
-from eval import eval
+from transformers import Adafactor
 
 
 def train(gpu, args):
     logger = logging.getLogger(args.pname)
     args.logger = logger
     train_loader = create_loader(args.train_dataset, args)
-    train_steps = round(args.epochs * (len(args.train_dataset) / (args.batch_size * args.world_size)))
-    # step_interval = 1 if train_steps < (args.epochs * 3) else train_steps // (args.epochs * 3)
+    train_steps = int(args.epochs * len(train_loader))
 
     model = args.model_class.from_pretrained(args.model_name_or_path)
     model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(gpu)
     logger.info(f"Using device " + torch.cuda.get_device_name(gpu))
 
-    # define loss function (criterion) and optimizer
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {"params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], "weight_decay": 0.0},
-        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
-    ]
-    warmup_steps = int(train_steps * 0.1)
-    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=1e-06, betas=(0.9, 0.98))
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=train_steps)
+    # optimizer = Adafactor(model.parameters(), lr=args.learning_rate, scale_parameter=False, relative_step=False)
+    optimizer = AdamW(model.parameters(), lr=args.learning_rate)
+    scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=train_steps)
 
-    # Wrap the model
-    model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
+    model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu)
 
     if args.rank == 0:
         logger.info("***** Training *****")
@@ -45,7 +36,7 @@ def train(gpu, args):
     start = datetime.now()
     global_step = 0
     elapsed_time = timedelta()
-    args.best_checkpoint = (-1.0, 1)
+    args.best_checkpoint = (1e16, 1)
     args.stats = {}
     args.stats["train_set_size"] = len(args.train_dataset)
     args.stats["valid_set_size"] = len(args.valid_dataset)
@@ -54,29 +45,28 @@ def train(gpu, args):
     for epoch in range(1, args.epochs + 1):
         model.train()
         epoch_start = datetime.now()
-        model_module = model.module if hasattr(model, "module") else model
+        # model_module = model.module if hasattr(model, "module") else model
 
         global_loss = [None for _ in range(args.world_size)]
         local_loss = []
-        for step, data in enumerate(train_loader, 1):
+        for _, data in enumerate(train_loader, 1):
             optimizer.zero_grad(set_to_none=True)
 
-            source_ids, source_mask, target_ids = tuple(item.to(gpu) for item in data[:-1])
-
-            outputs = model_module(
-                input_ids=source_ids, attention_mask=source_mask, labels=target_ids, output_attentions=False
+            data = {
+                "input_ids": data["input_ids"].to(gpu),
+                "labels": data["labels"].to(gpu),
+                "attention_mask": data["attention_mask"].to(gpu),
+            }
+            output = model(
+                input_ids=data["input_ids"], labels=data["labels"], attention_mask=data["attention_mask"], return_dict=True
             )
-
-            lm_logits = outputs.logits
-            pad_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
-            lm_loss_fct = CrossEntropyLoss(ignore_index=pad_id, label_smoothing=args.label_smoothing)
-            loss = lm_loss_fct(lm_logits.view(-1, lm_logits.size(-1)), target_ids.view(-1))
+            loss = output.loss
 
             loss.backward()
             optimizer.step()
             scheduler.step()
-            global_step += 1
             local_loss.append(loss.item())
+            global_step += 1
 
         # End of epoch
         train_time = datetime.now() - epoch_start
@@ -84,8 +74,8 @@ def train(gpu, args):
         epoch_stats = {}
         dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
         if args.rank == 0:
-            all_loss = [item for sub in global_loss for item in sub]
-            avg_loss = round(sum(all_loss) / len(all_loss), 3)
+            train_loss = [item for sub in global_loss for item in sub]
+            avg_loss = round(sum(train_loss) / len(train_loss), 3)
             epoch_stats["epoch"] = epoch
             epoch_stats["loss"] = avg_loss
             epoch_stats["train_duration"] = str(train_time)
@@ -111,7 +101,7 @@ def train(gpu, args):
         if (epoch - args.best_checkpoint[1]) >= args.early_stop:
             if args.rank == 0:
                 logger.info(
-                    f"Early stopping since valid {args.scoring} has not improved since best epoch {args.best_checkpoint[1]} for the last {args.early_stop} epochs"
+                    f"Early stopping since valid loss has not improved since best epoch {args.best_checkpoint[1]} for the last {args.early_stop} epochs"
                 )
                 args.stats["training_stats"]["last_epoch"] = epoch
             break
@@ -125,31 +115,41 @@ def train(gpu, args):
 
 
 def validate(args, model, epoch, epoch_stats):
-    bleu_score, code_bleu_score, em, loss = eval(model, "valid", args, args.output_dir / f"checkpoint-last")
-    if args.scoring == "em":
-        sel_score = em
-    elif args.scoring == "bleu":
-        sel_score = bleu_score
-    elif args.scoring == "code_bleu":
-        sel_score = code_bleu_score
-    if sel_score > args.best_checkpoint[0]:
+    start = datetime.now()
+    global_loss = [None for _ in range(args.world_size)]
+    local_loss = []
+    model.eval()
+    validation_loader = create_loader(args.valid_dataset, args, True)
+    with torch.no_grad():
+        for _, data in enumerate(validation_loader):
+            data = {
+                "input_ids": data["input_ids"].to(args.gpu),
+                "labels": data["labels"].to(args.gpu),
+                "attention_mask": data["attention_mask"].to(args.gpu),
+            }
+            output = model(
+                input_ids=data["input_ids"], labels=data["labels"], attention_mask=data["attention_mask"], return_dict=True
+            )
+            loss = output.loss
+            local_loss.append(loss.item())
+
+    dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
+    dist.broadcast_object_list(global_loss, src=0)
+    valid_loss = [item for sub in global_loss for item in sub]
+    avg_loss = round(sum(valid_loss) / len(valid_loss), 3)
+    if args.rank == 0:
+        args.logger.info(f"* Validation loss: {avg_loss} ; Eval took: {datetime.now() - start}")
+    model.train()
+
+    sel_score = avg_loss
+    if sel_score < args.best_checkpoint[0]:
         args.best_checkpoint = (sel_score, epoch)
         if args.rank == 0:
-            args.logger.info(
-                f"# Best checkpoint update: epoch {epoch} ; BLEU {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM {em}"
-            )
-            args.stats["training_stats"]["best_epoch"] = {
-                "epoch": epoch,
-                "bleu": bleu_score,
-                "code_bleu": code_bleu_score,
-                "em": em,
-            }
+            args.logger.info(f"# Best checkpoint update: epoch {epoch} ; validation loss {avg_loss}")
+            args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "valid_loss": avg_loss}
             save_model(model, args.tokenizer, args.output_dir / f"checkpoint-best")
 
-    epoch_stats["bleu"] = bleu_score
-    epoch_stats["code_bleu"] = code_bleu_score
-    epoch_stats["em"] = em
-    epoch_stats["valid_loss"] = loss
+    epoch_stats["valid_loss"] = avg_loss
 
 
 def save_model(model, tokenizer, output_dir):

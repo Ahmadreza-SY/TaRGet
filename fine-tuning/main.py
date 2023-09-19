@@ -20,6 +20,7 @@ from encoders import *
 import json
 from train import train
 from eval import test
+from dataset import EncDecDataset, CodeGenDataset
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -27,11 +28,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# TODO change tokenization and dataloading process. 
-# Do the padding and create attention masks in the collate_fn of the dataloader
-# Attention mask: 1 for input_tokens and 0 for the rest
-# For encoder-decoder the collate_fn returns, input: <tokens + PAD>, label: <tokens + EOS + -100>
-# For decoder-only the collate_fn returns, input: <PADtokens>, label: <tokens + EOS + -100>
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--nodes", default=1, type=int, metavar="N", help="number of data loading workers")
@@ -45,18 +42,14 @@ def main():
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
     parser.add_argument("-b", "--batch_size", required=True, type=int)
     parser.add_argument("-e", "--epochs", required=True, type=int)
-    parser.add_argument("-ms", "--max_seq", required=True, type=int)
-    parser.add_argument("-ebs", "--eval_batch_size", default=16, type=int)
+    parser.add_argument("-ml", "--max_length", required=True, type=int)
     parser.add_argument("-c", "--checkpoint_interval", default=2, type=int)
-    parser.add_argument("-lr", "--learning_rate", default=5e-05, type=float)
+    parser.add_argument("-lr", "--learning_rate", default=1e-5, type=float)
     parser.add_argument("-ls", "--label_smoothing", default=0.1, type=float)
     parser.add_argument("-ts", "--train_size", default=0.8, type=float)
     parser.add_argument("-bs", "--beam_size", default=5, type=int)
     parser.add_argument("-s", "--random_seed", default=1234, type=int)
     parser.add_argument("-es", "--early_stop", default=10, type=int)
-    parser.add_argument("-ss", "--sub_sample", dest="sub_sample", action="store_true")
-    parser.set_defaults(sub_sample=False)
-    parser.add_argument("-sr", "--sample_ratio", default=0.15, type=float)
     parser.add_argument("-to", "--test_only", dest="test_only", action="store_true")
     parser.set_defaults(test_only=False)
     parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
@@ -71,20 +64,21 @@ def main():
     args.world_size = args.gpus * args.nodes
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
-    args.padding_side = "right"
     if args.model == "codet5":
         args.model_name_or_path = "salesforce/codet5-base"
         args.model_class = T5ForConditionalGeneration
         args.model_tokenizer_class = RobertaTokenizerFast
+        args.dataset_class = EncDecDataset
     elif args.model == "plbart":
         args.model_name_or_path = "uclanlp/plbart-base"
         args.model_class = PLBartForConditionalGeneration
         args.model_tokenizer_class = PLBartTokenizer
+        args.dataset_class = EncDecDataset
     elif args.model == "codegen":
         args.model_name_or_path = "salesforce/codegen-350M-mono"
         args.model_class = CodeGenForCausalLM
         args.model_tokenizer_class = AutoTokenizer
-        args.padding_side = "left"
+        args.dataset_class = CodeGenDataset
 
     try:
         args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
@@ -120,7 +114,7 @@ def run(gpu, args):
     if not args.test_only:
         train(gpu, args)
 
-    test(gpu, args)
+    # test(gpu, args)
 
 
 def load_data(args):

@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import inspect
-from encoders.encoders import BaseDataEncoder
 from encoders.preprocessing.processors import Processors
 import sys
+import logging
 
 
 class Tokens:
@@ -20,11 +20,16 @@ class Tokens:
     HUNK_END = "</hunk>"
 
 
-class TestRepairDataEncoder(BaseDataEncoder):
+class TestRepairDataEncoder:
+    def __init__(self, args):
+        self.args = args
+        self.logger = logging.getLogger("MAIN")
+
+    def log(self, msg):
+        self.logger.info(msg)
+
     def create_tokenizer(self):
-        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(
-            self.args.model_name_or_path, padding_side=self.args.padding_side
-        )
+        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
         new_special_tokens = {
             "additional_special_tokens": [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
         }
@@ -100,8 +105,7 @@ class TestRepairDataEncoder(BaseDataEncoder):
         ds = self.create_inputs_and_outputs(ds)
         ds["input"] = ds["input"].str.strip()
         ds["output"] = ds["output"].str.strip()
-        validsize_ind = self.get_validsize_indices(ds)
-        return ds.iloc[list(validsize_ind)].reset_index(drop=True)
+        return ds
 
     def merge_train_with_trivial(self, train_ds, trivial_ds):
         projects = trivial_ds["project"].unique().tolist()
@@ -156,9 +160,9 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
         if train_file.exists() and valid_file.exists() and test_file.exists():
             self.log("Loading train, valid, and test splits from disk ...")
-            train_ds = pd.read_json(train_file)
-            valid_ds = pd.read_json(valid_file)
-            test_ds = pd.read_json(test_file)
+            train_ds = self.args.dataset_class(pd.read_json(train_file), self.tokenizer, "train", self.args)
+            valid_ds = self.args.dataset_class(pd.read_json(valid_file), self.tokenizer, "valid", self.args)
+            test_ds = self.args.dataset_class(pd.read_json(test_file), self.tokenizer, "test", self.args)
         else:
             original_ds = self.read_data()
             self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
@@ -178,22 +182,18 @@ class TestRepairDataEncoder(BaseDataEncoder):
 
             train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
 
-            ds_output_dir.mkdir(exist_ok=True, parents=True)
-            train_ds.to_json(train_file, orient="records", indent=2)
-            valid_ds.to_json(valid_file, orient="records", indent=2)
-            test_ds.to_json(test_file, orient="records", indent=2)
-
-        if self.args.sub_sample:
-            ratio = self.args.sample_ratio
-            self.log(f"Subsampling with ration {ratio}")
-            # Warning: sub sampling is not stratified by ID
-            train_ds = train_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
-            valid_ds = valid_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
-            test_ds = test_ds.sample(frac=ratio, random_state=self.args.random_seed).reset_index(drop=True)
+            og_ds_size = len(train_ds) + len(valid_ds) + len(test_ds)
+            train_ds = self.args.dataset_class(train_ds, self.tokenizer, "train", self.args)
+            valid_ds = self.args.dataset_class(valid_ds, self.tokenizer, "valid", self.args)
+            test_ds = self.args.dataset_class(test_ds, self.tokenizer, "test", self.args)
+            new_ds_size = len(train_ds) + len(valid_ds) + len(test_ds)
+            self.log(
+                f"{round(100 * new_ds_size / og_ds_size, 1)} % ({new_ds_size}/{og_ds_size}) samples had less than max_length ({self.args.max_length}) tokens."
+            )
 
         ds_len = len(train_ds) + len(valid_ds) + len(test_ds)
         self.log(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / ds_len, 1)} %)")
         self.log(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / ds_len, 1)} %)")
         self.log(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / ds_len, 1)} %)")
 
-        return self.create_tensor_ds(train_ds), self.create_tensor_ds(valid_ds), self.create_tensor_ds(test_ds)
+        return train_ds, valid_ds, test_ds
