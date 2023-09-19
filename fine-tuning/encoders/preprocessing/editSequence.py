@@ -226,6 +226,7 @@ def find_token_diffs(source, target):
 
                 if next_change:
                     next_change = (next_change[0], next_change[1] - 1, next_change[2], next_change[3] - 1, next_change[4])
+
         else:
             check_source = True
             target_changed = False
@@ -276,10 +277,21 @@ def find_token_diffs(source, target):
                             else:
                                 next_change = None
 
+        append_curr = True
         if next_change:
-            req_changes[index + 1] = (next_change[0], source_end, next_change[2], target_end, next_change[4])
+            if change_type == "equal" and source_end - source_start != target_end - target_start:
+                append_curr = False
+                if next_change:
+                    req_changes[index + 1]  = (next_change[0], source_start, next_change[2], target_start, next_change[4])
+                else:
+                    prev_change = req_changes[index - 1]
+                    prev_change = (prev_change[0], prev_change[1], source_end, prev_change[3], target_end)
+                    req_changes[index - 1] = prev_change
+            else:
+                req_changes[index + 1] = (next_change[0], source_end, next_change[2], target_end, next_change[4])
 
-        final_changes.append((change_type, source_start, source_end, target_start, target_end))
+        if append_curr:
+            final_changes.append((change_type, source_start, source_end, target_start, target_end))
         index += 1
 
     final_changes = [f for f in final_changes if not (f[1] >= f[2] and f[3] >= f[4])]
@@ -342,6 +354,3 @@ def apply_edit_sequence(original_code, edit_seq):
         original_code = original_code.replace(orig, new, 1)
 
     return original_code
-
-
-
