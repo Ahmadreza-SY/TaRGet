@@ -87,8 +87,6 @@ def main():
         sys.exit()
 
     load_data(args)
-
-    logger.info(f"Arguments:\n {args}")
     logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
     mp.spawn(run, nprocs=args.gpus, args=(args,))
 
@@ -118,10 +116,12 @@ def run(gpu, args):
 
 
 def load_data(args):
+    logger = logging.getLogger("MAIN")
     data_encoder = args.data_encoder_class(args)
     dataset_splits = list(data_encoder.load_dataset())
-    args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
     args.tokenizer = data_encoder.tokenizer
+    logger.info(f"Arguments:\n {args}")
+    args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
             args.stats = json.load(f)

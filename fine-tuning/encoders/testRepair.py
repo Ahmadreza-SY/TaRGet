@@ -160,9 +160,9 @@ class TestRepairDataEncoder:
 
         if train_file.exists() and valid_file.exists() and test_file.exists():
             self.log("Loading train, valid, and test splits from disk ...")
-            train_ds = self.args.dataset_class(pd.read_json(train_file), self.tokenizer, "train", self.args)
-            valid_ds = self.args.dataset_class(pd.read_json(valid_file), self.tokenizer, "valid", self.args)
-            test_ds = self.args.dataset_class(pd.read_json(test_file), self.tokenizer, "test", self.args)
+            train_ds = pd.read_json(train_file)
+            valid_ds = pd.read_json(valid_file)
+            test_ds = pd.read_json(test_file)
         else:
             original_ds = self.read_data()
             self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
@@ -181,15 +181,6 @@ class TestRepairDataEncoder:
             train_ds, valid_ds, test_ds = self.split_by_commit(ds)
 
             train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
-
-            og_ds_size = len(train_ds) + len(valid_ds) + len(test_ds)
-            train_ds = self.args.dataset_class(train_ds, self.tokenizer, "train", self.args)
-            valid_ds = self.args.dataset_class(valid_ds, self.tokenizer, "valid", self.args)
-            test_ds = self.args.dataset_class(test_ds, self.tokenizer, "test", self.args)
-            new_ds_size = len(train_ds) + len(valid_ds) + len(test_ds)
-            self.log(
-                f"{round(100 * new_ds_size / og_ds_size, 1)} % ({new_ds_size}/{og_ds_size}) samples had less than max_length ({self.args.max_length}) tokens."
-            )
 
         ds_len = len(train_ds) + len(valid_ds) + len(test_ds)
         self.log(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / ds_len, 1)} %)")

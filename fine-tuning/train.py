@@ -14,6 +14,19 @@ from transformers import Adafactor
 def train(gpu, args):
     logger = logging.getLogger(args.pname)
     args.logger = logger
+
+    if args.rank == 0:
+        logger.info("Creating datasets")
+        og_ds_size = len(args.train_dataset) + len(args.valid_dataset) + len(args.test_dataset)
+    args.train_dataset = args.dataset_class(args.train_dataset, args.tokenizer, "train", args)
+    args.valid_dataset = args.dataset_class(args.valid_dataset, args.tokenizer, "valid", args)
+    args.test_dataset = args.dataset_class(args.test_dataset, args.tokenizer, "test", args)
+    if args.rank == 0:
+        new_ds_size = len(args.train_dataset) + len(args.valid_dataset) + len(args.test_dataset)
+        logger.info(
+            f"{round(100 * new_ds_size / og_ds_size, 1)} % ({new_ds_size}/{og_ds_size}) samples had less than max_length ({args.max_length}) tokens."
+        )
+
     train_loader = create_loader(args.train_dataset, args)
     train_steps = int(args.epochs * len(train_loader))
 

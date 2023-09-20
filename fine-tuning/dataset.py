@@ -17,10 +17,11 @@ class ATRDataset(torch.utils.data.Dataset):
             self.data.append(self.create_item(input, output))
             valid_length_ind.add(i)
 
-        ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
-        ds_output_dir = args.output_dir / "splits"
-        ds_output_dir.mkdir(exist_ok=True, parents=True)
-        ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
+        if args.rank == 0:
+            ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
+            ds_output_dir = args.output_dir / "splits"
+            ds_output_dir.mkdir(exist_ok=True, parents=True)
+            ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
 
     def __len__(self):
         return len(self.data)
