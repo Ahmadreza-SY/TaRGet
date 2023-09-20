@@ -8,6 +8,7 @@ def create_loader(dataset, args, valid_mode=False):
     def custom_collate(batch):
         batch_data = {"input_ids": [], "labels": [], "attention_mask": []}
         max_input_len = max([b["input_ids"].size(1) for b in batch])
+        max_output_len = max([b["labels"].size(1) for b in batch])
         for b in batch:
             batch_data["input_ids"].append(
                 torch.cat(
@@ -15,7 +16,7 @@ def create_loader(dataset, args, valid_mode=False):
                 )
             )
             batch_data["labels"].append(
-                torch.cat([b["labels"], torch.zeros(1, max_input_len - b["labels"].size(1)).fill_(-100).long()], dim=1)
+                torch.cat([b["labels"], torch.zeros(1, max_output_len - b["labels"].size(1)).fill_(-100).long()], dim=1)
             )
             batch_data["attention_mask"].append(
                 torch.cat([b["attention_mask"], torch.zeros(1, max_input_len - b["attention_mask"].size(1))], dim=1)
