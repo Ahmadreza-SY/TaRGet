@@ -3,25 +3,25 @@ import torch
 
 class ATRDataset(torch.utils.data.Dataset):
     def __init__(self, ds, tokenizer, split, args):
+        # Since this class is pickled, 
+        # only the data-related stuff is saved in self
         self.data = []
         self.max_length = args.max_length
-        self.tokenizer = tokenizer
         valid_length_ind = set()
         for i, row in ds.iterrows():
             input = self.get_input(row)
             output = self.get_output(row)
-            input = self.tokenizer.encode(input, return_tensors="pt")
-            output = self.tokenizer.encode(output, return_tensors="pt")
+            input = tokenizer.encode(input, return_tensors="pt")
+            output = tokenizer.encode(output, return_tensors="pt")
             if not self.has_valid_length(input, output):
                 continue
             self.data.append(self.create_item(input, output))
             valid_length_ind.add(i)
 
-        if args.rank == 0:
-            ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
-            ds_output_dir = args.output_dir / "splits"
-            ds_output_dir.mkdir(exist_ok=True, parents=True)
-            ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
+        ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
+        ds_output_dir = args.output_dir / "splits"
+        ds_output_dir.mkdir(exist_ok=True, parents=True)
+        ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
 
     def __len__(self):
         return len(self.data)
@@ -45,7 +45,7 @@ class ATRDataset(torch.utils.data.Dataset):
 class EncDecDataset(ATRDataset):
     def __init__(self, ds, tokenizer, split, args):
         super().__init__(ds, tokenizer, split, args)
-        args.pad_id = tokenizer.convert_tokens_to_ids(tokenizer.special_tokens_map["pad_token"])
+        self.pad_id = tokenizer.convert_tokens_to_ids(tokenizer.special_tokens_map["pad_token"])
 
     def get_input(self, row):
         return row["input"]
@@ -61,11 +61,15 @@ class EncDecDataset(ATRDataset):
 
 
 class DecoderDataset(ATRDataset):
+    def __init__(self, ds, tokenizer, split, args):
+        super().__init__(ds, tokenizer, split, args)
+        self.eos_token = tokenizer.eos_token
+
     def get_input(self, row):
-        return row["input"] + row["output"] + self.tokenizer.eos_token
+        return row["input"] + row["output"] + self.eos_token
 
     def get_output(self, row):
-        return row["output"] + self.tokenizer.eos_token
+        return row["output"] + self.eos_token
 
     def create_item(self, input, output):
         return {
@@ -81,13 +85,13 @@ class DecoderDataset(ATRDataset):
 class CodeGenDataset(DecoderDataset):
     def __init__(self, ds, tokenizer, split, args):
         super().__init__(ds, tokenizer, split, args)
-        args.pad_id = tokenizer.eos_token_id
+        self.pad_id = tokenizer.eos_token_id
 
 
 class IncoderDataset(DecoderDataset):
     def __init__(self, ds, tokenizer, split, args):
         super().__init__(ds, tokenizer, split, args)
-        args.pad_id = tokenizer.convert_tokens_to_ids("<|endofmask|>")
+        self.pad_id = tokenizer.convert_tokens_to_ids("<|endofmask|>")
 
     def get_input(self, row):
         return row["input"] + row["output"] + "<|endofmask|>"

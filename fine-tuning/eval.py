@@ -6,25 +6,26 @@ from utils import save_stats
 from nltk.translate.bleu_score import corpus_bleu
 from CodeBLEU.code_bleu import calc_code_bleu
 from tqdm import tqdm
+import torch
 
 
 def test(args):
     args.gpu = 0
+    torch.manual_seed(args.random_seed)
+    torch.cuda.set_device(args.gpu)
     logger = logging.getLogger("MAIN")
     logger.info("***** Testing *****")
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
             args.stats = json.load(f)
 
-    ds_output_dir = args.output_dir / "splits"
-    valid_file = ds_output_dir / "valid.json"
-    test_file = ds_output_dir / "test.json"
-    args.valid_dataset = pd.read_json(valid_file)
-    args.test_dataset = pd.read_json(test_file)
+    args.valid_dataset = pd.read_json(args.output_dir / "splits" / f"valid.json")
+    args.test_dataset = pd.read_json(args.output_dir / "splits" / f"test.json")
+    args.stats["test_set_size"] = len(args.test_dataset)
 
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path)
-    args.tokenizer = args.model_tokenizer_class.from_pretrained(best_checkpoint_path)
+    args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
     model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(args.gpu)
 

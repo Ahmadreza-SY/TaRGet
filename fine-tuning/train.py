@@ -9,23 +9,34 @@ from datetime import datetime, timedelta
 from encoders import *
 from utils import create_loader, save_stats
 from transformers import Adafactor
+import pickle
+
+
+def run(gpu, args):
+    rank = args.node_rank * args.gpus + gpu
+    args.rank = rank
+    args.gpu = gpu
+    args.pname = f"{args.node_rank}-{args.rank}"
+    logger = logging.getLogger(args.pname)
+    # Wait unitl all processes join
+    logger.info(f"Joining process group ...")
+    dist.init_process_group(backend="nccl", init_method="env://", world_size=args.world_size, rank=args.rank)
+    logger.info(f"Joined!")
+    if args.rank == 0:
+        logger.info("All processes joined!")
+
+    torch.manual_seed(args.random_seed)
+    torch.cuda.set_device(gpu)
+    train(gpu, args)
 
 
 def train(gpu, args):
     logger = logging.getLogger(args.pname)
     args.logger = logger
 
-    if args.rank == 0:
-        logger.info("Creating datasets")
-        og_ds_size = len(args.train_dataset) + len(args.valid_dataset) + len(args.test_dataset)
-    args.train_dataset = args.dataset_class(args.train_dataset, args.tokenizer, "train", args)
-    args.valid_dataset = args.dataset_class(args.valid_dataset, args.tokenizer, "valid", args)
-    args.test_dataset = args.dataset_class(args.test_dataset, args.tokenizer, "test", args)
-    if args.rank == 0:
-        new_ds_size = len(args.train_dataset) + len(args.valid_dataset) + len(args.test_dataset)
-        logger.info(
-            f"{round(100 * new_ds_size / og_ds_size, 1)} % ({new_ds_size}/{og_ds_size}) samples had less than max_length ({args.max_length}) tokens."
-        )
+    args.train_dataset = pickle.load(open(str(args.output_dir / "splits" / f"train.pkl"), "rb"))
+    args.valid_dataset = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
+    args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
 
     train_loader = create_loader(args.train_dataset, args)
     train_steps = int(args.epochs * len(train_loader))
@@ -53,7 +64,6 @@ def train(gpu, args):
     args.stats = {}
     args.stats["train_set_size"] = len(args.train_dataset)
     args.stats["valid_set_size"] = len(args.valid_dataset)
-    args.stats["test_set_size"] = len(args.test_dataset)
     args.stats["training_stats"] = {"epochs": []}
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -103,12 +113,11 @@ def train(gpu, args):
                 )
             )
 
-        if epoch % args.checkpoint_interval == 0:
-            valid_start = datetime.now()
-            validate(args, model, epoch, epoch_stats)
-            valid_time = datetime.now() - valid_start
-            epoch_stats["valid_duration"] = str(valid_time)
-            elapsed_time += valid_time
+        valid_start = datetime.now()
+        validate(args, model, epoch, epoch_stats)
+        valid_time = datetime.now() - valid_start
+        epoch_stats["valid_duration"] = str(valid_time)
+        elapsed_time += valid_time
 
         args.stats["training_stats"]["epochs"].append(epoch_stats)
         if (epoch - args.best_checkpoint[1]) >= args.early_stop:
@@ -159,13 +168,12 @@ def validate(args, model, epoch, epoch_stats):
         if args.rank == 0:
             args.logger.info(f"# Best checkpoint update: epoch {epoch} ; validation loss {avg_loss}")
             args.stats["training_stats"]["best_epoch"] = {"epoch": epoch, "valid_loss": avg_loss}
-            save_model(model, args.tokenizer, args.output_dir / f"checkpoint-best")
+            save_model(model, args.output_dir / f"checkpoint-best")
 
     epoch_stats["valid_loss"] = avg_loss
 
 
-def save_model(model, tokenizer, output_dir):
+def save_model(model, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     model_to_save = model.module if hasattr(model, "module") else model
     model_to_save.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)

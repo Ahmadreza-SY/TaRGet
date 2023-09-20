@@ -10,15 +10,12 @@ from transformers import (
     AutoTokenizer,
     CodeGenForCausalLM,
 )
-import torch
 import argparse
 import torch.multiprocessing as mp
-import torch.distributed as dist
 import logging
 import os
 from encoders import *
-import json
-from train import train
+from train import run
 from eval import test
 from dataset import EncDecDataset, CodeGenDataset
 
@@ -31,37 +28,36 @@ logging.basicConfig(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--nodes", default=1, type=int, metavar="N", help="number of data loading workers")
-    parser.add_argument("-g", "--gpus", default=1, type=int, help="number of gpus per node")
-    parser.add_argument("-nr", "--node_rank", default=0, type=int)
-    parser.add_argument(
-        "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
-    )
-    parser.add_argument("-d", "--dataset_dir", type=str)
-    parser.add_argument("-de", "--data_encoder", type=str)
-    parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
-    parser.add_argument("-b", "--batch_size", type=int)
-    parser.add_argument("-e", "--epochs", type=int)
-    parser.add_argument("-ml", "--max_length", required=True, type=int)
-    parser.add_argument("-c", "--checkpoint_interval", default=2, type=int)
-    parser.add_argument("-lr", "--learning_rate", default=1e-5, type=float)
-    parser.add_argument("-ls", "--label_smoothing", default=0.1, type=float)
-    parser.add_argument("-ts", "--train_size", default=0.8, type=float)
-    parser.add_argument("-bs", "--beam_size", default=5, type=int)
-    parser.add_argument("-s", "--random_seed", default=1234, type=int)
-    parser.add_argument("-es", "--early_stop", default=10, type=int)
-    parser.add_argument("-ev", "--eval", dest="eval", action="store_true")
-    parser.set_defaults(eval=False)
-    parser.add_argument("-tr", "--train", dest="train", action="store_true")
-    parser.set_defaults(train=False)
-    parser.add_argument("-m", "--model", default="plbart", type=str, choices=["plbart", "codet5", "codegen"])
+    sub_parsers = parser.add_subparsers()
+    encode_parser = sub_parsers.add_parser("encode")
+    finetune_parser = sub_parsers.add_parser("finetune")
+    test_parser = sub_parsers.add_parser("test")
+
+    encode_parser.set_defaults(func=encode)
+    add_common_arguments(encode_parser)
+    encode_parser.add_argument("-d", "--dataset_dir", required=True, type=str)
+    encode_parser.add_argument("-de", "--data_encoder", required=True, type=str)
+    encode_parser.add_argument("-ts", "--train_size", default=0.8, type=float)
+
+    finetune_parser.set_defaults(func=finetune)
+    add_common_arguments(finetune_parser)
+    finetune_parser.add_argument("-n", "--nodes", default=1, type=int, metavar="N", help="number of data loading workers")
+    finetune_parser.add_argument("-g", "--gpus", default=1, type=int, help="number of gpus per node")
+    finetune_parser.add_argument("-nr", "--node_rank", default=0, type=int)
+    finetune_parser.add_argument("-b", "--batch_size", required=True, type=int)
+    finetune_parser.add_argument("-e", "--epochs", required=True, type=int)
+    finetune_parser.add_argument("-lr", "--learning_rate", required=True, type=float)
+    finetune_parser.add_argument("-es", "--early_stop", default=10, type=int)
+
+    test_parser.set_defaults(func=test)
+    add_common_arguments(test_parser)
+    test_parser.add_argument("-bs", "--beam_size", default=5, type=int)
 
     logger = logging.getLogger("MAIN")
 
     args = parser.parse_args()
+    args.random_seed = 1234
     args.output_dir = Path(args.output_dir)
-    args.world_size = args.gpus * args.nodes
-
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
     if args.model == "codet5":
         args.model_name_or_path = "salesforce/codet5-base"
@@ -79,48 +75,34 @@ def main():
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = CodeGenDataset
 
-    if args.train:
-        try:
-            args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
-        except AttributeError:
-            print(f"Invalid data encoder '{args.data_encoder}'")
-            sys.exit()
-        load_data(args)
-        logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
-        mp.spawn(run, nprocs=args.gpus, args=(args,))
-        logger.info("All jobs done!")
-    elif args.eval:
-        test(args)
-
-
-def run(gpu, args):
-    rank = args.node_rank * args.gpus + gpu
-    args.rank = rank
-    args.gpu = gpu
-    args.pname = f"{args.node_rank}-{args.rank}"
-    logger = logging.getLogger(args.pname)
-    # Wait unitl all processes join
-    logger.info(f"Joining process group ...")
-    dist.init_process_group(backend="nccl", init_method="env://", world_size=args.world_size, rank=args.rank)
-    logger.info(f"Joined!")
-    torch.manual_seed(args.random_seed)
-    if args.rank == 0:
-        logger.info("All processes joined!")
-
-    torch.cuda.set_device(gpu)
-    train(gpu, args)
-
-
-def load_data(args):
-    logger = logging.getLogger("MAIN")
-    data_encoder = args.data_encoder_class(args)
-    dataset_splits = list(data_encoder.load_dataset())
-    args.tokenizer = data_encoder.tokenizer
     logger.info(f"Arguments:\n {args}")
-    args.train_dataset, args.valid_dataset, args.test_dataset = dataset_splits
-    if (args.output_dir / "stats.json").exists():
-        with open(str(args.output_dir / "stats.json")) as f:
-            args.stats = json.load(f)
+    args.func(args)
+
+
+def add_common_arguments(sub_parser):
+    sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codet5", "codegen"])
+    sub_parser.add_argument(
+        "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
+    )
+    sub_parser.add_argument("-ml", "--max_length", required=True, type=int)
+
+
+def encode(args):
+    try:
+        data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
+    except AttributeError:
+        print(f"Invalid data encoder '{args.data_encoder}'")
+        sys.exit()
+    data_encoder = data_encoder_class(args)
+    data_encoder.create_datasets()
+
+
+def finetune(args):
+    logger = logging.getLogger("MAIN")
+    args.world_size = args.gpus * args.nodes
+    logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
+    mp.spawn(run, nprocs=args.gpus, args=(args,))
+    logger.info("All jobs done!")
 
 
 if __name__ == "__main__":

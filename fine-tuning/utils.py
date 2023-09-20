@@ -12,7 +12,7 @@ def create_loader(dataset, args, valid_mode=False):
         for b in batch:
             batch_data["input_ids"].append(
                 torch.cat(
-                    [b["input_ids"], torch.zeros(1, max_input_len - b["input_ids"].size(1)).fill_(args.pad_id).long()], dim=1
+                    [b["input_ids"], torch.zeros(1, max_input_len - b["input_ids"].size(1)).fill_(dataset.pad_id).long()], dim=1
                 )
             )
             batch_data["labels"].append(

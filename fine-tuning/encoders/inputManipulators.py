@@ -79,9 +79,10 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         )
 
     def create_output(self, row):
-        repaired_code = ""
         if "targetChanges" in row["hunk"]:
             repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+        else:
+            repaired_code = "// Deleted"
         return repaired_code
 
     def create_inputs_and_outputs(self, ds):
