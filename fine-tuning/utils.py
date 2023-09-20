@@ -2,7 +2,7 @@ import json
 import torch
 from torch.utils.data import SequentialSampler, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-
+from DES import DistributedEvalSampler
 
 def create_loader(dataset, args, valid_mode=False):
     def custom_collate(batch):
@@ -28,6 +28,8 @@ def create_loader(dataset, args, valid_mode=False):
 
     if args.world_size == 1:
         sampler = SequentialSampler(dataset)
+    elif valid_mode:
+        sampler = DistributedEvalSampler(dataset, num_replicas=args.world_size, rank=args.rank)
     else:
         sampler = DistributedSampler(dataset, num_replicas=args.world_size, rank=args.rank)
 
@@ -43,6 +45,5 @@ def create_loader(dataset, args, valid_mode=False):
 
 
 def save_stats(args):
-    if args.rank == 0:
-        with open(str(args.output_dir / "stats.json"), "w") as f:
-            f.write(json.dumps(args.stats, indent=2, sort_keys=False))
+    with open(str(args.output_dir / "stats.json"), "w") as f:
+        f.write(json.dumps(args.stats, indent=2, sort_keys=False))

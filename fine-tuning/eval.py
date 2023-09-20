@@ -1,40 +1,46 @@
-import torch.distributed as dist
 import logging
 from encoders import *
 import pandas as pd
 from datetime import datetime
-from torch.nn.parallel import DistributedDataParallel
-from torch.nn import CrossEntropyLoss
-from utils import create_loader, save_stats
-from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+from utils import save_stats
+from nltk.translate.bleu_score import corpus_bleu
 from CodeBLEU.code_bleu import calc_code_bleu
+from tqdm import tqdm
 
 
-def test(gpu, args):
-    logger = logging.getLogger(args.pname)
-    if args.rank == 0:
-        logger.info("***** Testing *****")
+def test(args):
+    args.gpu = 0
+    logger = logging.getLogger("MAIN")
+    logger.info("***** Testing *****")
+    if (args.output_dir / "stats.json").exists():
+        with open(str(args.output_dir / "stats.json")) as f:
+            args.stats = json.load(f)
+
+    ds_output_dir = args.output_dir / "splits"
+    valid_file = ds_output_dir / "valid.json"
+    test_file = ds_output_dir / "test.json"
+    args.valid_dataset = pd.read_json(valid_file)
+    args.test_dataset = pd.read_json(test_file)
+
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path)
     args.tokenizer = args.model_tokenizer_class.from_pretrained(best_checkpoint_path)
     model.resize_token_embeddings(len(args.tokenizer))
-    model = model.to(gpu)
-    model = DistributedDataParallel(model, device_ids=[gpu], output_device=gpu, find_unused_parameters=True)
+    model = model.to(args.gpu)
 
-    if args.rank == 0:
-        logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
-    bleu_score, code_bleu_score, em, _ = eval(model, "valid", args, best_checkpoint_path)
+    logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
+    bleu_score, code_bleu_score, em = eval(model, "valid", args, best_checkpoint_path)
+    args.stats["valid_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}
 
-    if args.rank == 0:
-        logger.info(f"Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
-    bleu_score, code_bleu_score, em, test_loss = eval(model, "test", args, args.output_dir)
-    args.stats["test_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em, "loss": test_loss}
+    logger.info(f"Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
+    bleu_score, code_bleu_score, em = eval(model, "test", args, args.output_dir)
+    args.stats["test_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}
 
     save_stats(args)
 
 
 def eval(model, split, args, save_dir):
-    logger = logging.getLogger(args.pname)
+    logger = logging.getLogger("MAIN")
     if split == "valid":
         dataset = args.valid_dataset
     elif split == "test":
@@ -44,168 +50,52 @@ def eval(model, split, args, save_dir):
 
     tokenizer = args.tokenizer
     model.eval()
-    model_module = model.module if hasattr(model, "module") else model
-    loader = create_loader(dataset, args, True)
 
-    global_preds = [None for _ in range(args.world_size)]
-    global_targets = [None for _ in range(args.world_size)]
-    global_ids = [None for _ in range(args.world_size)]
-    global_loss = [None for _ in range(args.world_size)]
-
-    local_preds = []
-    local_targets = []
-    local_ids = []
-    local_loss = []
-
-    logger.debug("Starting inference")
-    steps = [0]
-
-    for _, data in enumerate(loader, 1):
-        source_ids, source_mask, target_ids, data_ids = tuple(item for item in data)
-
-        source_ids, source_mask, target_ids = source_ids.to(args.gpu), source_mask.to(args.gpu), target_ids.to(args.gpu)
-        outputs = model_module(input_ids=source_ids, attention_mask=source_mask, labels=target_ids, output_attentions=False)
-        lm_logits = outputs.logits
-        pad_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
-        lm_loss_fct = CrossEntropyLoss(ignore_index=pad_id, label_smoothing=args.label_smoothing)
-        loss = lm_loss_fct(lm_logits.view(-1, lm_logits.size(-1)), target_ids.view(-1))
-        local_loss.append(loss.item())
-        target_ids = target_ids.to("cpu")
-
-        max_gen_lengh = args.max_length // 2
-        eos_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.eos_token)
-        if args.eval_full_beam:
-            outputs = model_module.generate(
-                input_ids=source_ids,
-                attention_mask=source_mask,
-                num_beams=args.beam_size,
-                max_new_tokens=max_gen_lengh,
-                use_cache=True,
-                early_stopping=True,
-                num_return_sequences=args.beam_size,
-                pad_token_id=pad_id,
-                eos_token_id=eos_id,
-            )
-            # For prediction certainty
-            # outputs.scores[0].view(-1, args.beam_size, model_module.config.vocab_size).shape
-            curr_batch_size = target_ids.shape[0]
-            outputs = outputs.view(curr_batch_size, args.beam_size, -1).cpu().tolist()
-            for i, beam_preds in enumerate(outputs):
-                for pred in beam_preds:
-                    local_preds.append(pred)
-                    local_targets.append(target_ids[i])
-                    local_ids.append(data_ids[i])
-        else:
-            pred_ids = (
-                model_module.generate(
-                    input_ids=source_ids,
-                    attention_mask=source_mask,
-                    num_beams=args.beam_size,
-                    max_length=max_gen_lengh,
-                    use_cache=True,
-                    early_stopping=True,
-                    pad_token_id=pad_id,
-                    eos_token_id=eos_id,
-                )
-                .cpu()
-                .tolist()
-            )
-            local_preds.extend(pred_ids)
-            local_targets.extend(target_ids)
-            local_ids.extend(data_ids)
-
-        progress = round(100 * len(set(local_ids)) / len(dataset))
-        step = (progress // 20) * 20
-        if step not in steps:
-            steps.append(step)
-            logger.debug(f"Inference progress {progress}%")
-
-    if args.rank == 0:
-        logger.debug(f"Inference finished")
-        logger.debug(f"Gathering predictions")
-
-    dist.gather_object(local_preds, global_preds if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_targets, global_targets if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_ids, global_ids if args.rank == 0 else None, dst=0)
-    dist.gather_object(local_loss, global_loss if args.rank == 0 else None, dst=0)
-    if args.rank == 0:
-        all_targets = [item for sub in global_targets for item in sub]
-        all_preds = [item for sub in global_preds for item in sub]
-        all_ids = [item for sub in global_ids for item in sub]
-        all_loss = [item for sub in global_loss for item in sub]
-        logger.debug(f"Gathered {len(all_preds)} , {len(all_targets)} targets and predictions")
-
-        target_codes = tokenizer.batch_decode(all_targets, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        pred_codes = tokenizer.batch_decode(all_preds, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        logger.debug(f"Decoding finished")
-
-        ranks = list(range(1, args.beam_size + 1)) if args.eval_full_beam else [1]
-        pred_df = {"id": all_ids, "pred": pred_codes, "target": target_codes, "rank": ranks * len(dataset)}
-        if split == "test":
-            all_bleus, all_code_bleus = compute_single_bleus(target_codes, pred_codes)
-            pred_df["bleu"] = all_bleus
-            pred_df["code_bleu"] = all_code_bleus
-        pred_df = pd.DataFrame(pred_df)
-
-        bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
-        avg_loss = round(sum(all_loss) / len(all_loss), 3)
-        logger.info(
-            f"* BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Loss: {avg_loss} ; Eval took: {datetime.now() - start}"
+    predictions = []
+    for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc="Generating"):
+        input_ids = tokenizer.encode(row["input"], return_tensors="pt").to(args.gpu)
+        max_gen_lengh = args.max_length
+        outputs = model.generate(
+            input_ids,
+            max_new_tokens=max_gen_lengh,
+            num_beams=args.beam_size,
+            num_return_sequences=args.beam_size,
+            early_stopping=True,
+            use_cache=True,
         )
-        save_dir.mkdir(parents=True, exist_ok=True)
-        pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
+        preds = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        target = tokenizer.decode(
+            tokenizer.encode(row["output"]), skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
+        predictions.append({"ID": row["ID"], "target": target, "preds": preds})
 
-        scores = [bleu_score, code_bleu_score, em, avg_loss]
-    else:
-        scores = [None, None, None, None]
-
-    dist.broadcast_object_list(scores, src=0)
-    bleu_score, code_bleu_score, em, loss = scores[0], scores[1], scores[2], scores[3]
-    return bleu_score, code_bleu_score, em, loss
-
-
-def compute_single_bleus(targets, preds):
-    bleus = []
-    code_bleus = []
-    for target, pred in zip(targets, preds):
-        if len(target) == 0:
-            score = 100.0 if len(pred) == 0 else 0.0
-            bleus.append(score)
-            code_bleus.append(score)
-            continue
-        if len(pred) == 0:
-            bleus.append(0.0)
-            code_bleus.append(0.0)
-            continue
-        if target == pred:
-            bleus.append(100.0)
-            code_bleus.append(100.0)
-            continue
-        bleu, code_bleu = compute_bleu_scores([target], [pred], sf=SmoothingFunction().method1)
-        bleus.append(bleu)
-        code_bleus.append(code_bleu)
-    return bleus, code_bleus
+    pred_df = pd.DataFrame(predictions)
+    bleu_score, code_bleu_score, em = compute_scores(pred_df)
+    logger.info(f"* BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Eval took: {datetime.now() - start}")
+    save_dir.mkdir(parents=True, exist_ok=True)
+    pred_df.to_json(save_dir / f"{split}_predictions.json", orient="records", indent=2)
+    return bleu_score, code_bleu_score, em
 
 
-def compute_scores(targets, preds, ids):
-    df = pd.DataFrame({"target": targets, "pred": preds, "id": ids})
-    eval_size = df["id"].nunique()
+def compute_scores(pred_df):
+    eval_size = pred_df["ID"].nunique()
     em_size = 0
     best_preds = []
-    best_targets = []
-    for _, beam_outputs in df.groupby("id"):
-        best_pred = beam_outputs.iloc[0]["pred"]
-        for _, output in beam_outputs.iterrows():
-            if output["pred"] == output["target"]:
+    targets = []
+    for _, row in pred_df.iterrows():
+        beam_outputs = row["preds"]
+        target = row["target"]
+        best_pred = beam_outputs[0]
+        for output in beam_outputs:
+            if output == target:
                 em_size += 1
-                best_pred = output["pred"]
+                best_pred = output
                 break
         best_preds.append(best_pred)
-        best_targets.append(beam_outputs.iloc[0]["target"])
+        targets.append(target)
 
     em = round(em_size / eval_size * 100, 2)
-    bleu_score, code_bleu_score = compute_bleu_scores(best_targets, best_preds)
-
+    bleu_score, code_bleu_score = compute_bleu_scores(targets, best_preds)
     return bleu_score, code_bleu_score, em
 
 

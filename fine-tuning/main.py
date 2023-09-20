@@ -37,11 +37,11 @@ def main():
     parser.add_argument(
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
-    parser.add_argument("-d", "--dataset_dir", required=True, type=str)
-    parser.add_argument("-de", "--data_encoder", required=True, type=str)
+    parser.add_argument("-d", "--dataset_dir", type=str)
+    parser.add_argument("-de", "--data_encoder", type=str)
     parser.add_argument("-sc", "--scoring", default="em", type=str, choices=["bleu", "em"])
-    parser.add_argument("-b", "--batch_size", required=True, type=int)
-    parser.add_argument("-e", "--epochs", required=True, type=int)
+    parser.add_argument("-b", "--batch_size", type=int)
+    parser.add_argument("-e", "--epochs", type=int)
     parser.add_argument("-ml", "--max_length", required=True, type=int)
     parser.add_argument("-c", "--checkpoint_interval", default=2, type=int)
     parser.add_argument("-lr", "--learning_rate", default=1e-5, type=float)
@@ -50,11 +50,10 @@ def main():
     parser.add_argument("-bs", "--beam_size", default=5, type=int)
     parser.add_argument("-s", "--random_seed", default=1234, type=int)
     parser.add_argument("-es", "--early_stop", default=10, type=int)
-    parser.add_argument("-to", "--test_only", dest="test_only", action="store_true")
-    parser.set_defaults(test_only=False)
-    parser.add_argument("-efb", "--eval_full_beam", dest="eval_full_beam", action="store_true")
-    parser.set_defaults(eval_full_beam=False)
-
+    parser.add_argument("-ev", "--eval", dest="eval", action="store_true")
+    parser.set_defaults(eval=False)
+    parser.add_argument("-tr", "--train", dest="train", action="store_true")
+    parser.set_defaults(train=False)
     parser.add_argument("-m", "--model", default="plbart", type=str, choices=["plbart", "codet5", "codegen"])
 
     logger = logging.getLogger("MAIN")
@@ -80,17 +79,18 @@ def main():
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = CodeGenDataset
 
-    try:
-        args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
-    except AttributeError:
-        print(f"Invalid data encoder '{args.data_encoder}'")
-        sys.exit()
-
-    load_data(args)
-    logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
-    mp.spawn(run, nprocs=args.gpus, args=(args,))
-
-    logger.info("All jobs done!")
+    if args.train:
+        try:
+            args.data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
+        except AttributeError:
+            print(f"Invalid data encoder '{args.data_encoder}'")
+            sys.exit()
+        load_data(args)
+        logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
+        mp.spawn(run, nprocs=args.gpus, args=(args,))
+        logger.info("All jobs done!")
+    elif args.eval:
+        test(args)
 
 
 def run(gpu, args):
@@ -108,11 +108,7 @@ def run(gpu, args):
         logger.info("All processes joined!")
 
     torch.cuda.set_device(gpu)
-
-    if not args.test_only:
-        train(gpu, args)
-
-    # test(gpu, args)
+    train(gpu, args)
 
 
 def load_data(args):

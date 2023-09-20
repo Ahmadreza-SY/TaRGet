@@ -123,8 +123,7 @@ def train(gpu, args):
         training_time = datetime.now() - start
         logger.info("Training completed in: " + str(training_time))
         args.stats["training_stats"]["training_time"] = str(training_time)
-
-    save_stats(args)
+        save_stats(args)
 
 
 def validate(args, model, epoch, epoch_stats):
