@@ -9,6 +9,7 @@ from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
 import json
 import copy
+from dataset import EncDecDataset, DecoderDataset
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -95,7 +96,12 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
                 new_selected_changes = selected_changes + [r["prioritized_changes"][i]]
                 # The +2 is for Tokens.TEST_CONTEXT and Tokens.REPAIR_CONTEXT
                 new_input_len = len(test_context_e) + sum(len(c["annotated_doc_seq"]) for c in new_selected_changes) + 2
-                if new_input_len <= self.args.max_length:
+                if issubclass(self.args.dataset_class, EncDecDataset):
+                    input_max_length = self.args.max_length
+                elif issubclass(self.args.dataset_class, DecoderDataset):
+                    # When decoder-only, we consider two-third of the prompt as the input, and the rest as the output.
+                    input_max_length = self.args.max_length * 2 // 3
+                if new_input_len <= input_max_length:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:

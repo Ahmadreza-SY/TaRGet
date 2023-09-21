@@ -1,10 +1,10 @@
 import torch
 
 
+# Since this class is pickled, only the data-related stuff is saved in self
 class ATRDataset(torch.utils.data.Dataset):
     def __init__(self, ds, tokenizer, split, args):
-        # Since this class is pickled, 
-        # only the data-related stuff is saved in self
+        self.initialize_tokens(tokenizer)
         self.data = []
         self.max_length = args.max_length
         valid_length_ind = set()
@@ -29,6 +29,9 @@ class ATRDataset(torch.utils.data.Dataset):
     def __getitem__(self, item):
         return self.data[item]
 
+    def initialize_tokens(self, tokenizer):
+        pass
+
     def get_input(self, row):
         pass
 
@@ -43,8 +46,8 @@ class ATRDataset(torch.utils.data.Dataset):
 
 
 class EncDecDataset(ATRDataset):
-    def __init__(self, ds, tokenizer, split, args):
-        super().__init__(ds, tokenizer, split, args)
+    def initialize_tokens(self, tokenizer):
+        super().initialize_tokens(tokenizer)
         self.pad_id = tokenizer.convert_tokens_to_ids(tokenizer.special_tokens_map["pad_token"])
 
     def get_input(self, row):
@@ -61,8 +64,8 @@ class EncDecDataset(ATRDataset):
 
 
 class DecoderDataset(ATRDataset):
-    def __init__(self, ds, tokenizer, split, args):
-        super().__init__(ds, tokenizer, split, args)
+    def initialize_tokens(self, tokenizer):
+        super().initialize_tokens(tokenizer)
         self.eos_token = tokenizer.eos_token
 
     def get_input(self, row):
@@ -83,14 +86,14 @@ class DecoderDataset(ATRDataset):
 
 
 class CodeGenDataset(DecoderDataset):
-    def __init__(self, ds, tokenizer, split, args):
-        super().__init__(ds, tokenizer, split, args)
+    def initialize_tokens(self, tokenizer):
+        super().initialize_tokens(tokenizer)
         self.pad_id = tokenizer.eos_token_id
 
 
 class IncoderDataset(DecoderDataset):
-    def __init__(self, ds, tokenizer, split, args):
-        super().__init__(ds, tokenizer, split, args)
+    def initialize_tokens(self, tokenizer):
+        super().initialize_tokens(tokenizer)
         self.pad_id = tokenizer.convert_tokens_to_ids("<|endofmask|>")
 
     def get_input(self, row):

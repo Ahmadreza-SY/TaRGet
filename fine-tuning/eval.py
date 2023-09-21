@@ -7,6 +7,8 @@ from nltk.translate.bleu_score import corpus_bleu
 from CodeBLEU.code_bleu import calc_code_bleu
 from tqdm import tqdm
 import torch
+from dataset import DecoderDataset
+import pickle
 
 
 def test(args):
@@ -23,9 +25,15 @@ def test(args):
     args.test_dataset = pd.read_json(args.output_dir / "splits" / f"test.json")
     args.stats["test_set_size"] = len(args.test_dataset)
 
+    args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
+    args.pad_id, args.eos_id = None, None
+    if issubclass(args.dataset_class, DecoderDataset):
+        dataset = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
+        args.pad_id = dataset.pad_id
+        args.eos_id = args.tokenizer.convert_tokens_to_ids(dataset.eos_token)
+
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path)
-    args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
     model.resize_token_embeddings(len(args.tokenizer))
     model = model.to(args.gpu)
 
@@ -55,15 +63,19 @@ def eval(model, split, args, save_dir):
     predictions = []
     for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc="Generating"):
         input_ids = tokenizer.encode(row["input"], return_tensors="pt").to(args.gpu)
-        max_gen_lengh = args.max_length
         outputs = model.generate(
             input_ids,
-            max_new_tokens=max_gen_lengh,
+            max_length=args.max_length,
             num_beams=args.beam_size,
             num_return_sequences=args.beam_size,
             early_stopping=True,
             use_cache=True,
+            pad_token_id=args.pad_id,
+            eos_token_id=args.eos_id,
         )
+        if issubclass(args.dataset_class, DecoderDataset):
+            new_tokens_start = input_ids.size(1)
+            outputs = outputs[:, new_tokens_start:]
         preds = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         target = tokenizer.decode(
             tokenizer.encode(row["output"]), skip_special_tokens=True, clean_up_tokenization_spaces=False
