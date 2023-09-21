@@ -325,6 +325,7 @@ def apply_edit_sequence(original_code, edit_seq):
     if Tokens.REPLACE_END not in edit_seq:
         return None
 
+    original_code = remove_repeating_whitespaces(add_padding_to_chars(original_code))
     replaces = [r for r in edit_seq.split(f' {Tokens.REPLACE_END}') if r]
 
     last_index = len(original_code)

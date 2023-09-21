@@ -8,6 +8,9 @@ from torch.nn import CrossEntropyLoss
 from utils import create_loader, save_stats
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 from CodeBLEU.code_bleu import calc_code_bleu
+from encoders.preprocessing.codeFormatter import remove_repeating_whitespaces, add_padding_to_chars
+from encoders.preprocessing.editSequence import apply_edit_sequence
+import json
 
 
 def test(gpu, args):
@@ -139,6 +142,26 @@ def eval(model, split, args, save_dir):
             all_bleus, all_code_bleus = compute_single_bleus(target_codes, pred_codes)
             pred_df["bleu"] = all_bleus
             pred_df["code_bleu"] = all_code_bleus
+
+            test_file = args.output_dir / "splits" / "test.json"
+            with open(test_file, 'r') as f:
+                source_code = {t["ID"]: (t["bSource"]["code"], remove_repeating_whitespaces(add_padding_to_chars(t["aSource"]["code"]))) for t in json.load(f)}
+
+            target_code = []
+            applied_seq = []
+            for i in range(len(pred_df["id"])):
+                curr_id = pred_df["id"][i]
+                target_code.append(source_code[curr_id][1])
+                applied = apply_edit_sequence(source_code[curr_id][0], pred_df["pred"][i])
+                if applied:
+                    applied = remove_repeating_whitespaces(add_padding_to_chars(applied))
+                else:
+                    applied = ""
+                applied_seq.append(applied)
+
+            pred_df["target_code"] = target_code
+            pred_df["applied_edit_sequence"] = applied_seq
+
         pred_df = pd.DataFrame(pred_df)
 
         bleu_score, code_bleu_score, em = compute_scores(target_codes, pred_codes, all_ids)
