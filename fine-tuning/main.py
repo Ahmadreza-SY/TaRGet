@@ -13,8 +13,6 @@ from encoders import *
 import json
 from train import train
 from eval import test
-# from encoders.preprocessing.editSequence import apply_edit_sequence
-# from encoders.preprocessing.codeFormatter import remove_repeating_whitespaces
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -121,35 +119,5 @@ def load_data(args):
             args.stats = json.load(f)
 
 
-import json
-from tqdm import tqdm
 if __name__ == "__main__":
     main()
-    # with open("../data/_default/plbart-eseq/test_predictions.json", 'r') as file:
-    #     preds = json.load(file)
-    #
-    # em_ids = set([p['id'] for p in preds if p['pred'] == p['target']])
-    # preds = [p for p in preds if p['id'] not in em_ids]
-    #
-    # with open("../data/_default/plbart-eseq/splits/test.json", 'r') as file:
-    #     test = json.load(file)
-    #
-    # init_len = len(test)
-    # print(len(em_ids)/init_len)
-    # test = [t for t in test if t['ID'] not in em_ids]
-    #
-    # for t in tqdm(test):
-    #     curr_preds = [p for p in preds if p['id'] == t['ID']]
-    #     if t['ID'] not in em_ids:
-    #         target = remove_repeating_whitespaces(t['aSource']['code'])
-    #         for p in curr_preds:
-    #             applied_patch = apply_edit_sequence(t['bSource']['code'], p['pred'])
-    #             if applied_patch:
-    #                 applied_patch = remove_repeating_whitespaces(applied_patch)
-    #                 if target == applied_patch:
-    #                     em_ids.add(t['ID'])
-    #                     break
-    # print(len(em_ids)/init_len)
-    # pass
-
-
