@@ -4,6 +4,7 @@ from torch.utils.data import SequentialSampler, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from DES import DistributedEvalSampler
 
+
 def create_loader(dataset, args, valid_mode=False):
     def custom_collate(batch):
         batch_data = {"input_ids": [], "labels": [], "attention_mask": []}
@@ -12,7 +13,8 @@ def create_loader(dataset, args, valid_mode=False):
         for b in batch:
             batch_data["input_ids"].append(
                 torch.cat(
-                    [b["input_ids"], torch.zeros(1, max_input_len - b["input_ids"].size(1)).fill_(dataset.pad_id).long()], dim=1
+                    [b["input_ids"], torch.zeros(1, max_input_len - b["input_ids"].size(1)).fill_(dataset.pad_id).long()],
+                    dim=1,
                 )
             )
             batch_data["labels"].append(
@@ -35,7 +37,7 @@ def create_loader(dataset, args, valid_mode=False):
 
     loader = DataLoader(
         dataset=dataset,
-        batch_size=3 * args.batch_size if valid_mode else args.batch_size,
+        batch_size=args.batch_size,
         sampler=sampler,
         collate_fn=custom_collate,
         shuffle=False,
