@@ -26,11 +26,6 @@ def test(args):
     args.stats["test_set_size"] = len(args.test_dataset)
 
     args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
-    args.pad_id, args.eos_id = None, None
-    if issubclass(args.dataset_class, DecoderDataset):
-        dataset = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
-        args.pad_id = dataset.pad_id
-        args.eos_id = args.tokenizer.convert_tokens_to_ids(dataset.eos_token)
 
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path)
@@ -58,11 +53,14 @@ def eval(model, split, args, save_dir):
     start = datetime.now()
 
     tokenizer = args.tokenizer
+    dataset_obj = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
+    pad_id, eos_id = dataset_obj.get_pad_eos_for_generation(tokenizer)
+    decoder_sid = dataset_obj.get_decoder_start_token_id(tokenizer)
     model.eval()
 
     predictions = []
     for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc="Generating"):
-        input_ids = tokenizer.encode(row["input"], return_tensors="pt").to(args.gpu)
+        input_ids = dataset_obj.get_input(row, tokenizer).to(args.gpu)
         outputs = model.generate(
             input_ids,
             max_length=args.max_length,
@@ -70,12 +68,11 @@ def eval(model, split, args, save_dir):
             num_return_sequences=args.beam_size,
             early_stopping=True,
             use_cache=True,
-            pad_token_id=args.pad_id,
-            eos_token_id=args.eos_id,
+            pad_token_id=pad_id,
+            eos_token_id=eos_id,
+            decoder_start_token_id=decoder_sid,
         )
-        if issubclass(args.dataset_class, DecoderDataset):
-            new_tokens_start = input_ids.size(1)
-            outputs = outputs[:, new_tokens_start:]
+        outputs = dataset_obj.get_new_generated_tokens(outputs, input_ids)
         preds = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         target = tokenizer.decode(
             tokenizer.encode(row["output"]), skip_special_tokens=True, clean_up_tokenization_spaces=False

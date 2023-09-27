@@ -17,7 +17,7 @@ import os
 from encoders import *
 from train import run
 from eval import test
-from dataset import EncDecDataset, CodeGenDataset
+from dataset import EncDecDataset, PLBARTDataset, CodeGenDataset
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -68,7 +68,7 @@ def main():
         args.model_name_or_path = "uclanlp/plbart-base"
         args.model_class = PLBartForConditionalGeneration
         args.model_tokenizer_class = PLBartTokenizer
-        args.dataset_class = EncDecDataset
+        args.dataset_class = PLBARTDataset
     elif args.model == "codegen":
         args.model_name_or_path = "salesforce/codegen-350M-mono"
         args.model_class = CodeGenForCausalLM
