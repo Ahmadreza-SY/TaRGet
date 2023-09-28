@@ -28,8 +28,7 @@ def test(args):
     args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
 
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
-    model = args.model_class.from_pretrained(best_checkpoint_path)
-    model.resize_token_embeddings(len(args.tokenizer))
+    model = args.model_class.from_pretrained(best_checkpoint_path, trust_remote_code=True)
     model = model.to(args.gpu)
 
     logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")

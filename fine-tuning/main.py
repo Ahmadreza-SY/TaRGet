@@ -9,6 +9,8 @@ from transformers import (
     T5ForConditionalGeneration,
     AutoTokenizer,
     CodeGenForCausalLM,
+    AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM
 )
 import argparse
 import torch.multiprocessing as mp
@@ -74,13 +76,18 @@ def main():
         args.model_class = CodeGenForCausalLM
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = CodeGenDataset
+    elif args.model == "codet5p":
+        args.model_name_or_path = "Salesforce/codet5p-770m"
+        args.model_class = AutoModelForSeq2SeqLM
+        args.model_tokenizer_class = AutoTokenizer
+        args.dataset_class = EncDecDataset
 
     logger.info(f"Arguments:\n {args}")
     args.func(args)
 
 
 def add_common_arguments(sub_parser):
-    sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codet5", "codegen"])
+    sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codet5", "codegen", "codet5p"])
     sub_parser.add_argument(
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
