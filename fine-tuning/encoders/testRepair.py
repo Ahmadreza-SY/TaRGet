@@ -32,7 +32,8 @@ class TestRepairDataEncoder:
     def create_tokenizer(self):
         self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
         new_special_tokens = {
-            "additional_special_tokens": [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
+            "additional_special_tokens": self.tokenizer.additional_special_tokens
+            + [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
         }
         self.tokenizer.add_special_tokens(new_special_tokens)
         self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True

@@ -33,6 +33,9 @@ class ATRDataset(torch.utils.data.Dataset):
     def get_input(self, row, tokenizer):
         pass
 
+    def get_inference_input(self, row, tokenizer):
+        return self.get_input(row, tokenizer)
+
     def get_output(self, row, tokenizer):
         pass
 
@@ -101,6 +104,9 @@ class DecoderDataset(ATRDataset):
     def get_input(self, row, tokenizer):
         input = row["input"] + row["output"] + self.eos_token
         return tokenizer.encode(input, return_tensors="pt")
+
+    def get_inference_input(self, row, tokenizer):
+        return tokenizer.encode(row["input"], return_tensors="pt")
 
     def get_output(self, row, tokenizer):
         output = row["output"] + self.eos_token

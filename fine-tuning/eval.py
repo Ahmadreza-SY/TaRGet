@@ -60,7 +60,7 @@ def eval(model, split, args, save_dir):
 
     predictions = []
     for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc="Generating"):
-        input_ids = dataset_obj.get_input(row, tokenizer).to(args.gpu)
+        input_ids = dataset_obj.get_inference_input(row, tokenizer).to(args.gpu)
         outputs = model.generate(
             input_ids,
             max_length=args.max_length,
