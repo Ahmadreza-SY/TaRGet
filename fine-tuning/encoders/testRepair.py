@@ -9,16 +9,16 @@ import pickle
 
 
 class Tokens:
-    BREAKAGE_START = "<breakage>"
-    BREAKAGE_END = "</breakage>"
-    TEST_CONTEXT = "<testContext>"
-    REPAIR_CONTEXT = "<repairContext>"
-    DELETE = "<del>"
-    DELETE_END = "</del>"
-    ADD = "<add>"
-    ADD_END = "</add>"
-    HUNK = "<hunk>"
-    HUNK_END = "</hunk>"
+    BREAKAGE_START = "[<BREAKAGE>]"
+    BREAKAGE_END = "[</BREAKAGE>]"
+    TEST_CONTEXT = "[<TESTCONTEXT>]"
+    REPAIR_CONTEXT = "[<REPAIRCONTEXT>]"
+    DELETE = "[<DEL>]"
+    DELETE_END = "[</DEL>]"
+    ADD = "[<ADD>]"
+    ADD_END = "[</ADD>]"
+    HUNK = "[<HUNK>]"
+    HUNK_END = "[</HUNK>]"
 
 
 class TestRepairDataEncoder:

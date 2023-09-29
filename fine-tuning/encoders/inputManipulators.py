@@ -64,18 +64,27 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_test_context(self, row):
         test_code = row["bSource"]["code"]
-        breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-        breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        break_s = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        break_e = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         test_lines = test_code.split("\n")
-        test_lines.insert(breakge_start, Tokens.BREAKAGE_START)
-        test_lines.insert(breakge_end + 2, Tokens.BREAKAGE_END)
-        test_lines = [l for l in test_lines if not line_is_comment(l)]
-        test_context = " ".join(test_lines)
+        test_lines.insert(break_s, Tokens.BREAKAGE_START)
+        test_lines.insert(break_e + 2, Tokens.BREAKAGE_END)
+        test_lines = [l.strip() for l in test_lines]
+        test_lines = [l for l in test_lines if not line_is_comment(l) and len(l) > 0 and not l.isspace()]
+        break_s, break_e = test_lines.index(Tokens.BREAKAGE_START), test_lines.index(Tokens.BREAKAGE_END)
+        # Make sure special tokens do not add extra spaces
+        test_context = (
+            " ".join(test_lines[:break_s])
+            + test_lines[break_s]
+            + " ".join(test_lines[(break_s + 1) : break_e])
+            + test_lines[break_e]
+            + " ".join(test_lines[(break_e + 1) :])
+        )
         test_context = remove_repeating_whitespaces(test_context)
         return test_context
 
     def create_input(self, test_context, covered_changes):
-        return " ".join(
+        return "".join(
             [Tokens.TEST_CONTEXT, test_context] + [Tokens.REPAIR_CONTEXT] + [cc["annotated_doc"] for cc in covered_changes]
         )
 
@@ -161,7 +170,7 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
             elif type == dmp.DIFF_INSERT:
                 annotated_body.extend([Tokens.ADD, text, Tokens.ADD_END])
         doc = " ".join(body)
-        annotated_doc = " ".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
+        annotated_doc = "".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
 
         return doc, annotated_doc
 
