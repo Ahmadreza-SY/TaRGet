@@ -43,9 +43,10 @@ def add_padding_to_chars(code):
     new_code = unmask_quotes(new_code, mask_dict)
     return new_code
 
-
+# TODO merge with add_padding_to_chars
 def remove_repeating_whitespaces(code):
     new_code, mask_dict = mask_quotes(code)
+    new_code = new_code.replace("<>", "< >")
     new_code = " ".join(new_code.split())
     new_code = unmask_quotes(new_code, mask_dict)
     return new_code

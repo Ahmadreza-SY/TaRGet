@@ -6,7 +6,6 @@ from config import Config
 import os
 from common_utils import auto_str, find_parent_pom
 from java_version_detector import JavaVersionDetector
-from pathlib import Path
 
 
 @auto_str
@@ -24,6 +23,7 @@ class TestVerdict:
     UNRELATED_FAILURE = "unrelated_failure"
     DEPENDENCY_ERROR = "dependency_error"
     POM_NOT_FOUND = "pom_not_found"
+    INVALID_EDIT_SEQUENCE = "invalid_edit_sequence"
     UNKNOWN = "unknown"
 
     def __init__(self, status, error_lines):

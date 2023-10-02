@@ -7,8 +7,8 @@ from nltk.translate.bleu_score import corpus_bleu
 from CodeBLEU.code_bleu import calc_code_bleu
 from tqdm import tqdm
 import torch
-from dataset import DecoderDataset
 import pickle
+import json
 
 
 def test(args):
@@ -77,6 +77,26 @@ def eval(model, split, args, save_dir):
             tokenizer.encode(row["output"]), skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
         predictions.append({"ID": row["ID"], "target": target, "preds": preds})
+
+        # TODO add decode predictions to data encoders and implement it for EditSequence
+        # test_file = args.output_dir / "splits" / "test.json"
+        # with open(test_file, 'r') as f:
+        #     source_code = {t["ID"]: (t["bSource"]["code"], remove_repeating_whitespaces(add_padding_to_chars(t["aSource"]["code"]))) for t in json.load(f)}
+
+        # target_code = []
+        # applied_seq = []
+        # for i in range(len(pred_df["id"])):
+        #     curr_id = pred_df["id"][i]
+        #     target_code.append(source_code[curr_id][1])
+        #     applied = apply_edit_sequence(source_code[curr_id][0], pred_df["pred"][i])
+        #     if applied:
+        #         applied = remove_repeating_whitespaces(add_padding_to_chars(applied))
+        #     else:
+        #         applied = ""
+        #     applied_seq.append(applied)
+
+        # pred_df["target_code"] = target_code
+        # pred_df["applied_edit_sequence"] = applied_seq
 
     pred_df = pd.DataFrame(predictions)
     bleu_score, code_bleu_score, em = compute_scores(pred_df)

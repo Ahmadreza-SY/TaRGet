@@ -7,9 +7,12 @@ from encoders.preprocessing.utils import get_hunk_lines
 from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
+from encoders.preprocessing.editSequence import build_edit_sequence
 import json
 import copy
-from dataset import EncDecDataset, DecoderDataset
+import swifter
+
+swifter.set_defaults(progress_bar=False)
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -122,7 +125,9 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
-        ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
+        # TODO remove swifter
+        ds["output"] = ds.swifter.apply(lambda r: self.create_output(r), axis=1)
+
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
         return ds
 
@@ -240,6 +245,26 @@ class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
 
     def get_sort_key(self, changed_doc):
         return (-changed_doc["tfidf_breakage"], -changed_doc["repeat"], -changed_doc["tfidf_testsrc"])
+
+
+class EditSequenceDataEncoder(AllHunksDataEncoder):
+    def create_output(self, row):
+        repaired_code = ""
+        output, success = build_edit_sequence(row.bSource["code"], row.aSource["code"])
+        if success:
+            repaired_code = output
+
+        return repaired_code
+
+    def create_inputs_and_outputs(self, ds):
+        ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
+        num_without_output = len(ds[ds["output"].str.len() == 0].index)
+        self.log(
+            f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where edit sequence output could not be generated"
+        )
+        ds = ds[ds["output"].str.len() > 0].reset_index(drop=True)
+
+        return ds
 
 
 class ASTElementsDataEncoder(AllHunksDataEncoder):
