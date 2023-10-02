@@ -139,17 +139,3 @@ class CodeGenDataset(DecoderDataset):
     def initialize_tokens(self, tokenizer):
         super().initialize_tokens(tokenizer)
         self.pad_id = tokenizer.eos_token_id
-
-
-class IncoderDataset(DecoderDataset):
-    def initialize_tokens(self, tokenizer):
-        super().initialize_tokens(tokenizer)
-        self.pad_id = tokenizer.convert_tokens_to_ids("<|endofmask|>")
-
-    def get_input(self, row, tokenizer):
-        input = row["input"] + row["output"] + "<|endofmask|>"
-        return tokenizer.encode(input, return_tensors="pt")
-
-    def get_output(self, row, tokenizer):
-        output = row["output"] + "<|endofmask|>"
-        return tokenizer.encode(output, return_tensors="pt")
