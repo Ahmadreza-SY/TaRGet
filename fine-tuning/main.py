@@ -72,7 +72,7 @@ def main():
         args.model_tokenizer_class = PLBartTokenizer
         args.dataset_class = PLBARTDataset
     elif args.model == "codegen":
-        args.model_name_or_path = "salesforce/codegen-350M-mono"
+        args.model_name_or_path = "salesforce/codegen-350M-multi"
         args.model_class = CodeGenForCausalLM
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = CodeGenDataset
