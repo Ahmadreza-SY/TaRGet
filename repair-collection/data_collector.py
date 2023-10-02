@@ -160,7 +160,7 @@ class DataCollector:
                 continue
             log_path = Path(a_commit) / original_file.stem / test_method_name / get_short_hash(str(test_a_path.parent))
 
-            # Running T on P to check original test success (todo trace test coverage)
+            # Running T on P to check original test success
             original_verdict, covered_lines = self.run_original_test(b_commit_path, change)
             if not original_verdict.succeeded():
                 changed_tests_verdicts.append(

@@ -9,6 +9,7 @@ from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
 import json
 import copy
+from dataset import EncDecDataset, DecoderDataset
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -63,25 +64,35 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_test_context(self, row):
         test_code = row["bSource"]["code"]
-        breakge_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
-        breakge_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        break_s = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        break_e = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         test_lines = test_code.split("\n")
-        test_lines.insert(breakge_start, Tokens.BREAKAGE_START)
-        test_lines.insert(breakge_end + 2, Tokens.BREAKAGE_END)
-        test_lines = [l for l in test_lines if not line_is_comment(l)]
-        test_context = " ".join(test_lines)
+        test_lines.insert(break_s, Tokens.BREAKAGE_START)
+        test_lines.insert(break_e + 2, Tokens.BREAKAGE_END)
+        test_lines = [l.strip() for l in test_lines]
+        test_lines = [l for l in test_lines if not line_is_comment(l) and len(l) > 0 and not l.isspace()]
+        break_s, break_e = test_lines.index(Tokens.BREAKAGE_START), test_lines.index(Tokens.BREAKAGE_END)
+        # Make sure special tokens do not add extra spaces
+        test_context = (
+            " ".join(test_lines[:break_s])
+            + test_lines[break_s]
+            + " ".join(test_lines[(break_s + 1) : break_e])
+            + test_lines[break_e]
+            + " ".join(test_lines[(break_e + 1) :])
+        )
         test_context = remove_repeating_whitespaces(test_context)
         return test_context
 
     def create_input(self, test_context, covered_changes):
-        return " ".join(
+        return "".join(
             [Tokens.TEST_CONTEXT, test_context] + [Tokens.REPAIR_CONTEXT] + [cc["annotated_doc"] for cc in covered_changes]
         )
 
     def create_output(self, row):
-        repaired_code = ""
         if "targetChanges" in row["hunk"]:
             repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+        else:
+            repaired_code = "// Deleted"
         return repaired_code
 
     def create_inputs_and_outputs(self, ds):
@@ -94,7 +105,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
                 new_selected_changes = selected_changes + [r["prioritized_changes"][i]]
                 # The +2 is for Tokens.TEST_CONTEXT and Tokens.REPAIR_CONTEXT
                 new_input_len = len(test_context_e) + sum(len(c["annotated_doc_seq"]) for c in new_selected_changes) + 2
-                if new_input_len <= self.args.max_seq:
+                max_input_length = self.args.dataset_class.get_max_input_len(self.args.max_length)
+                if new_input_len <= max_input_length:
                     selected_changes = new_selected_changes
 
             if len(selected_changes) == 0:
@@ -158,7 +170,7 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
             elif type == dmp.DIFF_INSERT:
                 annotated_body.extend([Tokens.ADD, text, Tokens.ADD_END])
         doc = " ".join(body)
-        annotated_doc = " ".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
+        annotated_doc = "".join([Tokens.HUNK] + annotated_body + [Tokens.HUNK_END])
 
         return doc, annotated_doc
 
