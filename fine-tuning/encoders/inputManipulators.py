@@ -34,7 +34,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def get_broken_code(self, row):
         broken_code = ""
         if "sourceChanges" in row["hunk"]:
-            broken_code = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
+            broken_code = "\n".join([c["line"] for c in row["hunk"]["sourceChanges"]])
         return broken_code
 
     def get_tfidf_sim(self, target, changes):
@@ -50,10 +50,10 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         changes = self.remove_duplicate_documents(changes)
 
         tfidf_breakage = self.get_tfidf_sim(self.get_broken_code(row), changes)
-        tfidf_testsrc = self.get_tfidf_sim(row["bSource"]["code"], changes)
+        tfidf_testsrc = self.get_tfidf_sim(add_padding_to_chars(row["bSource"]["code"]), changes)
         for i, c in enumerate(changes):
-            c["tfidf_breakage"] = round(tfidf_breakage[i], 1)
-            c["tfidf_testsrc"] = round(tfidf_testsrc[i], 2)
+            c["tfidf_breakage"] = tfidf_breakage[i]
+            c["tfidf_testsrc"] = tfidf_testsrc[i]
         changes = [c for c in changes if c["tfidf_breakage"] > 0.0]
         return sorted(changes, key=lambda c: self.get_sort_key(c))
 
@@ -71,18 +71,10 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         break_e = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         test_lines = test_code.split("\n")
         test_lines = [add_padding_to_chars(l) for l in test_lines]
-        test_lines.insert(break_s, Tokens.BREAKAGE_START)
-        test_lines.insert(break_e + 2, Tokens.BREAKAGE_END)
+        test_lines[break_s] = Tokens.BREAKAGE_START + test_lines[break_s]
+        test_lines[break_e] = test_lines[break_e] + Tokens.BREAKAGE_END
         test_lines = [l for l in test_lines if not line_is_comment(l) and len(l) > 0 and not l.isspace()]
-        break_s, break_e = test_lines.index(Tokens.BREAKAGE_START), test_lines.index(Tokens.BREAKAGE_END)
-        # Make sure special tokens do not add extra spaces
-        test_context = (
-            " ".join(test_lines[:break_s])
-            + test_lines[break_s]
-            + " ".join(test_lines[(break_s + 1) : break_e])
-            + test_lines[break_e]
-            + " ".join(test_lines[(break_e + 1) :])
-        )
+        test_context = "\n".join(test_lines)
         return test_context
 
     def create_input(self, test_context, covered_changes):
@@ -92,7 +84,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_output(self, row):
         if "targetChanges" in row["hunk"]:
-            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+            repaired_code = "\n".join([c["line"] for c in row["hunk"]["targetChanges"]])
         else:
             repaired_code = "// Deleted"
         return repaired_code
@@ -143,13 +135,13 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 class HunksDataEncoder(PrioritizedChangesDataEncoder):
     def create_hunk_document(self, hunk):
         source_lines, target_lines = get_hunk_lines(hunk)
-        doc = " ".join(source_lines + target_lines)
+        doc = "\n".join(source_lines + target_lines)
 
         if len(source_lines) > 0:
             source_lines.insert(0, Tokens.DELETE)
         if len(target_lines) > 0:
             target_lines.insert(0, Tokens.ADD)
-        annotated_doc = " ".join([Tokens.HUNK] + source_lines + target_lines)
+        annotated_doc = "\n".join([Tokens.HUNK] + source_lines + target_lines)
 
         return doc, annotated_doc
 
