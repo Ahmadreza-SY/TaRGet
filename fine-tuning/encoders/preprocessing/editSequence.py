@@ -321,15 +321,34 @@ def find_token_diffs(source, target):
     return final_changes
 
 
-def apply_edit_sequence(original_code, edit_seq):
-    if Tokens.REPLACE_END not in edit_seq:
+def apply_edit_sequence(original_code, edit_seq, replace_pairs=None):
+    if not replace_pairs:
+        replace_pairs = get_replace_pairs(edit_seq)
+
+    if not replace_pairs:
         return None
 
     original_code = add_padding_to_chars(original_code)
-    replaces = [r for r in edit_seq.split(f' {Tokens.REPLACE_END}') if r]
-
     last_index = len(original_code)
-    for r in reversed(replaces):
+
+    for orig, new in reversed(replace_pairs):
+        if orig is None or new is None or original_code[:last_index+len(orig)-1].count(orig) != 1:
+            return None
+
+        last_index = original_code.index(orig)
+        original_code = original_code.replace(orig, new, 1)
+
+    return original_code
+
+
+def get_replace_pairs(edit_seq):
+    if Tokens.REPLACE_END not in edit_seq:
+        return None
+
+    replaces = [r for r in edit_seq.split(f' {Tokens.REPLACE_END}') if r]
+    pairs = []
+
+    for r in replaces:
         orig, new = None, None
         old_found = False
         for old in REPLACE_OLDS:
@@ -348,10 +367,9 @@ def apply_edit_sequence(original_code, edit_seq):
                     orig, new = blocks[0], blocks[1]
                 break
 
-        if orig is None or new is None or original_code[:last_index+len(orig)-1].count(orig) != 1:
+        if not orig or not new:
             return None
 
-        last_index = original_code.index(orig)
-        original_code = original_code.replace(orig, new, 1)
+        pairs.append((orig, new))
 
-    return original_code
+    return pairs

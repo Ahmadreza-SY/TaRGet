@@ -9,4 +9,3 @@ transformers==4.33.3
 nltk==3.8.1
 tree-sitter==0.20.1
 diff-match-patch==20230430
-swifter==1.4.0
