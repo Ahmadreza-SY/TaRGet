@@ -10,7 +10,7 @@ from transformers import (
     AutoTokenizer,
     CodeGenForCausalLM,
     AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM
+    AutoModelForSeq2SeqLM,
 )
 import argparse
 import torch.multiprocessing as mp
@@ -20,6 +20,7 @@ from encoders import *
 from train import run
 from eval import test
 from dataset import EncDecDataset, PLBARTDataset, CodeGenDataset
+from utils import get_data_encoder_class
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -53,6 +54,7 @@ def main():
 
     test_parser.set_defaults(func=test)
     add_common_arguments(test_parser)
+    test_parser.add_argument("-de", "--data_encoder", required=True, type=str)
     test_parser.add_argument("-bs", "--beam_size", default=5, type=int)
 
     logger = logging.getLogger("MAIN")
@@ -95,11 +97,7 @@ def add_common_arguments(sub_parser):
 
 
 def encode(args):
-    try:
-        data_encoder_class = getattr(sys.modules[__name__], args.data_encoder + "DataEncoder")
-    except AttributeError:
-        print(f"Invalid data encoder '{args.data_encoder}'")
-        sys.exit()
+    data_encoder_class = get_data_encoder_class(args.data_encoder)
     data_encoder = data_encoder_class(args)
     data_encoder.create_datasets()
 

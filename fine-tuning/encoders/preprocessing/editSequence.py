@@ -2,7 +2,7 @@ import difflib
 import re
 
 from encoders.testRepair import Tokens
-from encoders.preprocessing.codeFormatter import remove_repeating_whitespaces, add_padding_to_chars
+from encoders.preprocessing.codeFormatter import add_padding_to_chars
 
 
 REPLACE_OLDS = [Tokens.REPLACE_OLD, Tokens.REPLACE_KEEP_BEFORE_OLD, Tokens.REPLACE_KEEP_AFTER_OLD, Tokens.REPLACE_KEEP_BEFORE_AFTER_OLD, Tokens.REPLACE_GROUP_OLD]
@@ -11,8 +11,8 @@ REPLACE_NEWS = [Tokens.REPLACE_NEW, Tokens.REPLACE_KEEP_BEFORE_NEW, Tokens.REPLA
 def build_edit_sequence(source, target):
     edit_sequence = []
 
-    source = remove_repeating_whitespaces(add_padding_to_chars(source))
-    target = remove_repeating_whitespaces(add_padding_to_chars(target))
+    source = add_padding_to_chars(source)
+    target = add_padding_to_chars(target)
 
     req_changes = find_token_diffs(source, target)
     all_replaces = True
@@ -325,7 +325,7 @@ def apply_edit_sequence(original_code, edit_seq):
     if Tokens.REPLACE_END not in edit_seq:
         return None
 
-    original_code = remove_repeating_whitespaces(add_padding_to_chars(original_code))
+    original_code = add_padding_to_chars(original_code)
     replaces = [r for r in edit_seq.split(f' {Tokens.REPLACE_END}') if r]
 
     last_index = len(original_code)

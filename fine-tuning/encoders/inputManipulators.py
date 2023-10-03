@@ -2,7 +2,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from encoders.testRepair import TestRepairDataEncoder, Tokens
 from encoders.preprocessing.commentRemoval import line_is_comment, _remove_empty_hunks
 from encoders.preprocessing.textDiff import get_hunk_diffs, _remove_whitespace_hunks
-from encoders.preprocessing.codeFormatter import remove_repeating_whitespaces, format_sut_changes
+from encoders.preprocessing.codeFormatter import format_sut_changes, add_padding_to_chars
 from encoders.preprocessing.utils import get_hunk_lines
 from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
@@ -70,9 +70,9 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         break_s = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         break_e = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
         test_lines = test_code.split("\n")
+        test_lines = [add_padding_to_chars(l) for l in test_lines]
         test_lines.insert(break_s, Tokens.BREAKAGE_START)
         test_lines.insert(break_e + 2, Tokens.BREAKAGE_END)
-        test_lines = [l.strip() for l in test_lines]
         test_lines = [l for l in test_lines if not line_is_comment(l) and len(l) > 0 and not l.isspace()]
         break_s, break_e = test_lines.index(Tokens.BREAKAGE_START), test_lines.index(Tokens.BREAKAGE_END)
         # Make sure special tokens do not add extra spaces
@@ -83,7 +83,6 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             + test_lines[break_e]
             + " ".join(test_lines[(break_e + 1) :])
         )
-        test_context = remove_repeating_whitespaces(test_context)
         return test_context
 
     def create_input(self, test_context, covered_changes):
@@ -97,6 +96,14 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         else:
             repaired_code = "// Deleted"
         return repaired_code
+
+    @staticmethod
+    def decode_outputs(row, outputs, tokenizer):
+        preds = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        target = tokenizer.decode(
+            tokenizer.encode(row["output"]), skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
+        return {"ID": row["ID"], "target": target, "preds": preds}
 
     def create_inputs_and_outputs(self, ds):
         def select_changes(r):
@@ -125,7 +132,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
-        # TODO remove swifter
+        # TODO remove swifter because I believe the slowness was due to infinite loops.
+        # If removing it caused slowness, use joblib.
         ds["output"] = ds.swifter.apply(lambda r: self.create_output(r), axis=1)
 
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
@@ -265,6 +273,33 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         ds = ds[ds["output"].str.len() > 0].reset_index(drop=True)
 
         return ds
+
+    # TODO Implement this. 
+    # It should return a dictionary similar to decode_outputs of the parent class.
+    # The "preds" should cover only the broken part, not the whole test code to have fair comparison with other data encoders.
+    # Note the when using tokenizer.decode, you should set skip_special_tokens to False because edit sequence tokens are special tokens.
+    # Add the original edit sequence to the returned dict as well for future debug or analysis purposes.
+    @staticmethod
+    def decode_outputs(row, outputs, tokenizer):
+        pass
+        # test_file = args.output_dir / "splits" / "test.json"
+        # with open(test_file, 'r') as f:
+        #     source_code = {t["ID"]: (t["bSource"]["code"], add_padding_to_chars(t["aSource"]["code"])) for t in json.load(f)}
+
+        # target_code = []
+        # applied_seq = []
+        # for i in range(len(pred_df["id"])):
+        #     curr_id = pred_df["id"][i]
+        #     target_code.append(source_code[curr_id][1])
+        #     applied = apply_edit_sequence(source_code[curr_id][0], pred_df["pred"][i])
+        #     if applied:
+        #         applied = add_padding_to_chars(applied)
+        #     else:
+        #         applied = ""
+        #     applied_seq.append(applied)
+
+        # pred_df["target_code"] = target_code
+        # pred_df["applied_edit_sequence"] = applied_seq
 
 
 class ASTElementsDataEncoder(AllHunksDataEncoder):

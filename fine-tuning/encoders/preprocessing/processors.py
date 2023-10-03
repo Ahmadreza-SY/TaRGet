@@ -1,5 +1,5 @@
 from encoders.preprocessing.commentRemoval import remove_hunk_comments, hunk_is_empty, _remove_empty_hunks
-from encoders.preprocessing.codeFormatter import format_hunk, format_sut_changes, format_source
+from encoders.preprocessing.codeFormatter import format_hunk, format_sut_changes
 from encoders.preprocessing.textDiff import _remove_whitespace_hunks
 from joblib import Parallel, delayed
 
@@ -17,8 +17,6 @@ class Processors:
         ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
         ds["coveredClassChanges"] = Parallel(n_jobs=-1)(delayed(format_sut_changes)(c) for c in ds["coveredClassChanges"])
         ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(delayed(format_sut_changes)(c) for c in ds["coveredMethodChanges"])
-        ds["aSource"] = ds["aSource"].apply(lambda s: format_source(s))
-        ds["bSource"] = ds["bSource"].apply(lambda s: format_source(s))
         return ds
 
     @staticmethod

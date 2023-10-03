@@ -62,7 +62,7 @@ def main():
     )
     parser.add_argument("-do", "--discard-logs", dest="discard_logs", action="store_true")
     parser.set_defaults(discard_logs=False)
-    # TODO remove this because we are applying edit seq in prediction phase
+    # TODO Remove this and the related code because we are applying edit seq in prediction phase
     parser.add_argument("-eds", "--edit_sequence", dest="edit_sequence", action="store_true")
     parser.set_defaults(edit_sequence=False)
     args = parser.parse_args()
