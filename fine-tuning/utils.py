@@ -4,7 +4,7 @@ from torch.utils.data import SequentialSampler, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from DES import DistributedEvalSampler
 import sys
-
+from encoders import *
 
 def create_loader(dataset, args, valid_mode=False):
     def custom_collate(batch):

@@ -16,7 +16,6 @@ import argparse
 import torch.multiprocessing as mp
 import logging
 import os
-from encoders import *
 from train import run
 from eval import test
 from dataset import EncDecDataset, PLBARTDataset, CodeGenDataset
