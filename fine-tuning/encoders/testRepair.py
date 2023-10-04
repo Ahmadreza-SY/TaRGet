@@ -151,7 +151,7 @@ class TestRepairDataEncoder:
     def read_data(self):
         ds_path = Path(self.args.dataset_dir)
         ds_list = []
-        for project_ds_path in ds_path.rglob("dataset.json"):
+        for project_ds_path in list(ds_path.rglob("dataset.json"))[:3]:
             project_ds = pd.read_json(project_ds_path)
             project_ds["project"] = f"{project_ds_path.parent.parent.name}/{project_ds_path.parent.name}"
             if len(project_ds) == 0:

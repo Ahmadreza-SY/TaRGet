@@ -27,7 +27,10 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-
+# TODO move accelerate config to command line
+# TODO try 2b with fp16
+# TODO try 2b with fp32 and device_map (not distributed)
+# TODO implement inference
 def main():
     parser = argparse.ArgumentParser()
     sub_parsers = parser.add_subparsers()
@@ -78,7 +81,7 @@ def main():
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = CodeGenDataset
     elif args.model == "codet5p":
-        args.model_name_or_path = "Salesforce/codet5p-770m"
+        args.model_name_or_path = "Salesforce/codet5p-2b"
         args.model_class = AutoModelForSeq2SeqLM
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = EncDecDataset

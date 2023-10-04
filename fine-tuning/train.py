@@ -30,10 +30,10 @@ def train(args):
     train_loader = create_loader(args.train_dataset, args)
     train_steps = int(args.epochs * len(train_loader))
 
-    model = args.model_class.from_pretrained(args.model_name_or_path, trust_remote_code=True)
-    model.resize_token_embeddings(len(args.tokenizer))
-    # model.encoder.resize_token_embeddings(len(args.tokenizer))
-    # model.decoder.resize_token_embeddings(len(args.tokenizer))
+    model = args.model_class.from_pretrained(args.model_name_or_path, trust_remote_code=True, device_map="auto")
+    # model.resize_token_embeddings(len(args.tokenizer))
+    model.encoder.resize_token_embeddings(len(args.tokenizer))
+    model.decoder.resize_token_embeddings(len(args.tokenizer))
     model = model.to(args.accelerator.device)
 
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)
