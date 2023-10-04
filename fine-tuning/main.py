@@ -16,7 +16,7 @@ import argparse
 import torch.multiprocessing as mp
 import logging
 import os
-from train import run
+from train import train
 from eval import test
 from dataset import EncDecDataset, PLBARTDataset, CodeGenDataset
 from utils import get_data_encoder_class
@@ -102,11 +102,7 @@ def encode(args):
 
 
 def finetune(args):
-    logger = logging.getLogger("MAIN")
-    args.world_size = args.gpus * args.nodes
-    logger.info(f"Master node: {os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}")
-    mp.spawn(run, nprocs=args.gpus, args=(args,))
-    logger.info("All jobs done!")
+    train(args)
 
 
 if __name__ == "__main__":
