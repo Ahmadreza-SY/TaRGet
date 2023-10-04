@@ -62,7 +62,6 @@ class Processors:
             return test_start <= hunk_start <= test_end and test_start <= hunk_end <= test_end
 
         ds["in_range"] = ds.apply(hunk_in_range, axis=1)
-        print("\n".join(ds[~ds["in_range"]]["ID"].values.tolist()))
         ds = ds[ds["in_range"]].drop(columns=["in_range"]).reset_index(drop=True)
         return ds
 
