@@ -6,10 +6,10 @@ from joblib import Parallel, delayed
 
 class Processors:
     @staticmethod
-    def remove_repair_comments(ds):
+    def remove_comment_repairs(ds):
         ds["hunk"] = ds["hunk"].apply(lambda h: remove_hunk_comments(h))
         ds["hunk_is_empty"] = ds["hunk"].apply(lambda h: hunk_is_empty(h))
-        ds = ds[~ds["hunk_is_empty"]].reset_index(drop=True).drop(columns=["hunk_is_empty"])
+        ds = ds[~ds["hunk_is_empty"]].drop(columns=["hunk_is_empty"]).reset_index(drop=True)
         return ds
 
     @staticmethod
@@ -43,13 +43,27 @@ class Processors:
             and len(r["coveredMethodChanges"]) == 0,
             axis=1,
         )
-        ds = ds[~ds["cov_is_empty"]].reset_index(drop=True).drop(columns=["cov_is_empty"])
+        ds = ds[~ds["cov_is_empty"]].drop(columns=["cov_is_empty"]).reset_index(drop=True)
         return ds
 
     @staticmethod
     def remove_no_source_changes(ds):
         ds["has_source_changes"] = ds["hunk"].apply(lambda h: "sourceChanges" in h and len(h["sourceChanges"]) > 0)
-        ds = ds[ds["has_source_changes"]].reset_index(drop=True).drop(columns=["has_source_changes"])
+        ds = ds[ds["has_source_changes"]].drop(columns=["has_source_changes"]).reset_index(drop=True)
+        return ds
+
+    @staticmethod
+    def remove_out_of_range(ds):
+        def hunk_in_range(row):
+            hunk_start = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]])
+            hunk_end = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]])
+            test_start = row["bSource"]["startLine"]
+            test_end = test_start + len(row["bSource"]["code"].split("\n")) - 1
+            return test_start <= hunk_start <= test_end and test_start <= hunk_end <= test_end
+
+        ds["in_range"] = ds.apply(hunk_in_range, axis=1)
+        print("\n".join(ds[~ds["in_range"]]["ID"].values.tolist()))
+        ds = ds[ds["in_range"]].drop(columns=["in_range"]).reset_index(drop=True)
         return ds
 
     @staticmethod

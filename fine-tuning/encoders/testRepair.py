@@ -102,12 +102,13 @@ class TestRepairDataEncoder:
 
     def preprocess(self, ds):
         processors = [
-            Processors.remove_repair_comments,
+            Processors.remove_comment_repairs,
+            Processors.remove_no_source_changes,
+            Processors.remove_out_of_range,
             Processors.format_code,
             Processors.remove_whitespace_hunks,
             Processors.remove_empty_hunks,
             Processors.remove_empty_changes,
-            Processors.remove_no_source_changes,
         ]
         for processor in processors:
             ds = self.apply_processor(processor, ds)

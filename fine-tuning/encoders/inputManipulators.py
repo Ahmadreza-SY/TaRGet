@@ -34,7 +34,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return broken_code
 
     def get_tfidf_sim(self, target, changes):
-        vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False)
+        vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False, token_pattern=None)
         tokenized_docs = [self.tokenizer.encode(target)] + [c["annotated_doc_seq"] for c in changes]
         vectors = vectorizer.fit_transform(tokenized_docs)
         dense = vectors.todense()
