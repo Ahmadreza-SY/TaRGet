@@ -42,7 +42,7 @@ def add_padding_to_chars(code):
     code, mask_dict = mask_quotes(code)
     new_code = re.sub(non_word_non_whitespace_non_quote_regex, lambda m: space_wrapped_match_group(code, m), code)
     new_code = new_code.replace("<>", "< >")
-    new_code = re.sub(r'(\s)\1+', lambda m: m.group(1), new_code).strip()
+    new_code = " ".join(new_code.split()).strip()
     new_code = unmask_quotes(new_code, mask_dict)
     return new_code
 
