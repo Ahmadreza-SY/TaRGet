@@ -9,11 +9,9 @@ from transformers import (
     T5ForConditionalGeneration,
     AutoTokenizer,
     CodeGenForCausalLM,
-    AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
 )
 import argparse
-import torch.multiprocessing as mp
 import logging
 import os
 from train import train
@@ -27,7 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# TODO move accelerate config to command line
+
 # TODO try 2b with fp16
 # TODO try 2b with fp32 and device_map (not distributed)
 # TODO implement inference
@@ -44,11 +42,8 @@ def main():
     encode_parser.add_argument("-de", "--data_encoder", required=True, type=str)
     encode_parser.add_argument("-ts", "--train_size", default=0.8, type=float)
 
-    finetune_parser.set_defaults(func=finetune)
+    finetune_parser.set_defaults(func=train)
     add_common_arguments(finetune_parser)
-    finetune_parser.add_argument("-n", "--nodes", default=1, type=int, metavar="N", help="number of data loading workers")
-    finetune_parser.add_argument("-g", "--gpus", default=1, type=int, help="number of gpus per node")
-    finetune_parser.add_argument("-nr", "--node_rank", default=0, type=int)
     finetune_parser.add_argument("-b", "--batch_size", required=True, type=int)
     finetune_parser.add_argument("-e", "--epochs", required=True, type=int)
     finetune_parser.add_argument("-lr", "--learning_rate", required=True, type=float)
@@ -58,8 +53,6 @@ def main():
     add_common_arguments(test_parser)
     test_parser.add_argument("-de", "--data_encoder", required=True, type=str)
     test_parser.add_argument("-bs", "--beam_size", default=5, type=int)
-
-    logger = logging.getLogger("MAIN")
 
     args = parser.parse_args()
     args.random_seed = 1234
@@ -86,7 +79,6 @@ def main():
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = EncDecDataset
 
-    logger.info(f"Arguments:\n {args}")
     args.func(args)
 
 
@@ -99,13 +91,11 @@ def add_common_arguments(sub_parser):
 
 
 def encode(args):
+    logger = logging.getLogger("MAIN")
+    logger.info(f"Arguments:\n {args}")
     data_encoder_class = get_data_encoder_class(args.data_encoder)
     data_encoder = data_encoder_class(args)
     data_encoder.create_datasets()
-
-
-def finetune(args):
-    train(args)
 
 
 if __name__ == "__main__":

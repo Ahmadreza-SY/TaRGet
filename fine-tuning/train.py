@@ -15,7 +15,9 @@ from accelerate.logging import get_logger
 def train(args):
     logger = get_logger("MAIN")
 
+
     args.accelerator = Accelerator()
+    logger.info(f"Arguments:\n {args}")
     set_seed(args.random_seed)
     logger.info(
         f"{args.accelerator.process_index}: Using device "
@@ -30,10 +32,12 @@ def train(args):
     train_loader = create_loader(args.train_dataset, args)
     train_steps = int(args.epochs * len(train_loader))
 
-    model = args.model_class.from_pretrained(args.model_name_or_path, trust_remote_code=True, device_map="auto")
+    model = args.model_class.from_pretrained(args.model_name_or_path, trust_remote_code=True)
     # model.resize_token_embeddings(len(args.tokenizer))
     model.encoder.resize_token_embeddings(len(args.tokenizer))
     model.decoder.resize_token_embeddings(len(args.tokenizer))
+    model.config.decoder_start_token_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.bos_token)
+    model.config.pad_token_id = args.tokenizer.convert_tokens_to_ids(args.tokenizer.pad_token)
     model = model.to(args.accelerator.device)
 
     optimizer = AdamW(model.parameters(), lr=args.learning_rate)

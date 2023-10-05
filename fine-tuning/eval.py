@@ -16,6 +16,7 @@ def test(args):
     torch.manual_seed(args.random_seed)
     torch.cuda.set_device(args.gpu)
     logger = logging.getLogger("MAIN")
+    logger.info(f"Arguments:\n {args}")
     logger.info("***** Testing *****")
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
