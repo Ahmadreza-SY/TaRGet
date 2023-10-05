@@ -10,3 +10,4 @@ nltk==3.8.1
 tree-sitter==0.20.1
 diff-match-patch==20230430
 accelerate==0.23.0
+deepspeed==0.10.3
