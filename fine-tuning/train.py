@@ -15,7 +15,6 @@ from accelerate.logging import get_logger
 def train(args):
     logger = get_logger("MAIN")
 
-
     args.accelerator = Accelerator()
     logger.info(f"Arguments:\n {args}")
     set_seed(args.random_seed)
@@ -85,13 +84,14 @@ def train(args):
         epoch_stats["loss"] = avg_loss
         epoch_stats["train_duration"] = str(train_time)
         logger.info(
-            "Step [{}/{}] ; Epoch [{}/{}] ; Train loss {} ; Elapsed time {}".format(
+            "Step [{}/{}] ; Epoch [{}/{}] ; Train loss {} ; Elapsed time {} ; Epoch time per sample: {} s".format(
                 global_step,
                 train_steps,
                 epoch,
                 args.epochs,
                 avg_loss,
                 str(elapsed_time),
+                round(train_time.total_seconds() / (len(train_loader.dataset)), 3),
             )
         )
 

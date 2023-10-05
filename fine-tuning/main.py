@@ -25,9 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-
-# TODO try 2b with fp16
-# TODO try 2b with fp32 and device_map (not distributed)
+# TODO Try ZeRO 3 for 6b
 # TODO implement inference
 def main():
     parser = argparse.ArgumentParser()
