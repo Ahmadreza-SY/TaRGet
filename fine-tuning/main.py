@@ -46,6 +46,7 @@ def main():
     finetune_parser.add_argument("-e", "--epochs", required=True, type=int)
     finetune_parser.add_argument("-lr", "--learning_rate", required=True, type=float)
     finetune_parser.add_argument("-es", "--early_stop", default=10, type=int)
+    finetune_parser.add_argument("-ga", "--gradient_accumulation", default=1, type=int)
 
     test_parser.set_defaults(func=test)
     add_common_arguments(test_parser)

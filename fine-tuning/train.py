@@ -16,6 +16,7 @@ def train(args):
     logger = get_logger("MAIN")
 
     args.accelerator = Accelerator()
+    args.accelerator.state.deepspeed_plugin.deepspeed_config["gradient_accumulation_steps"] = args.gradient_accumulation
     logger.info(f"Arguments:\n {args}")
     set_seed(args.random_seed)
     logger.info(
@@ -91,7 +92,7 @@ def train(args):
                 args.epochs,
                 avg_loss,
                 str(elapsed_time),
-                round(train_time.total_seconds() / (len(train_loader.dataset)), 3),
+                round(train_time.total_seconds() / len(train_loader.dataset), 3),
             )
         )
 

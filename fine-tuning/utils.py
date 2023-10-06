@@ -1,8 +1,6 @@
 import json
 import torch
-from torch.utils.data import SequentialSampler, DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from DES import DistributedEvalSampler
+from torch.utils.data import DataLoader
 import sys
 from encoders import *
 
