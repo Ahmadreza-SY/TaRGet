@@ -14,7 +14,6 @@ from accelerate.logging import get_logger
 
 def train(args):
     logger = get_logger("MAIN")
-
     args.accelerator = Accelerator()
     args.accelerator.state.deepspeed_plugin.deepspeed_config["gradient_accumulation_steps"] = args.gradient_accumulation
     logger.info(f"Arguments:\n {args}")
