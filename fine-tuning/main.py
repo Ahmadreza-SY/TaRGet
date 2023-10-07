@@ -78,7 +78,7 @@ def main():
 
 def add_common_arguments(sub_parser):
     sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codet5", "codegen", "codet5p"])
-    sub_parser.add_argument("-mp", "--model-path", type=str)
+    sub_parser.add_argument("-mp", "--model_path", type=str)
     sub_parser.add_argument(
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )

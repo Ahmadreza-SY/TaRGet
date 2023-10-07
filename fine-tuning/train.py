@@ -84,14 +84,14 @@ def train(args):
         epoch_stats["loss"] = avg_loss
         epoch_stats["train_duration"] = str(train_time)
         logger.info(
-            "Step [{}/{}] ; Epoch [{}/{}] ; Train loss {} ; Elapsed time {} ; Epoch time per sample: {} s".format(
+            "Step [{}/{}] ; Epoch [{}/{}] ; Train loss {} ; Elapsed time {} ; Train time per sample: {} s".format(
                 global_step,
                 train_steps,
                 epoch,
                 args.epochs,
                 avg_loss,
                 str(elapsed_time),
-                round(train_time.total_seconds() / len(train_loader.dataset), 3),
+                round(train_time.total_seconds() / len(args.train_dataset), 3),
             )
         )
 
