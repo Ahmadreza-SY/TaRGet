@@ -31,7 +31,7 @@ def train(args):
     train_loader = create_loader(args.train_dataset, args)
     train_steps = int(args.epochs * len(train_loader))
 
-    model = args.model_class.from_pretrained(args.model_name_or_path, trust_remote_code=True)
+    model = args.model_class.from_pretrained(args.model_path, trust_remote_code=True)
     # model.resize_token_embeddings(len(args.tokenizer))
     model.encoder.resize_token_embeddings(len(args.tokenizer))
     model.decoder.resize_token_embeddings(len(args.tokenizer))

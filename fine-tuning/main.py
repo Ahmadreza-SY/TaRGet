@@ -25,8 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# TODO Try ZeRO 3 for 6b
-# TODO implement inference
+
 def main():
     parser = argparse.ArgumentParser()
     sub_parsers = parser.add_subparsers()
@@ -58,22 +57,18 @@ def main():
     args.output_dir = Path(args.output_dir)
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
     if args.model == "codet5":
-        args.model_name_or_path = "salesforce/codet5-base"
         args.model_class = T5ForConditionalGeneration
         args.model_tokenizer_class = RobertaTokenizerFast
         args.dataset_class = EncDecDataset
     elif args.model == "plbart":
-        args.model_name_or_path = "uclanlp/plbart-base"
         args.model_class = PLBartForConditionalGeneration
         args.model_tokenizer_class = PLBartTokenizer
         args.dataset_class = PLBARTDataset
     elif args.model == "codegen":
-        args.model_name_or_path = "salesforce/codegen-350M-multi"
         args.model_class = CodeGenForCausalLM
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = CodeGenDataset
     elif args.model == "codet5p":
-        args.model_name_or_path = "Salesforce/codet5p-2b"
         args.model_class = AutoModelForSeq2SeqLM
         args.model_tokenizer_class = AutoTokenizer
         args.dataset_class = EncDecDataset
@@ -83,6 +78,7 @@ def main():
 
 def add_common_arguments(sub_parser):
     sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codet5", "codegen", "codet5p"])
+    sub_parser.add_argument("-mp", "--model-path", type=str)
     sub_parser.add_argument(
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
