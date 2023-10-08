@@ -56,11 +56,13 @@ def train(args):
     args.stats["train_set_size"] = len(args.train_dataset)
     args.stats["valid_set_size"] = len(args.valid_dataset)
     args.stats["training_stats"] = {"epochs": []}
+    step_start = datetime.now()
+    tbs = args.accelerator.state.num_processes * args.accelerator.state.num_machines * args.batch_size
     for epoch in range(1, args.epochs + 1):
         model.train()
         epoch_start = datetime.now()
         global_loss = []
-        for _, data in enumerate(train_loader, 1):
+        for step, data in enumerate(train_loader, 1):
             output = model(
                 input_ids=data["input_ids"], labels=data["labels"], attention_mask=data["attention_mask"], return_dict=True
             )
@@ -74,6 +76,10 @@ def train(args):
             optimizer.zero_grad()
 
             global_step += 1
+            if global_step % 60 == 0:
+                step_time = datetime.now() - step_start
+                train_per_s = step_time.total_seconds() / (tbs*global_step)
+                logger.info(f"Step {step} ; Elapsed {step_time} ; Samples {tbs*global_step} ; Train/sample {round(train_per_s, 3)} s")
 
         # End of epoch
         train_time = datetime.now() - epoch_start
