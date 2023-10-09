@@ -12,6 +12,7 @@ import json
 import copy
 import re
 
+
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def remove_duplicate_documents(self, changes):
         unique_lines = set()
@@ -31,11 +32,11 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def get_broken_code(self, row):
         broken_code = ""
         if "sourceChanges" in row["hunk"]:
-            broken_code = "\n".join([c["line"] for c in row["hunk"]["sourceChanges"]])
+            broken_code = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
         return broken_code
 
     def get_tfidf_sim(self, target, changes):
-        vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False)
+        vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False, token_pattern=None)
         tokenized_docs = [self.tokenizer.encode(target)] + [c["annotated_doc_seq"] for c in changes]
         vectors = vectorizer.fit_transform(tokenized_docs)
         dense = vectors.todense()
@@ -49,8 +50,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         tfidf_breakage = self.get_tfidf_sim(self.get_broken_code(row), changes)
         tfidf_testsrc = self.get_tfidf_sim(add_padding_to_chars(row["bSource"]["code"]), changes)
         for i, c in enumerate(changes):
-            c["tfidf_breakage"] = tfidf_breakage[i]
-            c["tfidf_testsrc"] = tfidf_testsrc[i]
+            c["tfidf_breakage"] = round(tfidf_breakage[i], 1)
+            c["tfidf_testsrc"] = round(tfidf_testsrc[i], 2)
         changes = [c for c in changes if c["tfidf_breakage"] > 0.0]
         return sorted(changes, key=lambda c: self.get_sort_key(c))
 
@@ -71,7 +72,11 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         test_lines[break_s] = Tokens.BREAKAGE_START + test_lines[break_s]
         test_lines[break_e] = test_lines[break_e] + Tokens.BREAKAGE_END
         test_lines = [l for l in test_lines if not line_is_comment(l) and len(l) > 0 and not l.isspace()]
-        test_context = "\n".join(test_lines)
+        test_context = (
+            " ".join(test_lines)
+            .replace(f" {Tokens.BREAKAGE_START}", Tokens.BREAKAGE_START)
+            .replace(f"{Tokens.BREAKAGE_END} ", Tokens.BREAKAGE_END)
+        )
         return test_context
 
     def create_input(self, test_context, covered_changes):
@@ -81,7 +86,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def create_output(self, row):
         if "targetChanges" in row["hunk"]:
-            repaired_code = "\n".join([c["line"] for c in row["hunk"]["targetChanges"]])
+            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
         else:
             repaired_code = "// Deleted"
         return repaired_code
@@ -130,13 +135,13 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 class HunksDataEncoder(PrioritizedChangesDataEncoder):
     def create_hunk_document(self, hunk):
         source_lines, target_lines = get_hunk_lines(hunk)
-        doc = "\n".join(source_lines + target_lines)
+        doc = " ".join(source_lines + target_lines)
 
         if len(source_lines) > 0:
             source_lines.insert(0, Tokens.DELETE)
         if len(target_lines) > 0:
             target_lines.insert(0, Tokens.ADD)
-        annotated_doc = "\n".join([Tokens.HUNK] + source_lines + target_lines)
+        annotated_doc = " ".join([Tokens.HUNK] + source_lines + target_lines)
 
         return doc, annotated_doc
 
@@ -295,7 +300,9 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                 end = max([applied_pred.index(n) + len(n) for _, n in curr_pred_pairs])
 
                 start = [0].extend([i + 1 for i, char in enumerate(applied_pred) if i < start and char == ";"])[-1]
-                end = [-1].extend([i + 1 for i, char in reversed(list(enumerate(applied_pred))) if i > end and char == ";"])[-1]
+                end = [-1].extend([i + 1 for i, char in reversed(list(enumerate(applied_pred))) if i > end and char == ";"])[
+                    -1
+                ]
 
                 preds.append(applied_pred[start:end])
 
@@ -312,7 +319,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
             end.extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > edit_end and char == ";"])
             end = end[-1]
 
-            target = target[start:end+1]
+            target = target[start:end + 1]
 
         return {"ID": row["ID"], "target": target, "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 

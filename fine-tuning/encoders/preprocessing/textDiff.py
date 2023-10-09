@@ -47,8 +47,8 @@ def get_word_diffs(source, target):
 
 def get_hunk_diffs(hunk):
     source_lines, target_lines = get_hunk_lines(hunk)
-    source = "\n".join(source_lines)
-    target = "\n".join(target_lines)
+    source = " ".join(source_lines)
+    target = " ".join(target_lines)
     return get_word_diffs(source, target)
 
 
