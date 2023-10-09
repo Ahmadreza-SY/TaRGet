@@ -176,7 +176,7 @@ def build_edit_sequence(source, target):
         curr_e = edit_sequence[i]
         next_e = edit_sequence[i + 1]
 
-        while curr_e[2] > next_e[1]:
+        while next_e and curr_e[2] > next_e[1]:
             curr_e = ([Tokens.REPLACE_GROUP_OLD,
                       source[curr_e[1]:next_e[2]],
                       Tokens.REPLACE_GROUP_NEW,
@@ -184,9 +184,12 @@ def build_edit_sequence(source, target):
                       Tokens.REPLACE_END],
                       curr_e[1], next_e[2], curr_e[3], next_e[4])
 
-            del edit_sequence[i + 1]
+            if i+1 < len(edit_sequence):
+                del edit_sequence[i + 1]
             if i+1 < len(edit_sequence):
                 next_e = edit_sequence[i + 1]
+            else:
+                next_e = None
 
         edit_sequence[i] = curr_e
         i += 1
@@ -300,6 +303,7 @@ def find_token_diffs(source, target):
     while i < len(final_changes) - 1:
         curr_e = final_changes[i]
 
+        next_e = final_changes[i + 1]
         if curr_e[1] == curr_e[2] and target[curr_e[4] - 1] == ' ':
             curr_e = (curr_e[0], curr_e[1], next_e[2], curr_e[3], next_e[4]-1)
             final_changes[i + 1] = (final_changes[i + 1][0], final_changes[i + 1][1], final_changes[i + 1][2], final_changes[i + 1][3] + 1, final_changes[i + 1][4])
@@ -353,7 +357,7 @@ def get_replace_pairs(edit_seq):
         old_found = False
         for old in REPLACE_OLDS:
             if old in r:
-                r = re.sub(f'\s*{old} ', '', r)
+                r = re.sub(f'\s*{re.escape(old)} ', '', r)
                 old_found = True
                 break
 
@@ -362,7 +366,7 @@ def get_replace_pairs(edit_seq):
 
         for new in REPLACE_NEWS:
             if new in r:
-                blocks = re.split(f' {new} ', r)
+                blocks = re.split(f' {re.escape(new)} ', r)
                 if len(blocks) == 2:
                     orig, new = blocks[0], blocks[1]
                 break

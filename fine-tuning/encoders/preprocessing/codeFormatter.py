@@ -36,8 +36,6 @@ def space_wrapped_match_group(code, match):
     return " " + code[match.span()[0] : match.span()[1]] + " "
 
 
-# TODO Merged this with remove_repeating_whitespaces and updated all uses.
-# Please double check to see if any place needs remove_repeating_whitespaces without add_padding_to_chars.
 def add_padding_to_chars(code):
     code, mask_dict = mask_quotes(code)
     new_code = re.sub(non_word_non_whitespace_non_quote_regex, lambda m: space_wrapped_match_group(code, m), code)

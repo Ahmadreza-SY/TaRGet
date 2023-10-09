@@ -10,6 +10,7 @@ from pathlib import Path
 from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs
 import json
 import copy
+import re
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def remove_duplicate_documents(self, changes):
@@ -120,8 +121,6 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
 
         ds["input"] = [sc[0] for sc in ds_selected_changes]
-        # TODO remove swifter because I believe the slowness was due to infinite loops.
-        # If removing it caused slowness, use joblib.
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
 
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
@@ -262,29 +261,30 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
 
         return ds
 
-    # TODO Implement this. 
-    # It should return a dictionary similar to decode_outputs of the parent class.
-    # The "preds" should cover only the broken part, not the whole test code to have fair comparison with other data encoders.
-    # Note the when using tokenizer.decode, you should set skip_special_tokens to False because edit sequence tokens are special tokens.
-    # Add the original edit sequence to the returned dict as well for future debug or analysis purposes.
+
     @staticmethod
     def decode_outputs(row, outputs, tokenizer):
         pred_edit_seqs = tokenizer.batch_decode(outputs, skip_special_tokens=False, clean_up_tokenization_spaces=False)
-        target_edit_seqs = tokenizer.decode(
+        target_edit_seq = tokenizer.decode(
             tokenizer.encode(row["output"]), skip_special_tokens=False, clean_up_tokenization_spaces=False
         )
 
+        if target_edit_seq.endswith(" </s>"):
+            target_edit_seq = target_edit_seq[:-5]
+
+        for i in range(len(pred_edit_seqs)):
+            if pred_edit_seqs[i].endswith(" </s>"):
+                pred_edit_seqs[i] = pred_edit_seqs[i][:-5]
+
         pred_edit_pairs = [get_replace_pairs(es) for es in pred_edit_seqs]
-        target_edit_pairs = [get_replace_pairs(es) for es in target_edit_seqs]
+        target_edit_pairs = get_replace_pairs(target_edit_seq)
 
         preds, targets = [], []
 
         src, target = row["bSource"]["code"], add_padding_to_chars(row["aSource"]["code"])
 
-        for i in range(len(row)):
-
+        for i in range(len(pred_edit_pairs)):
             curr_pred_pairs = pred_edit_pairs[i]
-            curr_target_pairs = target_edit_pairs[i]
 
             applied_pred = apply_edit_sequence(src, pred_edit_seqs[i], curr_pred_pairs)
 
@@ -299,18 +299,22 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
 
                 preds.append(applied_pred[start:end])
 
-            if not curr_target_pairs:
-                targets.append("Invalid")
-            else:
-                start = min([target.index(n) for _, n in curr_target_pairs])
-                end = max([target.index(n) + len(n) for _, n in curr_target_pairs])
+        if not target_edit_pairs:
+            target = "Invalid"
+        else:
+            edit_start = min([target.index(n) for _, n in target_edit_pairs])
+            edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
 
-                start = [0].extend([i + 1 for i, char in enumerate(target) if i < start and char == ";"])[-1]
-                end = [-1].extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > end and char == ";"])[-1]
+            start = [0]
+            start.extend([i + 1 for i, char in enumerate(target) if i < edit_start and char == ";"])
+            start = start[-1]
+            end = [-1]
+            end.extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > edit_end and char == ";"])
+            end = end[-1]
 
-                targets.append(target[start:end+1])
+            target = target[start:end+1]
 
-        return {"ID": row["ID"], "target": targets, "preds": preds, "target_es": target_edit_seqs, "pred_es": pred_edit_seqs}
+        return {"ID": row["ID"], "target": target, "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 
 
 class ASTElementsDataEncoder(AllHunksDataEncoder):
