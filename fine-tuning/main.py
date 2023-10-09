@@ -41,6 +41,7 @@ def main():
 
     finetune_parser.set_defaults(func=train)
     add_common_arguments(finetune_parser)
+    finetune_parser.add_argument("-n", "--num_nodes", default=1, type=int)
     finetune_parser.add_argument("-b", "--batch_size", required=True, type=int)
     finetune_parser.add_argument("-e", "--epochs", required=True, type=int)
     finetune_parser.add_argument("-lr", "--learning_rate", required=True, type=float)

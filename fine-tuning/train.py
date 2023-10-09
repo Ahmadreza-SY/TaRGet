@@ -57,7 +57,7 @@ def train(args):
     args.stats["valid_set_size"] = len(args.valid_dataset)
     args.stats["training_stats"] = {"epochs": []}
     step_start = datetime.now()
-    tbs = args.accelerator.state.num_processes * args.accelerator.state.num_machines * args.batch_size
+    tbs = args.accelerator.state.num_processes * args.num_nodes * args.batch_size
     for epoch in range(1, args.epochs + 1):
         model.train()
         epoch_start = datetime.now()
