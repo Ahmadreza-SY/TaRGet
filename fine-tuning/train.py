@@ -13,7 +13,7 @@ from accelerate.logging import get_logger
 
 
 def train(args):
-    logger = get_logger("MAIN")
+    logger = get_logger("MAIN", log_level=args.log_level)
     args.accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation)
     logger.info(f"Arguments:\n {args}")
     set_seed(args.random_seed)
@@ -78,7 +78,7 @@ def train(args):
                 step_time = datetime.now() - step_start
                 train_per_s = step_time.total_seconds() / (tbs * global_step)
                 logger.debug(
-                    f"Step {step} ; Elapsed {step_time} ; Samples {tbs*global_step} ; Train/sample {round(train_per_s, 3)} s"
+                    f"Global step {global_step} ; Elapsed {step_time} ; Samples {tbs*global_step} ; Train/sample {round(train_per_s, 3)} s"
                 )
 
         # End of epoch
@@ -124,7 +124,7 @@ def train(args):
 
 
 def validate(args, model, epoch, epoch_stats):
-    logger = get_logger("MAIN")
+    logger = get_logger("MAIN", log_level=args.log_level)
     start = datetime.now()
     global_loss = []
     model.eval()

@@ -84,6 +84,7 @@ def add_common_arguments(sub_parser):
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
     )
     sub_parser.add_argument("-ml", "--max_length", required=True, type=int)
+    sub_parser.add_argument("-ll", "--log_level", default="INFO", type=str)
 
 
 def encode(args):

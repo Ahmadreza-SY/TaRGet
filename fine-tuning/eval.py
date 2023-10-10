@@ -13,7 +13,7 @@ from accelerate.logging import get_logger
 
 
 def test(args):
-    logger = get_logger("MAIN")
+    logger = get_logger("MAIN", log_level=args.log_level)
     args.accelerator = Accelerator()
     logger.info(f"Arguments:\n {args}")
     set_seed(args.random_seed)
@@ -45,7 +45,7 @@ def test(args):
 
 
 def eval(model, split, args, save_dir):
-    logger = get_logger("MAIN")
+    logger = get_logger("MAIN", log_level=args.log_level)
     if split == "valid":
         dataset = args.valid_dataset
     elif split == "test":
