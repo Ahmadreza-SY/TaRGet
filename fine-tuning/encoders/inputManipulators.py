@@ -13,6 +13,7 @@ import copy
 import re
 
 
+
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
     def remove_duplicate_documents(self, changes):
         unique_lines = set()
@@ -85,7 +86,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         )
 
     def create_output(self, row):
-        if "targetChanges" in row["hunk"]:
+        if "targetChanges" in row["hunk"] and len(row["hunk"]["targetChanges"]) > 0:
             repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
         else:
             repaired_code = "// Deleted"

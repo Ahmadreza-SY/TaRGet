@@ -1,4 +1,3 @@
-import logging
 from encoders import *
 import pandas as pd
 from datetime import datetime
@@ -6,16 +5,19 @@ from utils import save_stats, get_data_encoder_class
 from nltk.translate.bleu_score import corpus_bleu
 from CodeBLEU.code_bleu import calc_code_bleu
 from tqdm import tqdm
-import torch
 import pickle
 import json
+from accelerate import Accelerator
+from accelerate.utils import set_seed
+from accelerate.logging import get_logger
 
 
 def test(args):
-    args.gpu = 0
-    torch.manual_seed(args.random_seed)
-    torch.cuda.set_device(args.gpu)
-    logger = logging.getLogger("MAIN")
+    logger = get_logger("MAIN")
+    args.accelerator = Accelerator()
+    logger.info(f"Arguments:\n {args}")
+    set_seed(args.random_seed)
+
     logger.info("***** Testing *****")
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
@@ -29,7 +31,7 @@ def test(args):
 
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path, trust_remote_code=True)
-    model = model.to(args.gpu)
+    model = args.accelerator.prepare(model)
 
     logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
     bleu_score, code_bleu_score, em = eval(model, "valid", args, best_checkpoint_path)
@@ -43,7 +45,7 @@ def test(args):
 
 
 def eval(model, split, args, save_dir):
-    logger = logging.getLogger("MAIN")
+    logger = get_logger("MAIN")
     if split == "valid":
         dataset = args.valid_dataset
     elif split == "test":
@@ -56,14 +58,15 @@ def eval(model, split, args, save_dir):
     dataset_obj = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
     pad_id, eos_id = dataset_obj.get_pad_eos_for_generation(tokenizer)
     decoder_sid = dataset_obj.get_decoder_start_token_id(tokenizer)
+    max_gen_tokens = args.dataset_class.get_max_input_len(args.max_length) // 2
     model.eval()
 
     predictions = []
     for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc="Generating"):
-        input_ids = dataset_obj.get_inference_input(row, tokenizer).to(args.gpu)
+        input_ids = dataset_obj.get_inference_input(row, tokenizer).to(args.accelerator.device)
         outputs = model.generate(
             input_ids,
-            max_length=args.max_length,
+            max_new_tokens=max_gen_tokens,
             num_beams=args.beam_size,
             num_return_sequences=args.beam_size,
             early_stopping=True,

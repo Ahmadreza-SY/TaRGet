@@ -7,3 +7,4 @@ results
 *.log
 repair-collection/assets
 *.sh
+configs/

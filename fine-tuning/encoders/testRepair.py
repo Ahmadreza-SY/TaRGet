@@ -42,7 +42,7 @@ class TestRepairDataEncoder:
         self.logger.info(msg)
 
     def create_tokenizer(self):
-        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_name_or_path)
+        self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_path)
         new_special_tokens = {
             "additional_special_tokens": self.tokenizer.additional_special_tokens
             + [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]

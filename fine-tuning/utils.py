@@ -1,10 +1,9 @@
 import json
 import torch
-from torch.utils.data import SequentialSampler, DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from DES import DistributedEvalSampler
+from torch.utils.data import DataLoader
 import sys
 from encoders import *
+
 
 def create_loader(dataset, args, valid_mode=False):
     def custom_collate(batch):
@@ -29,20 +28,11 @@ def create_loader(dataset, args, valid_mode=False):
         batch_data["attention_mask"] = torch.cat(batch_data["attention_mask"], dim=0)
         return batch_data
 
-    if args.world_size == 1:
-        sampler = SequentialSampler(dataset)
-    elif valid_mode:
-        sampler = DistributedEvalSampler(dataset, num_replicas=args.world_size, rank=args.rank)
-    else:
-        sampler = DistributedSampler(dataset, num_replicas=args.world_size, rank=args.rank)
-
     loader = DataLoader(
         dataset=dataset,
         batch_size=args.batch_size,
-        sampler=sampler,
         collate_fn=custom_collate,
-        shuffle=False,
-        pin_memory=True,
+        shuffle=(not valid_mode),
     )
     return loader
 
