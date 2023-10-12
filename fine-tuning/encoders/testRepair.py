@@ -106,8 +106,6 @@ class TestRepairDataEncoder:
             Processors.remove_no_source_changes,
             Processors.remove_out_of_range,
             Processors.format_code,
-            Processors.remove_whitespace_hunks,
-            Processors.remove_empty_hunks,
             Processors.remove_empty_changes,
         ]
         for processor in processors:
