@@ -22,6 +22,9 @@ def test(args):
     if (args.output_dir / "stats.json").exists():
         with open(str(args.output_dir / "stats.json")) as f:
             args.stats = json.load(f)
+    else:
+        logger.info("No stats.json found, creating a new one.")
+        args.stats = {}
 
     args.valid_dataset = pd.read_json(args.output_dir / "splits" / f"valid.json")
     args.test_dataset = pd.read_json(args.output_dir / "splits" / f"test.json")
