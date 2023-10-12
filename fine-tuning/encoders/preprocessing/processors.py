@@ -1,49 +1,25 @@
-from encoders.preprocessing.commentRemoval import remove_hunk_comments, hunk_is_empty, _remove_empty_hunks
-from encoders.preprocessing.codeFormatter import format_hunk, format_sut_changes
-from encoders.preprocessing.textDiff import _remove_whitespace_hunks
-from joblib import Parallel, delayed
+from encoders.preprocessing.commentRemoval import remove_hunk_comments, hunk_is_empty
+from encoders.preprocessing.codeFormatter import format_hunk
+from encoders.preprocessing.textDiff import is_whitespace_hunk
 
 
 class Processors:
     @staticmethod
     def remove_comment_repairs(ds):
         ds["hunk"] = ds["hunk"].apply(lambda h: remove_hunk_comments(h))
-        ds["hunk_is_empty"] = ds["hunk"].apply(lambda h: hunk_is_empty(h))
+        ds["hunk_is_empty"] = ds["hunk"].apply(lambda h: hunk_is_empty(h) or is_whitespace_hunk(h))
         ds = ds[~ds["hunk_is_empty"]].drop(columns=["hunk_is_empty"]).reset_index(drop=True)
         return ds
 
     @staticmethod
     def format_code(ds):
         ds["hunk"] = ds["hunk"].apply(lambda h: format_hunk(h))
-        ds["coveredClassChanges"] = Parallel(n_jobs=-1)(delayed(format_sut_changes)(c) for c in ds["coveredClassChanges"])
-        ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(delayed(format_sut_changes)(c) for c in ds["coveredMethodChanges"])
-        return ds
-
-    @staticmethod
-    def remove_whitespace_hunks(ds):
-        ds["coveredClassChanges"] = Parallel(n_jobs=-1)(
-            delayed(_remove_whitespace_hunks)(c) for c in ds["coveredClassChanges"]
-        )
-        ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(
-            delayed(_remove_whitespace_hunks)(c) for c in ds["coveredMethodChanges"]
-        )
-        return ds
-
-    @staticmethod
-    def remove_empty_hunks(ds):
-        ds["coveredClassChanges"] = Parallel(n_jobs=-1)(delayed(_remove_empty_hunks)(c) for c in ds["coveredClassChanges"])
-        ds["coveredMethodChanges"] = Parallel(n_jobs=-1)(delayed(_remove_empty_hunks)(c) for c in ds["coveredMethodChanges"])
         return ds
 
     @staticmethod
     def remove_empty_changes(ds):
-        ds["cov_is_empty"] = ds.apply(
-            lambda r: len(r["coveredClassChanges"]) == 0
-            and len(r["allClassChanges"]) == 0
-            and len(r["coveredMethodChanges"]) == 0,
-            axis=1,
-        )
-        ds = ds[~ds["cov_is_empty"]].drop(columns=["cov_is_empty"]).reset_index(drop=True)
+        ds["chn_is_empty"] = ds.apply(lambda r: len(r["allClassChanges"]) == 0, axis=1)
+        ds = ds[~ds["chn_is_empty"]].drop(columns=["chn_is_empty"]).reset_index(drop=True)
         return ds
 
     @staticmethod

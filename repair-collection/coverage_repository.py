@@ -3,7 +3,7 @@ from common_utils import decompose_full_method_name
 import copy
 from error_stats import ErrorStats
 
-
+# TODO Remove all code for covered changes: here and call graphs in jparser
 class ChangesRepository:
     def __init__(self, output_path):
         self.output_path = output_path

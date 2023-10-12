@@ -1,17 +1,14 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from encoders.testRepair import TestRepairDataEncoder, Tokens
-from encoders.preprocessing.commentRemoval import line_is_comment, _remove_empty_hunks
-from encoders.preprocessing.textDiff import get_hunk_diffs, _remove_whitespace_hunks
+from encoders.preprocessing.commentRemoval import line_is_comment, remove_empty_hunks
+from encoders.preprocessing.textDiff import get_hunk_diffs, remove_whitespace_hunks
 from encoders.preprocessing.codeFormatter import format_sut_changes, add_padding_to_chars
-from encoders.preprocessing.utils import get_hunk_lines
 from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
 from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs
 import json
 import copy
-import re
-
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -60,7 +57,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         ds = super().preprocess(ds)
         self.log("Prioritizing changes")
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
-        ds = ds.drop(columns=["allClassChanges", "coveredMethodChanges", "coveredClassChanges", "astActions"])
+        ds = ds.drop(columns=["allClassChanges", "astActions"])
         ds = super().apply_processor(Processors.remove_empty_prioritized_changes, ds)
         return ds
 
@@ -133,35 +130,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         return ds
 
 
-class HunksDataEncoder(PrioritizedChangesDataEncoder):
-    def create_hunk_document(self, hunk):
-        source_lines, target_lines = get_hunk_lines(hunk)
-        doc = " ".join(source_lines + target_lines)
-
-        if len(source_lines) > 0:
-            source_lines.insert(0, Tokens.DELETE)
-        if len(target_lines) > 0:
-            target_lines.insert(0, Tokens.ADD)
-        annotated_doc = " ".join([Tokens.HUNK] + source_lines + target_lines)
-
-        return doc, annotated_doc
-
-    def create_documents(self, covered_changes, element):
-        change_docs = []
-        for change in covered_changes:
-            depth = change["depth"]
-            for hunk in change["hunks"]:
-                doc, annotated_doc = self.create_hunk_document(hunk)
-                change_docs.append({"doc": doc, "annotated_doc": annotated_doc, "depth": depth, "element": element})
-        return change_docs
-
-    def get_changed_documents(self, row):
-        method_docs = self.create_documents(row["coveredMethodChanges"], 0)
-        class_docs = self.create_documents(row["coveredClassChanges"], 1)
-        return method_docs + class_docs
-
-
-class FineGrainedHunksDataEncoder(HunksDataEncoder):
+class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
     def create_hunk_document(self, hunk):
         diffs = get_hunk_diffs(hunk)
         body = []
@@ -180,12 +149,10 @@ class FineGrainedHunksDataEncoder(HunksDataEncoder):
 
         return doc, annotated_doc
 
-
-class AllHunksDataEncoder(FineGrainedHunksDataEncoder):
     def preprocess_all_class_changes(self, changes):
         changes = format_sut_changes(changes)
-        changes = _remove_whitespace_hunks(changes)
-        changes = _remove_empty_hunks(changes)
+        changes = remove_whitespace_hunks(changes)
+        changes = remove_empty_hunks(changes)
         for change in changes:
             for hunk in change["hunks"]:
                 doc, annotated_doc = self.create_hunk_document(hunk)
@@ -267,7 +234,6 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
 
         return ds
 
-
     @staticmethod
     def decode_outputs(row, outputs, tokenizer):
         pred_edit_seqs = tokenizer.batch_decode(outputs, skip_special_tokens=False, clean_up_tokenization_spaces=False)
@@ -320,7 +286,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
             end.extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > edit_end and char == ";"])
             end = end[-1]
 
-            target = target[start:end + 1]
+            target = target[start : end + 1]
 
         return {"ID": row["ID"], "target": target, "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 
