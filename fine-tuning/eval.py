@@ -58,7 +58,6 @@ def eval(model, split, args, save_dir):
     dataset_obj = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
     pad_id, eos_id = dataset_obj.get_pad_eos_for_generation(tokenizer)
     decoder_sid = dataset_obj.get_decoder_start_token_id(tokenizer)
-    max_gen_tokens = args.dataset_class.get_max_input_len(args.max_length) // 2
     model.eval()
 
     predictions = []
@@ -66,7 +65,7 @@ def eval(model, split, args, save_dir):
         input_ids = dataset_obj.get_inference_input(row, tokenizer).to(args.accelerator.device)
         outputs = model.generate(
             input_ids,
-            max_new_tokens=max_gen_tokens,
+            max_length=args.max_length,
             num_beams=args.beam_size,
             num_return_sequences=args.beam_size,
             early_stopping=True,
