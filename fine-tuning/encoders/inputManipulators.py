@@ -50,7 +50,6 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         for i, c in enumerate(changes):
             c["tfidf_breakage"] = round(tfidf_breakage[i], 1)
             c["tfidf_testsrc"] = round(tfidf_testsrc[i], 2)
-        changes = [c for c in changes if c["tfidf_breakage"] > 0.0]
         return sorted(changes, key=lambda c: self.get_sort_key(c))
 
     def preprocess(self, ds):
@@ -171,7 +170,7 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
                 return "Preproccessing"
             else:
                 return "Combination of Both"
-    
+
     def log_empty_changes_stats(self, ds, stats):
         stats_cnt = {}
         for _, row in ds.iterrows():
@@ -204,6 +203,7 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
                         )
 
         if key not in changes_cache:
+            stats[key] = "Not Found"
             changes_cache[key] = []
 
         return changes_cache.get(key, [])
