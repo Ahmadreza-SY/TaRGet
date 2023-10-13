@@ -161,7 +161,29 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
                 hunk["annotated_doc_seq"] = self.tokenizer.encode(annotated_doc)
         return changes
 
-    def get_all_class_changes(self, project, a_commit, changes_cache):
+    def get_empty_changes_reason(self, changes, changes_wo_t, changes_pp):
+        if len(changes) == 0:
+            return "Originally Empty"
+        elif len(changes_wo_t) == 0:
+            return "All Test Source"
+        elif len(changes_pp) == 0:
+            if len(changes_wo_t) == len(changes):
+                return "Preproccessing"
+            else:
+                return "Combination of Both"
+    
+    def log_empty_changes_stats(self, ds, stats):
+        stats_cnt = {}
+        for _, row in ds.iterrows():
+            key = f"{row['project']}/{row['aCommit']}"
+            if key in stats:
+                reason = stats[key]
+                stats_cnt.setdefault(reason, 0)
+                stats_cnt[reason] += 1
+        for k, v in stats_cnt.items():
+            self.log(f"Got {v} empty changes due to {k}")
+
+    def get_all_class_changes(self, project, a_commit, changes_cache, stats):
         key = f"{project}/{a_commit}"
 
         if key not in changes_cache:
@@ -172,24 +194,31 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
             if len(changes_path) == 1:
                 changes = json.loads(changes_path[0].read_text())
                 for commit_changes in changes:
-                    sut_commit_changes = [c for c in commit_changes["changes"] if not c["is_test_source"]]
-                    sut_commit_changes = self.preprocess_all_class_changes(sut_commit_changes)
-                    changes_cache[f"{project}/{commit_changes['aCommit']}"] = sut_commit_changes
+                    commit_changes_wo_t = [c for c in commit_changes["changes"] if not c["is_test_source"]]
+                    commit_changes_pp = self.preprocess_all_class_changes(commit_changes_wo_t)
+                    current_key = f"{project}/{commit_changes['aCommit']}"
+                    changes_cache[current_key] = commit_changes_pp
+                    if len(commit_changes_pp) == 0:
+                        stats[current_key] = self.get_empty_changes_reason(
+                            commit_changes["changes"], commit_changes_wo_t, commit_changes_pp
+                        )
 
         if key not in changes_cache:
             changes_cache[key] = []
 
-        return copy.deepcopy(changes_cache.get(key, []))
+        return changes_cache.get(key, [])
 
     def read_data(self):
         ds = super().read_data()
         self.log(f"Reading and preprocessing all class changes")
         changes_cache = {}
+        stats = {}
         all_class_changes = []
         for _, row in ds.iterrows():
-            changes = self.get_all_class_changes(row["project"], row["aCommit"], changes_cache)
+            changes = self.get_all_class_changes(row["project"], row["aCommit"], changes_cache, stats)
             all_class_changes.append(changes)
         ds["allClassChanges"] = all_class_changes
+        self.log_empty_changes_stats(ds, stats)
         return ds
 
     def create_changed_document(self, row, hunk):
