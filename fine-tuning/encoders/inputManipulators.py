@@ -315,8 +315,8 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                 edit_start = min([target.index(n) for _, n in target_edit_pairs])
                 edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
             except Exception:
-                target = apply_edit_sequence(src, target_edit_seq, target_edit_pairs)
                 try:
+                    target = apply_edit_sequence(src, target_edit_seq, target_edit_pairs)
                     edit_start = min([target.index(n) for _, n in target_edit_pairs])
                     edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
                 except Exception:
