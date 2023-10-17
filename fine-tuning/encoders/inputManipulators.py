@@ -261,14 +261,19 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         )
         ds = ds[ds["output"].str.len() > 0].reset_index(drop=True)
 
+        padded_targets = ds["aSource"].apply(lambda r: add_padding_to_chars(r["code"]))
+        applied_seqs = ds.apply(lambda r: apply_edit_sequence(r["bSource"]["code"], r["output"]), axis=1)
+        applied_seqs = applied_seqs.apply(lambda r: add_padding_to_chars(r) if r else None)
+        applied_successes = padded_targets == applied_seqs
+        applied_failure_count = len(applied_successes) - applied_successes.sum()
+        self.log(f"{applied_failure_count} cases ({round(applied_failure_count/ len(applied_successes), 2)} %) where the edit sequence was not successfully applied")
+
         return ds
 
     @staticmethod
     def decode_outputs(row, outputs, tokenizer):
         pred_edit_seqs = tokenizer.batch_decode(outputs, skip_special_tokens=False, clean_up_tokenization_spaces=False)
-        target_edit_seq = tokenizer.decode(
-            tokenizer.encode(row["output"]), skip_special_tokens=False, clean_up_tokenization_spaces=False
-        )
+        target_edit_seq = row["output"]
 
         if target_edit_seq.endswith(" </s>"):
             target_edit_seq = target_edit_seq[:-5]
@@ -305,8 +310,13 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         if not target_edit_pairs:
             target = "Invalid"
         else:
-            edit_start = min([target.index(n) for _, n in target_edit_pairs])
-            edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
+            try:
+                edit_start = min([target.index(n) for _, n in target_edit_pairs])
+                edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
+            except Exception:
+                target = apply_edit_sequence(src, target_edit_seq, target_edit_pairs)
+                edit_start = min([target.index(n) for _, n in target_edit_pairs])
+                edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
 
             start = [0]
             start.extend([i + 1 for i, char in enumerate(target) if i < edit_start and char == ";"])
