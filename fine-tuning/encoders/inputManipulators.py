@@ -8,7 +8,6 @@ from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
 from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs
 import json
-import copy
 
 
 class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
@@ -148,10 +147,21 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
 
         return doc, annotated_doc
 
+    def hunks_count(self, changes):
+        return sum(len(c["hunks"]) for c in changes)
+
     def preprocess_all_class_changes(self, changes):
-        changes = format_sut_changes(changes)
-        changes = remove_whitespace_hunks(changes)
-        changes = remove_empty_hunks(changes)
+        preprocessors = [
+            format_sut_changes,
+            remove_whitespace_hunks,
+            remove_empty_hunks,
+        ]
+        for preprocess in preprocessors:
+            b_len = self.hunks_count(changes)
+            changes = preprocess(changes)
+            a_len = self.hunks_count(changes)
+            if a_len < b_len:
+                self.log(f"{preprocess.__name__} Removed {b_len - a_len} hunks from SUT changes")
         for change in changes:
             for hunk in change["hunks"]:
                 doc, annotated_doc = self.create_hunk_document(hunk)
