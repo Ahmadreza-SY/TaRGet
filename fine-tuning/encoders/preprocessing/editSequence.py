@@ -198,14 +198,14 @@ def build_edit_sequence(source, target):
         token1, s, token2, t, token3 = edit
         if not s in source:
             new_s = add_padding_to_chars(s)
-            if new_s in source:
+            if source.count(new_s) == 1:
                 s = new_s
             else:
                 all_replaces = False
 
         if not t in target:
             new_t = add_padding_to_chars(t)
-            if new_t in target:
+            if target.count(new_t) == 1:
                 t = new_t
             else:
                 all_replaces = False
