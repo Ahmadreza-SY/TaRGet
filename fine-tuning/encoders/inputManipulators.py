@@ -1,5 +1,5 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
-from encoders.testRepair import TestRepairDataEncoder, Tokens
+from encoders.testRepair import TestRepairDataEncoder, Tokens, EditSeqTokens
 from encoders.preprocessing.commentRemoval import line_is_comment, remove_empty_hunks
 from encoders.preprocessing.textDiff import get_hunk_diffs, remove_whitespace_hunks
 from encoders.preprocessing.codeFormatter import format_sut_changes, add_padding_to_chars
@@ -265,6 +265,9 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
 
 
 class EditSequenceDataEncoder(AllHunksDataEncoder):
+    def get_special_tokens_class(self):
+        return EditSeqTokens
+
     def create_output(self, row):
         repaired_code = ""
         output, success = build_edit_sequence(row.bSource["code"], row.aSource["code"])

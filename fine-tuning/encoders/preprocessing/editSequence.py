@@ -1,7 +1,7 @@
 import difflib
 import re
 
-from encoders.testRepair import Tokens
+from encoders.testRepair import EditSeqTokens as Tokens
 from encoders.preprocessing.codeFormatter import add_padding_to_chars
 
 

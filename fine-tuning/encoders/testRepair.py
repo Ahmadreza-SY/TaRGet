@@ -20,6 +20,8 @@ class Tokens:
     HUNK = "[<HUNK>]"
     HUNK_END = "[</HUNK>]"
 
+
+class EditSeqTokens(Tokens):
     REPLACE_OLD = "[<replaceOld>]"
     REPLACE_NEW = "[<replaceNew>]"
     REPLACE_KEEP_BEFORE_OLD = "[<replaceOldKeepBefore>]"
@@ -41,11 +43,14 @@ class TestRepairDataEncoder:
     def log(self, msg):
         self.logger.info(msg)
 
+    def get_special_tokens_class(self):
+        return Tokens
+
     def create_tokenizer(self):
         self.tokenizer = self.args.model_tokenizer_class.from_pretrained(self.args.model_path)
         new_special_tokens = {
             "additional_special_tokens": self.tokenizer.additional_special_tokens
-            + [v for k, v in inspect.getmembers(Tokens) if not k.startswith("_")]
+            + [v for k, v in inspect.getmembers(self.get_special_tokens_class()) if not k.startswith("_")]
         }
         self.tokenizer.add_special_tokens(new_special_tokens)
         self.tokenizer.deprecation_warnings["sequence-length-is-longer-than-the-specified-maximum"] = True
