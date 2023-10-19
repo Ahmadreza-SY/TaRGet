@@ -7,7 +7,6 @@ from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
 from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs, REPLACE_OLDS, REPLACE_NEWS
-from encoders.testRepair import Tokens
 import json
 import copy
 
@@ -277,9 +276,9 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         tokens = []
         for _, v in tokenizer.special_tokens_map:
             if type(v) == list:
-                tokens.extend([t for t in v if t not in REPLACE_NEWS and t not in REPLACE_OLDS and t != Tokens.BREAKAGE_END])
+                tokens.extend([t for t in v if t not in REPLACE_NEWS and t not in REPLACE_OLDS and t != Tokens.REPLACE_END])
             else:
-                if v not in REPLACE_NEWS and v not in REPLACE_OLDS and v != Tokens.BREAKAGE_END:
+                if v not in REPLACE_NEWS and v not in REPLACE_OLDS and v != Tokens.REPLACE_END:
                     tokens.append(v)
 
         while len(edit_seq) > 0:
