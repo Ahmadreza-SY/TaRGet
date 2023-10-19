@@ -6,7 +6,8 @@ from encoders.preprocessing.codeFormatter import format_sut_changes, add_padding
 from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
-from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs
+from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs, REPLACE_OLDS, REPLACE_NEWS
+from encoders.testRepair import Tokens
 import json
 import copy
 
@@ -266,21 +267,46 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         applied_seqs = applied_seqs.apply(lambda r: add_padding_to_chars(r) if r else None)
         applied_successes = padded_targets == applied_seqs
         applied_failure_count = len(applied_successes) - applied_successes.sum()
-        self.log(f"{applied_failure_count} cases ({round(applied_failure_count/ len(applied_successes), 2)} %) where the edit sequence was not successfully applied")
+        self.log(f"{applied_failure_count} cases ({round(100 * applied_failure_count / len(applied_successes), 2)} %) where the edit sequence was not successfully applied")
 
         return ds
+
+    @staticmethod
+    def remove_special_tokens(edit_seq, tokenizer):
+        new_edit_seq = ""
+        tokens = []
+        for _, v in tokenizer.special_tokens_map:
+            if type(v) == list:
+                tokens.extend([t for t in v if t not in REPLACE_NEWS and t not in REPLACE_OLDS and t != Tokens.BREAKAGE_END])
+            else:
+                if v not in REPLACE_NEWS and v not in REPLACE_OLDS and v != Tokens.BREAKAGE_END:
+                    tokens.append(v)
+
+        while len(edit_seq) > 0:
+            checked = False
+            while not checked:
+                checked = True
+                for t in tokens:
+                    if edit_seq.startswith(t):
+                        edit_seq = edit_seq[len(t):]
+                        if (len(new_edit_seq) == 0 or new_edit_seq.endswith(" ")) and edit_seq.startswith(" "):
+                            edit_seq = edit_seq[1:]
+                        checked = False
+
+            new_edit_seq += edit_seq[0]
+            edit_seq = edit_seq[1:]
+
+        return new_edit_seq
 
     @staticmethod
     def decode_outputs(row, outputs, tokenizer):
         pred_edit_seqs = tokenizer.batch_decode(outputs, skip_special_tokens=False, clean_up_tokenization_spaces=False)
         target_edit_seq = row["output"]
 
-        if target_edit_seq.endswith(" </s>"):
-            target_edit_seq = target_edit_seq[:-5]
+        target_edit_seq = EditSequenceDataEncoder.remove_special_tokens(target_edit_seq, tokenizer)
 
         for i in range(len(pred_edit_seqs)):
-            if pred_edit_seqs[i].endswith(" </s>"):
-                pred_edit_seqs[i] = pred_edit_seqs[i][:-5]
+            pred_edit_seqs[i] = EditSequenceDataEncoder.remove_special_tokens(pred_edit_seqs[i], tokenizer)
 
         pred_edit_pairs = [get_replace_pairs(es) for es in pred_edit_seqs]
         target_edit_pairs = get_replace_pairs(target_edit_seq)
