@@ -320,7 +320,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
             applied_pred = apply_edit_sequence(src, pred_edit_seqs[i], curr_pred_pairs)
 
             if not applied_pred:
-                preds.append("Invalid")
+                preds.append("Invalid Prediction")
             else:
                 start = min([applied_pred.index(n) for _, n in curr_pred_pairs])
                 end = max([applied_pred.index(n) + len(n) for _, n in curr_pred_pairs])
@@ -333,7 +333,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                 preds.append(applied_pred[start:end])
 
         if not target_edit_pairs:
-            target = "Invalid"
+            target = "Unvalid Target"
         else:
             try:
                 edit_start = min([target.index(n) for _, n in target_edit_pairs])
