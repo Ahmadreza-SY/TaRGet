@@ -6,7 +6,7 @@ from encoders.preprocessing.codeFormatter import format_sut_changes, add_padding
 from encoders.preprocessing.processors import Processors
 from diff_match_patch import diff_match_patch as dmp
 from pathlib import Path
-from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs, REPLACE_OLDS, REPLACE_NEWS
+from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, get_replace_pairs, find_token_diffs, REPLACE_OLDS, REPLACE_NEWS
 import json
 import copy
 
@@ -274,7 +274,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
     def remove_special_tokens(edit_seq, tokenizer):
         new_edit_seq = ""
         tokens = []
-        for _, v in tokenizer.special_tokens_map:
+        for _, v in tokenizer.special_tokens_map.items():
             if type(v) == list:
                 tokens.extend([t for t in v if t not in REPLACE_NEWS and t not in REPLACE_OLDS and t != Tokens.REPLACE_END])
             else:
@@ -292,8 +292,9 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                             edit_seq = edit_seq[1:]
                         checked = False
 
-            new_edit_seq += edit_seq[0]
-            edit_seq = edit_seq[1:]
+            if len(edit_seq) > 0:
+                new_edit_seq += edit_seq[0]
+                edit_seq = edit_seq[1:]
 
         return new_edit_seq
 
@@ -332,25 +333,29 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
 
                 preds.append(applied_pred[start:end])
 
-        if not target_edit_pairs:
-            target = "Unvalid Target"
-        else:
-            try:
-                edit_start = min([target.index(n) for _, n in target_edit_pairs])
-                edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
-            except Exception:
-                target = apply_edit_sequence(src, target_edit_seq, target_edit_pairs)
-                edit_start = min([target.index(n) for _, n in target_edit_pairs])
-                edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
+        target_changes = find_token_diffs(add_padding_to_chars(src), add_padding_to_chars(target))
+        edit_start = min([c[3] for c in target_changes if c[0] != "equal"])
+        edit_end = max([c[4] for c in target_changes if c[0] != "equal"])
 
-            start = [0]
-            start.extend([i + 1 for i, char in enumerate(target) if i < edit_start and char == ";"])
-            start = start[-1]
-            end = [-1]
-            end.extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > edit_end and char == ";"])
-            end = end[-1]
+        # if not target_edit_pairs:
+        #     target = "Unvalid Target"
+        # else:
+        #     try:
+        #         edit_start = min([target.index(n) for _, n in target_edit_pairs])
+        #         edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
+            # except Exception:
+            #     target = apply_edit_sequence(src, target_edit_seq, target_edit_pairs)
+            #     edit_start = min([target.index(n) for _, n in target_edit_pairs])
+            #     edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
 
-            target = target[start : end + 1]
+        start = [0]
+        start.extend([i + 1 for i, char in enumerate(target) if i < edit_start and char == ";"])
+        start = start[-1]
+        end = [-1]
+        end.extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > edit_end and char == ";"])
+        end = end[-1]
+
+        target = target[start : end + 1]
 
         return {"ID": row["ID"], "target": target, "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 
