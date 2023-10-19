@@ -253,8 +253,28 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
 
         return repaired_code
 
+    def expand_target_changes(self, row):
+        target_change = super(EditSequenceDataEncoder, self).create_output(row)
+        target_code = add_padding_to_chars(row.aSource["code"])
+
+        if target_change in target_code:
+            change_start = target_code.index(target_change)
+            change_end = change_start + len(target_change)
+
+            start = [0]
+            start.extend([i + 1 for i, char in enumerate(target_code) if i < change_start and char in [";", "{"]])
+            start = start[-1]
+            end = [-1]
+            end.extend([i + (1 if char == ";" else 0) for i, char in reversed(list(enumerate(target_code))) if i > change_end and char in [";", "}"]])
+            end = end[-1]
+
+            target_change = target_code[start: end + 1]
+
+        return target_change
+
     def create_inputs_and_outputs(self, ds):
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
+        ds["target_change"] = ds.apply(lambda r: self.expand_target_changes(r), axis=1)
         num_without_output = len(ds[ds["output"].str.len() == 0].index)
         self.log(
             f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where edit sequence output could not be generated"
@@ -309,55 +329,29 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
             pred_edit_seqs[i] = EditSequenceDataEncoder.remove_special_tokens(pred_edit_seqs[i], tokenizer)
 
         pred_edit_pairs = [get_replace_pairs(es) for es in pred_edit_seqs]
-        target_edit_pairs = get_replace_pairs(target_edit_seq)
-
         preds, targets = [], []
-
         src, target = row["bSource"]["code"], add_padding_to_chars(row["aSource"]["code"])
 
         for i in range(len(pred_edit_pairs)):
             curr_pred_pairs = pred_edit_pairs[i]
-
             applied_pred = apply_edit_sequence(src, pred_edit_seqs[i], curr_pred_pairs)
 
             if not applied_pred:
                 preds.append("Invalid Prediction")
             else:
-                start = min([applied_pred.index(n) for _, n in curr_pred_pairs])
-                end = max([applied_pred.index(n) + len(n) for _, n in curr_pred_pairs])
+                change_start = min([applied_pred.index(n) for _, n in curr_pred_pairs])
+                change_end = max([applied_pred.index(n) + len(n) for _, n in curr_pred_pairs])
 
-                start = [0].extend([i + 1 for i, char in enumerate(applied_pred) if i < start and char == ";"])[-1]
-                end = [-1].extend([i + 1 for i, char in reversed(list(enumerate(applied_pred))) if i > end and char == ";"])[
-                    -1
-                ]
+                start = [0]
+                start.extend([i + 1 for i, char in enumerate(applied_pred) if i < change_start and char in [";", "{"]])
+                start = start[-1]
+                end = [-1]
+                end.extend([i + (1 if char == ";" else 0) for i, char in reversed(list(enumerate(applied_pred))) if i > change_end and char in [";", "}"]])
+                end = end[-1]
 
                 preds.append(applied_pred[start:end])
 
-        target_changes = find_token_diffs(add_padding_to_chars(src), add_padding_to_chars(target))
-        edit_start = min([c[3] for c in target_changes if c[0] != "equal"])
-        edit_end = max([c[4] for c in target_changes if c[0] != "equal"])
-
-        # if not target_edit_pairs:
-        #     target = "Unvalid Target"
-        # else:
-        #     try:
-        #         edit_start = min([target.index(n) for _, n in target_edit_pairs])
-        #         edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
-            # except Exception:
-            #     target = apply_edit_sequence(src, target_edit_seq, target_edit_pairs)
-            #     edit_start = min([target.index(n) for _, n in target_edit_pairs])
-            #     edit_end = max([target.index(n) + len(n) for _, n in target_edit_pairs])
-
-        start = [0]
-        start.extend([i + 1 for i, char in enumerate(target) if i < edit_start and char == ";"])
-        start = start[-1]
-        end = [-1]
-        end.extend([i + 1 for i, char in reversed(list(enumerate(target))) if i > edit_end and char == ";"])
-        end = end[-1]
-
-        target = target[start : end + 1]
-
-        return {"ID": row["ID"], "target": target, "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
+        return {"ID": row["ID"], "target": row["target_change"], "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 
 
 class ASTElementsDataEncoder(AllHunksDataEncoder):
