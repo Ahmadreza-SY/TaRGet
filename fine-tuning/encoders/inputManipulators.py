@@ -150,7 +150,7 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
     def hunks_count(self, changes):
         return sum(len(c["hunks"]) for c in changes)
 
-    def preprocess_all_class_changes(self, changes):
+    def preprocess_all_class_changes(self, changes, stats):
         preprocessors = [
             format_sut_changes,
             remove_whitespace_hunks,
@@ -160,8 +160,7 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
             b_len = self.hunks_count(changes)
             changes = preprocess(changes)
             a_len = self.hunks_count(changes)
-            if a_len < b_len:
-                self.log(f"{preprocess.__name__} Removed {b_len - a_len} hunks from SUT changes")
+            stats["hunk_pp"][preprocess.__name__] = stats["hunk_pp"].get(preprocess.__name__, 0) + (b_len - a_len)
         for change in changes:
             for hunk in change["hunks"]:
                 doc, annotated_doc = self.create_hunk_document(hunk)
@@ -181,16 +180,26 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
             else:
                 return "Combination of Both"
 
-    def log_empty_changes_stats(self, ds, stats):
+    def log_stats(self, ds, stats):
+        # Empty change stats
         stats_cnt = {}
+        empty_chn = stats["empty_chn"]
         for _, row in ds.iterrows():
             key = f"{row['project']}/{row['aCommit']}"
-            if key in stats:
-                reason = stats[key]
+            if key in empty_chn:
+                reason = empty_chn[key]
                 stats_cnt.setdefault(reason, 0)
                 stats_cnt[reason] += 1
         for k, v in stats_cnt.items():
             self.log(f"Got {v} empty changes due to {k}")
+
+        # Hunks preprocessing stats
+        total_hunks = stats["hunks"] + sum(stats["hunk_pp"].values())
+        for k, v in stats["hunk_pp"].items():
+            if v > 0:
+                self.log(f"{k} removed {v} ({round(100*v/total_hunks, 1)}%) hunks from SUT changes")
+                total_hunks -= v
+        self.log(f"Total SUT hunks after preprocessing: {total_hunks}")
 
     def get_all_class_changes(self, project, a_commit, changes_cache, stats):
         key = f"{project}/{a_commit}"
@@ -204,16 +213,17 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
                 changes = json.loads(changes_path[0].read_text())
                 for commit_changes in changes:
                     commit_changes_wo_t = [c for c in commit_changes["changes"] if not c["is_test_source"]]
-                    commit_changes_pp = self.preprocess_all_class_changes(commit_changes_wo_t)
+                    commit_changes_pp = self.preprocess_all_class_changes(commit_changes_wo_t, stats)
                     current_key = f"{project}/{commit_changes['aCommit']}"
                     changes_cache[current_key] = commit_changes_pp
+                    stats["hunks"] += self.hunks_count(commit_changes_pp)
                     if len(commit_changes_pp) == 0:
-                        stats[current_key] = self.get_empty_changes_reason(
+                        stats["empty_chn"][current_key] = self.get_empty_changes_reason(
                             commit_changes["changes"], commit_changes_wo_t, commit_changes_pp
                         )
 
         if key not in changes_cache:
-            stats[key] = "Not Found"
+            stats["empty_chn"][key] = "Not Found"
             changes_cache[key] = []
 
         return changes_cache.get(key, [])
@@ -222,13 +232,13 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
         ds = super().read_data()
         self.log(f"Reading and preprocessing all class changes")
         changes_cache = {}
-        stats = {}
+        stats = {"empty_chn": {}, "hunk_pp": {}, "hunks": 0}
         all_class_changes = []
         for _, row in ds.iterrows():
             changes = self.get_all_class_changes(row["project"], row["aCommit"], changes_cache, stats)
             all_class_changes.append(changes)
         ds["allClassChanges"] = all_class_changes
-        self.log_empty_changes_stats(ds, stats)
+        self.log_stats(ds, stats)
         return ds
 
     def create_changed_document(self, row, hunk):

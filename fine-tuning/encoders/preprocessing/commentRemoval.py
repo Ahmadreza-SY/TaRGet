@@ -21,13 +21,13 @@ def remove_hunk_comments(hunk):
     return hunk
 
 
-def remove_covered_changes_comments(covered_changes):
-    for c in covered_changes:
+def remove_sut_changes_comments(sut_changes):
+    for c in sut_changes:
         c["hunks"] = [remove_hunk_comments(h) for h in c["hunks"]]
         c["hunks"] = [h for h in c["hunks"] if not hunk_is_empty(h)]
 
-    covered_changes = [c for c in covered_changes if len(c["hunks"]) > 0]
-    return covered_changes
+    sut_changes = [c for c in sut_changes if len(c["hunks"]) > 0]
+    return sut_changes
 
 
 def remove_empty_hunks(sut_changes):
