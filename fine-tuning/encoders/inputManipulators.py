@@ -270,7 +270,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
 
             target_change = target_code[start: end + 1]
 
-        return target_change
+        return target_change.strip()
 
     def create_inputs_and_outputs(self, ds):
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
@@ -308,7 +308,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                 for t in tokens:
                     if edit_seq.startswith(t):
                         edit_seq = edit_seq[len(t):]
-                        if (len(new_edit_seq) == 0 or new_edit_seq.endswith(" ")) and edit_seq.startswith(" "):
+                        if new_edit_seq.endswith(" ") and edit_seq.startswith(" "):
                             edit_seq = edit_seq[1:]
                         checked = False
 
@@ -316,7 +316,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                 new_edit_seq += edit_seq[0]
                 edit_seq = edit_seq[1:]
 
-        return new_edit_seq
+        return new_edit_seq.strip()
 
     @staticmethod
     def decode_outputs(row, outputs, tokenizer):
