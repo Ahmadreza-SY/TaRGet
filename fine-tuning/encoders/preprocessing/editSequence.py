@@ -387,7 +387,7 @@ def get_replace_pairs(edit_seq):
 
         for new in REPLACE_NEWS:
             if new in r:
-                blocks = re.split(f' {re.escape(new)} ', r)
+                blocks = re.split(f' ?{re.escape(new)} ?', r)
                 if len(blocks) == 2:
                     orig, new = blocks[0], blocks[1]
                 break
