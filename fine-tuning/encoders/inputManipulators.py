@@ -349,7 +349,7 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
                 end.extend([i + (1 if char == ";" else 0) for i, char in reversed(list(enumerate(applied_pred))) if i > change_end and char in [";", "}"]])
                 end = end[-1]
 
-                preds.append(applied_pred[start:end])
+                preds.append(applied_pred[start:end].strip())
 
         return {"ID": row["ID"], "target": row["target_change"], "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 
