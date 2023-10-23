@@ -194,6 +194,25 @@ def build_edit_sequence(source, target):
         edit_sequence[i] = curr_e
         i += 1
 
+    for i in range(len(edit_sequence)):
+        edit, _, _, _, _ = edit_sequence[i]
+        token1, s, token2, t, token3 = edit
+        if not s in source:
+            new_s = add_padding_to_chars(s)
+            if source.count(new_s) == 1:
+                s = new_s
+            else:
+                all_replaces = False
+
+        if not t in target:
+            new_t = add_padding_to_chars(t)
+            if target.count(new_t) == 1:
+                t = new_t
+            else:
+                all_replaces = False
+
+        edit_sequence[i] = ([token1, s, token2, t, token3],)
+
     return ' '.join([e1 for e0 in edit_sequence for e1 in e0[0]]), all_replaces
 
 
@@ -305,9 +324,12 @@ def find_token_diffs(source, target):
 
         next_e = final_changes[i + 1]
         if curr_e[1] == curr_e[2] and target[curr_e[4] - 1] == ' ':
-            curr_e = (curr_e[0], curr_e[1], next_e[2], curr_e[3], next_e[4]-1)
-            final_changes[i + 1] = (final_changes[i + 1][0], final_changes[i + 1][1], final_changes[i + 1][2], final_changes[i + 1][3] + 1, final_changes[i + 1][4])
-        next_e = final_changes[i + 1]
+            curr_e = (curr_e[0], curr_e[1], next_e[2], curr_e[3], next_e[4])
+            del final_changes[i+1]
+            next_e = None
+
+        if i < len(final_changes) - 1:
+            next_e = final_changes[i + 1]
 
         while next_e and (curr_e[0] == next_e[0] == "equal" or (curr_e[0] != "equal" and next_e[0] != "equal")):
             curr_e = ("equal" if curr_e[0] == "equal" else "replace", curr_e[1], next_e[2], curr_e[3], next_e[4])
@@ -366,7 +388,7 @@ def get_replace_pairs(edit_seq):
 
         for new in REPLACE_NEWS:
             if new in r:
-                blocks = re.split(f' {re.escape(new)} ', r)
+                blocks = re.split(f' ?{re.escape(new)} ?', r)
                 if len(blocks) == 2:
                     orig, new = blocks[0], blocks[1]
                 break
