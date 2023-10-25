@@ -48,11 +48,16 @@ class CallGraphRepository:
         for commit, test_call_graphs in call_graphs.items():
             for test_name, call_graph in test_call_graphs.items():
                 node_depth = {}
+                max_node_depth = 0
                 for node in call_graph["nodes"]:
-                    node_depth.setdefault(node["name"], node["depth"])
-                    node_depth.setdefault(node["path"], node["depth"])
+                    if node["depth"] > max_node_depth:
+                        max_node_depth = node["depth"]
+                    if node["name"] not in node_depth:
+                        node_depth[node["name"]] = node["depth"]
+                    if node["path"] not in node_depth:
+                        node_depth[node["path"]] = node["depth"]
                 call_graph["node_depth"] = node_depth
-                call_graph["max_node_depth"] = max([node["depth"] for node in call_graph["nodes"]])
+                call_graph["max_node_depth"] = max_node_depth
                 key = f"{project}/{commit}/{test_name}"
                 project_call_graphs[key] = call_graph
         return project_call_graphs

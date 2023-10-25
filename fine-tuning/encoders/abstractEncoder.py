@@ -129,12 +129,11 @@ class AbstractDataEncoder:
         return test_context
 
     def create_changed_document(self, hunk):
-        annotated_doc = hunk.setdefault("annotated_doc", self.create_hunk_document(hunk))
-        annotated_doc_seq = hunk.setdefault("annotated_doc_seq", self.tokenizer.encode(annotated_doc))
-        change_doc = {
-            "annotated_doc": annotated_doc,
-            "annotated_doc_seq": annotated_doc_seq,
-        }
+        if "annotated_doc" not in hunk:
+            hunk["annotated_doc"] = self.create_hunk_document(hunk)
+        if "annotated_doc_seq" not in hunk:
+            hunk["annotated_doc_seq"] = self.tokenizer.encode(hunk["annotated_doc"])
+        change_doc = {"annotated_doc": hunk["annotated_doc"], "annotated_doc_seq": hunk["annotated_doc_seq"]}
         return change_doc
 
     def create_input(self, test_context, changed_docs):
