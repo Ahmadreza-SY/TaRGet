@@ -213,6 +213,7 @@ class AbstractDataEncoder:
         self.log("Prioritizing changes")
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
         ds = self.apply_processor(Processors.remove_empty_prioritized_changes, ds)
+        ds = ds.drop(columns=["commitChanges"])
         return ds
 
     def remove_duplicate_change_documents(self, change_docs):
