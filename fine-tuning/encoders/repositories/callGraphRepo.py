@@ -1,21 +1,27 @@
 import json
 from pathlib import Path
+import logging
 
 
 class CallGraphRepository:
     def __init__(self, args):
         self.call_graphs_cache = {}
         self.args = args
+        self.logger = logging.getLogger("MAIN")
+
+    def log(self, msg):
+        self.logger.info(msg)
 
     def get_call_graph_depth(self, row, hunk, change):
         call_graph = self.get_call_graph(row["project"], row["bCommit"], row["name"])
-        for node in call_graph["nodes"]:
-            if hunk["scope"] == "method" and hunk["methodName"] == node["name"]:
-                return node["depth"]
-            elif hunk["scope"] == "class" and change["bPath"] == node["path"]:
-                return node["depth"]
-
-        return max([node["depth"] for node in call_graph["nodes"]])
+        if len(call_graph) == 0:
+            return 0
+        node_depth = call_graph["node_depth"]
+        max_node_depth = call_graph["max_node_depth"]
+        if hunk["scope"] == "method":
+            return node_depth.get(hunk["methodName"], max_node_depth)
+        elif hunk["scope"] == "class":
+            return node_depth.get(change["bPath"], max_node_depth)
 
     def get_call_graph(self, project, commit, test_name):
         key = f"{project}/{commit}/{test_name}"
@@ -41,6 +47,12 @@ class CallGraphRepository:
         project_call_graphs = {}
         for commit, test_call_graphs in call_graphs.items():
             for test_name, call_graph in test_call_graphs.items():
+                node_depth = {}
+                for node in call_graph["nodes"]:
+                    node_depth.setdefault(node["name"], node["depth"])
+                    node_depth.setdefault(node["path"], node["depth"])
+                call_graph["node_depth"] = node_depth
+                call_graph["max_node_depth"] = max([node["depth"] for node in call_graph["nodes"]])
                 key = f"{project}/{commit}/{test_name}"
                 project_call_graphs[key] = call_graph
         return project_call_graphs
