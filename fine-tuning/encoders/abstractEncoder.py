@@ -260,7 +260,8 @@ class AbstractDataEncoder:
     def read_data(self):
         ds_path = Path(self.args.dataset_dir)
         ds_list = []
-        for project_ds_path in ds_path.rglob("dataset.json"):
+        ds_paths = list(ds_path.rglob("dataset.json"))
+        for project_ds_path in ds_paths:
             project_ds = pd.read_json(project_ds_path)
             project_ds = project_ds.drop(columns=["astActions"])
             project_ds["project"] = f"{project_ds_path.parent.parent.name}/{project_ds_path.parent.name}"
