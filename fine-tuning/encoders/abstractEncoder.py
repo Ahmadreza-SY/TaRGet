@@ -11,8 +11,8 @@ from encoders.preprocessing.codeFormatter import add_padding_to_chars
 from encoders.preprocessing.processors import Processors
 from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
-from encoders.changeRepo import ChangeRepository
-from encoders.callGraphRepo import CallGraphRepository
+from encoders.repositories.changeRepo import ChangeRepository
+from encoders.repositories.callGraphRepo import CallGraphRepository
 
 
 class Tokens:
@@ -26,20 +26,6 @@ class Tokens:
     ADD_END = "[</ADD>]"
     HUNK = "[<HUNK>]"
     HUNK_END = "[</HUNK>]"
-
-
-class EditSeqTokens(Tokens):
-    REPLACE_OLD = "[<replaceOld>]"
-    REPLACE_NEW = "[<replaceNew>]"
-    REPLACE_KEEP_BEFORE_OLD = "[<replaceOldKeepBefore>]"
-    REPLACE_KEEP_BEFORE_NEW = "[<replaceNewKeepBefore>]"
-    REPLACE_KEEP_AFTER_OLD = "[<replaceOldKeepAfter>]"
-    REPLACE_KEEP_AFTER_NEW = "[<replaceNewKeepAfter>]"
-    REPLACE_KEEP_BEFORE_AFTER_OLD = "[<replaceOldKeepBeforeAfter>]"
-    REPLACE_KEEP_BEFORE_AFTER_NEW = "[<replaceNewKeepBeforeAfter>]"
-    REPLACE_GROUP_OLD = "[<replaceOldGroup>]"
-    REPLACE_GROUP_NEW = "[<replaceNewGroup>]"
-    REPLACE_END = "[<replaceEnd>]"
 
 
 class AbstractDataEncoder:
@@ -132,6 +118,18 @@ class AbstractDataEncoder:
             .replace(f"{Tokens.BREAKAGE_END} ", Tokens.BREAKAGE_END)
         )
         return test_context
+
+    def create_hunk_document(self, hunk):
+        pass
+
+    def create_changed_document(self, hunk):
+        annotated_doc = hunk.setdefault("annotated_doc", self.create_hunk_document(hunk))
+        annotated_doc_seq = hunk.setdefault("annotated_doc_seq", self.tokenizer.encode(annotated_doc))
+        change_doc = {
+            "annotated_doc": annotated_doc,
+            "annotated_doc_seq": annotated_doc_seq,
+        }
+        return change_doc
 
     def create_input(self, test_context, changed_docs):
         return "".join(
