@@ -310,22 +310,33 @@ class DataCollector:
         changed_sut_classes_path.write_text(json.dumps(changed_classes, indent=2, sort_keys=False))
 
     def label_changed_test_sources(self):
-        print("Labelling changed test sources...")
+        print("Labeling changed test sources...")
         sut_class_changes_path = self.output_path / "codeMining" / "sut_class_changes.json"
+        sut_method_changes_path = self.output_path / "codeMining" / "sut_method_changes.json"
         changed_test_classes_path = self.output_path / "codeMining" / "changed_test_classes.csv"
 
         changed_test_classes = pd.read_csv(changed_test_classes_path)
         test_classes = set(changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist())
+
+        def is_test_source(b_path, a_path):
+            is_test_source = False
+            if b_path in test_classes or a_path in test_classes:
+                is_test_source = True
+            elif "src/test" in b_path or "src/test" in a_path:
+                is_test_source = True
+            return is_test_source
+
         sut_class_changes = json.loads(sut_class_changes_path.read_text())
         for commit_changes in sut_class_changes:
             for file_changes in commit_changes["changes"]:
-                file_changes["is_test_source"] = False
-                if file_changes["bPath"] in test_classes or file_changes["aPath"] in test_classes:
-                    file_changes["is_test_source"] = True
-                elif "src/test" in file_changes["bPath"] or "src/test" in file_changes["aPath"]:
-                    file_changes["is_test_source"] = True
-
+                file_changes["is_test_source"] = is_test_source(file_changes["bPath"], file_changes["aPath"])
         sut_class_changes_path.write_text(json.dumps(sut_class_changes, indent=2, sort_keys=False))
+
+        sut_method_changes = json.loads(sut_method_changes_path.read_text())
+        for commit_changes in sut_method_changes:
+            for file_changes in commit_changes["changes"]:
+                file_changes["is_test_source"] = is_test_source(file_changes["bPath"], file_changes["aPath"])
+        sut_method_changes_path.write_text(json.dumps(sut_method_changes, indent=2, sort_keys=False))
 
     def make_dataset(self, repaired_tests):
         method_change_repo = MethodChangesRepository(self.output_path)

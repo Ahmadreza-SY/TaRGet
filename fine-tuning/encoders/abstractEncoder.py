@@ -6,6 +6,13 @@ from encoders.preprocessing.processors import Processors
 import sys
 import logging
 import pickle
+from encoders.preprocessing.commentRemoval import line_is_comment
+from encoders.preprocessing.codeFormatter import add_padding_to_chars
+from encoders.preprocessing.processors import Processors
+from pathlib import Path
+from sklearn.feature_extraction.text import TfidfVectorizer
+from encoders.changeRepo import ChangeRepository
+from encoders.callGraphRepo import CallGraphRepository
 
 
 class Tokens:
@@ -35,10 +42,12 @@ class EditSeqTokens(Tokens):
     REPLACE_END = "[<replaceEnd>]"
 
 
-class TestRepairDataEncoder:
+class AbstractDataEncoder:
     def __init__(self, args):
         self.args = args
         self.logger = logging.getLogger("MAIN")
+        self.change_repo = ChangeRepository(args)
+        self.call_graph_repo = CallGraphRepository(args)
 
     def log(self, msg):
         self.logger.info(msg)
@@ -94,7 +103,87 @@ class TestRepairDataEncoder:
 
         return train_ds, valid_ds, test_ds
 
+    def get_broken_code(self, row):
+        broken_code = ""
+        if "sourceChanges" in row["hunk"]:
+            broken_code = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
+        return broken_code
+
+    def get_tfidf_sim(self, target, changes):
+        vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False, token_pattern=None)
+        tokenized_docs = [self.tokenizer.encode(target)] + [c["annotated_doc_seq"] for c in changes]
+        vectors = vectorizer.fit_transform(tokenized_docs)
+        dense = vectors.todense()
+        cosine_sim = (dense * dense[0].T).T.tolist()[0]
+        return [cosine_sim[i + 1] for i in range(len(changes))]
+
+    def create_test_context(self, row):
+        test_code = row["bSource"]["code"]
+        break_s = min([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        break_e = max([l["lineNo"] for l in row["hunk"]["sourceChanges"]]) - row["bSource"]["startLine"]
+        test_lines = test_code.split("\n")
+        test_lines = [add_padding_to_chars(l) for l in test_lines]
+        test_lines[break_s] = Tokens.BREAKAGE_START + test_lines[break_s]
+        test_lines[break_e] = test_lines[break_e] + Tokens.BREAKAGE_END
+        test_lines = [l for l in test_lines if not line_is_comment(l) and len(l) > 0 and not l.isspace()]
+        test_context = (
+            " ".join(test_lines)
+            .replace(f" {Tokens.BREAKAGE_START}", Tokens.BREAKAGE_START)
+            .replace(f"{Tokens.BREAKAGE_END} ", Tokens.BREAKAGE_END)
+        )
+        return test_context
+
+    def create_input(self, test_context, changed_docs):
+        return "".join(
+            [Tokens.TEST_CONTEXT, test_context] + [Tokens.REPAIR_CONTEXT] + [cc["annotated_doc"] for cc in changed_docs]
+        )
+
+    def create_output(self, row):
+        if "targetChanges" in row["hunk"] and len(row["hunk"]["targetChanges"]) > 0:
+            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+        else:
+            repaired_code = "// Deleted"
+        return repaired_code
+
+    @staticmethod
+    def decode_outputs(row, outputs, tokenizer):
+        preds = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        target = row["output"]
+        return {"ID": row["ID"], "target": target, "preds": preds}
+
+    def select_changes(self, row):
+        pr_changes_cnt = len(row["prioritized_changes"])
+        selected_changes = []
+        test_context = self.create_test_context(row)
+        test_context_e = self.tokenizer.encode(test_context)
+        for i in range(pr_changes_cnt):
+            new_selected_changes = selected_changes + [row["prioritized_changes"][i]]
+            # The +2 is for Tokens.TEST_CONTEXT and Tokens.REPAIR_CONTEXT
+            new_input_len = len(test_context_e) + sum(len(c["annotated_doc_seq"]) for c in new_selected_changes) + 2
+            max_input_length = self.args.dataset_class.get_max_input_len(self.args.max_length)
+            if new_input_len <= max_input_length:
+                selected_changes = new_selected_changes
+
+        if len(selected_changes) == 0:
+            selected_changes = [row["prioritized_changes"][0]]
+        return (self.create_input(test_context, selected_changes), selected_changes)
+
     def create_inputs_and_outputs(self, ds):
+        self.log("Creating inputs and outputs")
+        ds_selected_changes = [self.select_changes(r) for _, r in list(ds.iterrows())]
+
+        all_change_cnt = sum([len(r["prioritized_changes"]) for _, r in ds.iterrows()])
+        included_change_cnt = sum([len(sc[1]) for sc in ds_selected_changes])
+        included_change_p = round(100 * included_change_cnt / all_change_cnt, 1)
+        self.log(f"In total, {included_change_p} % of covered changed documents are included in the input.")
+
+        ds["input"] = [sc[0] for sc in ds_selected_changes]
+        ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
+
+        ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
+        return ds
+
+    def get_changed_documents(self, row):
         pass
 
     def apply_processor(self, processor, ds):
@@ -104,6 +193,10 @@ class TestRepairDataEncoder:
         if before_len != len(ds):
             self.log(f"Removed {before_len - len(ds)} rows by the {processor.__name__} processor")
         return ds
+
+    def prioritize_changed_documents(self, row):
+        changes = self.get_changed_documents(row)
+        return sorted(changes, key=lambda c: self.get_sort_key(c))
 
     def preprocess(self, ds):
         processors = [
@@ -117,7 +210,19 @@ class TestRepairDataEncoder:
         for processor in processors:
             ds = self.apply_processor(processor, ds)
 
+        self.log("Prioritizing changes")
+        ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
+        ds = self.apply_processor(Processors.remove_empty_prioritized_changes, ds)
         return ds
+
+    def remove_duplicate_change_documents(self, change_docs):
+        unique_docs = set()
+        unique_change_docs = []
+        for change_doc in change_docs:
+            if change_doc["annotated_doc"] not in unique_docs:
+                unique_change_docs.append(change_doc)
+            unique_docs.add(change_doc["annotated_doc"])
+        return unique_change_docs
 
     def prepare_inputs_and_outputs(self, ds):
         ds = self.create_inputs_and_outputs(ds)
@@ -157,6 +262,7 @@ class TestRepairDataEncoder:
         ds_list = []
         for project_ds_path in ds_path.rglob("dataset.json"):
             project_ds = pd.read_json(project_ds_path)
+            project_ds = project_ds.drop(columns=["astActions"])
             project_ds["project"] = f"{project_ds_path.parent.parent.name}/{project_ds_path.parent.name}"
             if len(project_ds) == 0:
                 continue
@@ -164,7 +270,10 @@ class TestRepairDataEncoder:
         if len(ds_list) == 0:
             raise Exception(f"No datasets found in {ds_path}")
         ds = pd.concat(ds_list)
-        ds["allClassChanges"] = [[] for _ in range(len(ds))]
+        ds["commitChanges"] = ds.apply(
+            lambda row: self.change_repo.get_commit_changes(row["project"], row["aCommit"]), axis=1
+        )
+        self.change_repo.log_stats(ds)
         return ds
 
     def create_datasets(self):

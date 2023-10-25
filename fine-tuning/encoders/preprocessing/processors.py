@@ -20,7 +20,7 @@ class Processors:
 
     @staticmethod
     def remove_empty_changes(ds, args):
-        ds["chn_is_empty"] = ds.apply(lambda r: len(r["allClassChanges"]) == 0, axis=1)
+        ds["chn_is_empty"] = ds.apply(lambda r: len(r["commitChanges"]) == 0, axis=1)
         ds = ds[~ds["chn_is_empty"]].drop(columns=["chn_is_empty"]).reset_index(drop=True)
         return ds
 
