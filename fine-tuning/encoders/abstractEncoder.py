@@ -35,6 +35,15 @@ class AbstractDataEncoder:
         self.change_repo = ChangeRepository(args)
         self.call_graph_repo = CallGraphRepository(args)
 
+    def create_hunk_document(self, hunk):
+        pass
+
+    def get_changed_documents(self, row):
+        pass
+
+    def get_sort_key(self, changed_doc):
+        pass
+
     def log(self, msg):
         self.logger.info(msg)
 
@@ -119,9 +128,6 @@ class AbstractDataEncoder:
         )
         return test_context
 
-    def create_hunk_document(self, hunk):
-        pass
-
     def create_changed_document(self, hunk):
         annotated_doc = hunk.setdefault("annotated_doc", self.create_hunk_document(hunk))
         annotated_doc_seq = hunk.setdefault("annotated_doc_seq", self.tokenizer.encode(annotated_doc))
@@ -181,9 +187,6 @@ class AbstractDataEncoder:
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
         return ds
 
-    def get_changed_documents(self, row):
-        pass
-
     def apply_processor(self, processor, ds):
         before_len = len(ds)
         self.log(f"Applying processor {processor.__name__}")
@@ -193,8 +196,8 @@ class AbstractDataEncoder:
         return ds
 
     def prioritize_changed_documents(self, row):
-        changes = self.get_changed_documents(row)
-        return sorted(changes, key=lambda c: self.get_sort_key(c))
+        changed_docs = self.get_changed_documents(row)
+        return sorted(changed_docs, key=lambda c: self.get_sort_key(c))
 
     def preprocess(self, ds):
         processors = [
