@@ -33,6 +33,13 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
             broken_code = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
         return broken_code
 
+    def get_repaired_code(self, row):
+        repaired_code = ""
+        if "targetChanges" in row["hunk"]:
+            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
+
+        return repaired_code
+
     def get_tfidf_sim(self, target, changes):
         vectorizer = TfidfVectorizer(tokenizer=lambda t: t, lowercase=False, token_pattern=None)
         tokenized_docs = [self.tokenizer.encode(target)] + [c["annotated_doc_seq"] for c in changes]
@@ -247,42 +254,28 @@ class AllHunksDataEncoder(PrioritizedChangesDataEncoder):
 class EditSequenceDataEncoder(AllHunksDataEncoder):
     def create_output(self, row):
         repaired_code = ""
-        output, success = build_edit_sequence(row.bSource["code"], row.aSource["code"])
+        output, success = build_edit_sequence(self.get_broken_code(row), self.get_repaired_code(row))
         if success:
             repaired_code = output
 
         return repaired_code
 
-    def expand_target_changes(self, row):
+    def get_target_change(self, row):
         target_change = super(EditSequenceDataEncoder, self).create_output(row)
-        target_code = add_padding_to_chars(row.aSource["code"])
-
-        if target_change in target_code:
-            change_start = target_code.index(target_change)
-            change_end = change_start + len(target_change)
-
-            start = [0]
-            start.extend([i + 1 for i, char in enumerate(target_code) if i < change_start and char in [";", "{"]])
-            start = start[-1]
-            end = [-1]
-            end.extend([i + (1 if char == ";" else 0) for i, char in reversed(list(enumerate(target_code))) if i > change_end and char in [";", "}"]])
-            end = end[-1]
-
-            target_change = target_code[start: end + 1]
 
         return target_change.strip()
 
     def create_inputs_and_outputs(self, ds):
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
-        ds["target_change"] = ds.apply(lambda r: self.expand_target_changes(r), axis=1)
+        ds["target_change"] = ds.apply(lambda r: self.get_target_change(r), axis=1)
         num_without_output = len(ds[ds["output"].str.len() == 0].index)
         self.log(
             f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where edit sequence output could not be generated"
         )
         ds = ds[ds["output"].str.len() > 0].reset_index(drop=True)
 
-        padded_targets = ds["aSource"].apply(lambda r: add_padding_to_chars(r["code"]))
-        applied_seqs = ds.apply(lambda r: apply_edit_sequence(r["bSource"]["code"], r["output"]), axis=1)
+        padded_targets = ds.apply(lambda r: self.get_repaired_code(r), axis=1)
+        applied_seqs = ds.apply(lambda r: apply_edit_sequence(self.get_broken_code(r), r["output"]), axis=1)
         applied_seqs = applied_seqs.apply(lambda r: add_padding_to_chars(r) if r else None)
         applied_successes = padded_targets == applied_seqs
         applied_failure_count = len(applied_successes) - applied_successes.sum()
@@ -328,28 +321,18 @@ class EditSequenceDataEncoder(AllHunksDataEncoder):
         for i in range(len(pred_edit_seqs)):
             pred_edit_seqs[i] = EditSequenceDataEncoder.remove_special_tokens(pred_edit_seqs[i], tokenizer)
 
-        pred_edit_pairs = [get_replace_pairs(es) for es in pred_edit_seqs]
-        preds, targets = [], []
-        src, target = row["bSource"]["code"], add_padding_to_chars(row["aSource"]["code"])
+        src = ""
+        if "sourceChanges" in row["hunk"]:
+            src = " ".join([c["line"] for c in row["hunk"]["sourceChanges"]])
 
-        for i in range(len(pred_edit_pairs)):
-            curr_pred_pairs = pred_edit_pairs[i]
-            applied_pred = apply_edit_sequence(src, pred_edit_seqs[i], curr_pred_pairs)
+        preds = []
+        for p in pred_edit_seqs:
+            applied_pred = apply_edit_sequence(src, p)
 
-            if not applied_pred or all([n not in applied_pred for _, n in curr_pred_pairs]):
+            if not applied_pred:
                 preds.append("Invalid Prediction")
             else:
-                change_start = min([applied_pred.index(n) if n in applied_pred else len(applied_pred) for _, n in curr_pred_pairs])
-                change_end = max([applied_pred.index(n) + len(n) if n in applied_pred else 0 for _, n in curr_pred_pairs])
-
-                start = [0]
-                start.extend([i + 1 for i, char in enumerate(applied_pred) if i < change_start and char in [";", "{"]])
-                start = start[-1]
-                end = [-1]
-                end.extend([i + (1 if char == ";" else 0) for i, char in reversed(list(enumerate(applied_pred))) if i > change_end and char in [";", "}"]])
-                end = end[-1]
-
-                preds.append(applied_pred[start:end].strip())
+                preds.append(applied_pred.strip())
 
         return {"ID": row["ID"], "target": row["target_change"], "preds": preds, "target_es": target_edit_seq, "pred_es": pred_edit_seqs}
 

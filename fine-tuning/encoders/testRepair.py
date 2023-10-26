@@ -156,6 +156,7 @@ class TestRepairDataEncoder:
             if len(project_ds) == 0:
                 continue
             ds_list.append(project_ds)
+
         if len(ds_list) == 0:
             raise Exception(f"No datasets found in {ds_path}")
         ds = pd.concat(ds_list)
