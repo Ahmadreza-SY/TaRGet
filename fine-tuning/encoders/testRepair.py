@@ -159,7 +159,7 @@ class TestRepairDataEncoder:
 
         if len(ds_list) == 0:
             raise Exception(f"No datasets found in {ds_path}")
-        ds = pd.concat(ds_list)
+        ds = pd.concat(ds_list)[:10000]
         ds["allClassChanges"] = [[] for _ in range(len(ds))]
         return ds
 

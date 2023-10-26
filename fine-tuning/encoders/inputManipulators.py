@@ -35,7 +35,7 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
 
     def get_repaired_code(self, row):
         repaired_code = ""
-        if "targetChanges" in row["hunk"]:
+        if "targetChanges" in row["hunk"] and len(row["hunk"]["targetChanges"]) > 0:
             repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
 
         return repaired_code
@@ -89,9 +89,8 @@ class PrioritizedChangesDataEncoder(TestRepairDataEncoder):
         )
 
     def create_output(self, row):
-        if "targetChanges" in row["hunk"] and len(row["hunk"]["targetChanges"]) > 0:
-            repaired_code = " ".join([c["line"] for c in row["hunk"]["targetChanges"]])
-        else:
+        repaired_code = self.get_repaired_code(row)
+        if not repaired_code:
             repaired_code = "// Deleted"
         return repaired_code
 
