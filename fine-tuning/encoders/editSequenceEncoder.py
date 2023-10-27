@@ -1,20 +1,12 @@
 from encoders.preprocessing.codeFormatter import add_padding_to_chars
-from encoders.preprocessing.editSequence import build_edit_sequence, apply_edit_sequence, REPLACE_OLDS, REPLACE_NEWS
-from encoders.wordLevelEncoder import WordLevelDataEncoder, WordLevelTokens
-
-
-class EditSeqTokens(WordLevelTokens):
-    REPLACE_OLD = "[<replaceOld>]"
-    REPLACE_NEW = "[<replaceNew>]"
-    REPLACE_KEEP_BEFORE_OLD = "[<replaceOldKeepBefore>]"
-    REPLACE_KEEP_BEFORE_NEW = "[<replaceNewKeepBefore>]"
-    REPLACE_KEEP_AFTER_OLD = "[<replaceOldKeepAfter>]"
-    REPLACE_KEEP_AFTER_NEW = "[<replaceNewKeepAfter>]"
-    REPLACE_KEEP_BEFORE_AFTER_OLD = "[<replaceOldKeepBeforeAfter>]"
-    REPLACE_KEEP_BEFORE_AFTER_NEW = "[<replaceNewKeepBeforeAfter>]"
-    REPLACE_GROUP_OLD = "[<replaceOldGroup>]"
-    REPLACE_GROUP_NEW = "[<replaceNewGroup>]"
-    REPLACE_END = "[<replaceEnd>]"
+from encoders.preprocessing.editSequence import (
+    build_edit_sequence,
+    apply_edit_sequence,
+    EditSeqTokens,
+    REPLACE_NEWS,
+    REPLACE_OLDS,
+)
+from encoders.wordLevelEncoder import WordLevelDataEncoder
 
 
 class EditSequenceDataEncoder(WordLevelDataEncoder):
@@ -59,9 +51,9 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
         tokens = []
         for _, v in tokenizer.special_tokens_map.items():
             if type(v) == list:
-                tokens.extend([t for t in v if t not in REPLACE_NEWS and t not in REPLACE_OLDS and t != Tokens.REPLACE_END])
+                tokens.extend([t for t in v if t not in REPLACE_NEWS and t not in REPLACE_OLDS and t != EditSeqTokens.REPLACE_END])
             else:
-                if v not in REPLACE_NEWS and v not in REPLACE_OLDS and v != Tokens.REPLACE_END:
+                if v not in REPLACE_NEWS and v not in REPLACE_OLDS and v != EditSeqTokens.REPLACE_END:
                     tokens.append(v)
 
         while len(edit_seq) > 0:
