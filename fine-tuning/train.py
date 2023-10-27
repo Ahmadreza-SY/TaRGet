@@ -65,8 +65,7 @@ def train(args):
                     return_dict=True,
                 )
                 loss = output.loss
-                loss_gathered = args.accelerator.gather_for_metrics(loss)
-                global_loss.extend(loss_gathered.detach().float().tolist())
+                global_loss.extend(gather_loss(loss, args))
                 args.accelerator.backward(loss)
 
                 optimizer.step()
@@ -136,8 +135,7 @@ def validate(args, model, epoch, epoch_stats):
                 input_ids=data["input_ids"], labels=data["labels"], attention_mask=data["attention_mask"], return_dict=True
             )
             loss = output.loss
-            loss_gathered = args.accelerator.gather_for_metrics(loss)
-            global_loss.extend(loss_gathered.detach().float().tolist())
+            global_loss.extend(gather_loss(loss, args))
 
     avg_loss = round(sum(global_loss) / len(global_loss), 3)
     logger.info(f"* Validation loss: {avg_loss} ; Eval took: {datetime.now() - start}")
@@ -158,3 +156,12 @@ def validate(args, model, epoch, epoch_stats):
         )
 
     epoch_stats["valid_loss"] = avg_loss
+
+
+def gather_loss(loss, args):
+    loss_gathered = args.accelerator.gather_for_metrics(loss).detach()
+    if len(loss_gathered.shape) == 0:
+        loss_gathered = [loss_gathered.item()]
+    else:
+        loss_gathered = loss_gathered.float().tolist()
+    return loss_gathered
