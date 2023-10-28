@@ -157,18 +157,30 @@ class AbstractDataEncoder:
         target = row["output"]
         return {"ID": row["ID"], "target": target, "preds": preds}
 
+    def save_oversized_ids(self, ds):
+        oversized_ids = []
+        for _, row in ds.iterrows():
+            if all(c["selected"] is False for c in row["prioritized_changes"]):
+                oversized_ids.append(row["ID"])
+        if len(oversized_ids) > 0:
+            splits_dir = self.args.output_dir / "splits"
+            splits_dir.mkdir(exist_ok=True, parents=True)
+            pd.DataFrame({"id": oversized_ids}).to_csv(splits_dir / f"all_os_ids.csv", index=False)
+
     def select_changes(self, row):
         pr_changes_cnt = len(row["prioritized_changes"])
         selected_changes = []
         test_context = self.create_test_context(row)
         test_context_e = self.tokenizer.encode(test_context)
         for i in range(pr_changes_cnt):
+            row["prioritized_changes"][i]["selected"] = False
             new_selected_changes = selected_changes + [row["prioritized_changes"][i]]
             # The +2 is for Tokens.TEST_CONTEXT and Tokens.REPAIR_CONTEXT
             new_input_len = len(test_context_e) + sum(len(c["annotated_doc_seq"]) for c in new_selected_changes) + 2
             max_input_length = self.args.dataset_class.get_max_input_len(self.args.max_length)
             if new_input_len <= max_input_length:
                 selected_changes = new_selected_changes
+                row["prioritized_changes"][i]["selected"] = True
 
         if len(selected_changes) == 0:
             selected_changes = [row["prioritized_changes"][0]]
@@ -187,6 +199,10 @@ class AbstractDataEncoder:
         ds["output"] = ds.apply(lambda r: self.create_output(r), axis=1)
 
         ds["prioritized_changes"].apply(lambda p: [c.pop("annotated_doc_seq") for c in p])
+
+        ds["input"] = ds["input"].str.strip()
+        ds["output"] = ds["output"].str.strip()
+        self.save_oversized_ids(ds)
         return ds
 
     def apply_processor(self, processor, ds):
@@ -228,12 +244,6 @@ class AbstractDataEncoder:
             unique_docs.add(change_doc["annotated_doc"])
         return unique_change_docs
 
-    def prepare_inputs_and_outputs(self, ds):
-        ds = self.create_inputs_and_outputs(ds)
-        ds["input"] = ds["input"].str.strip()
-        ds["output"] = ds["output"].str.strip()
-        return ds
-
     def merge_train_with_trivial(self, train_ds, trivial_ds):
         projects = trivial_ds["project"].unique().tolist()
         train_trivial_ds_list = []
@@ -253,8 +263,6 @@ class AbstractDataEncoder:
         if train_trivial_ds is None or len(train_trivial_ds) == 0:
             self.log("No trivial repairs to add to train")
         else:
-            self.log("Preparing trivial train dataset")
-            train_trivial_ds = self.prepare_inputs_and_outputs(train_trivial_ds)
             train_ds = pd.concat([train_ds, train_trivial_ds])
             train_ds = self.shuffle(train_ds)
             self.log(f"Added {len(train_trivial_ds)} trivial test repairs to the train set")
@@ -301,15 +309,15 @@ class AbstractDataEncoder:
             self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
 
             ds = self.preprocess(original_ds)
-            trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
-            ds = self.apply_processor(Processors.remove_trivial_repairs, ds)
             self.log(f"Got {len(ds)} samples after preprocessing")
             if len(ds) == 0:
                 self.log(f"Aborting ...")
                 sys.exit()
 
-            self.log("Preparing main dataset")
-            ds = self.prepare_inputs_and_outputs(ds)
+            ds = self.create_inputs_and_outputs(ds)
+
+            trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
+            ds = self.apply_processor(Processors.remove_trivial_repairs, ds)
 
             train_ds, valid_ds, test_ds = self.split_by_commit(ds)
 
