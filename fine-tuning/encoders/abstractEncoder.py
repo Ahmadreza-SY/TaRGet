@@ -158,14 +158,7 @@ class AbstractDataEncoder:
         return {"ID": row["ID"], "target": target, "preds": preds}
 
     def save_oversized_ids(self, ds):
-        oversized_ids = []
-        for _, row in ds.iterrows():
-            if all(c["selected"] is False for c in row["prioritized_changes"]):
-                oversized_ids.append(row["ID"])
-        if len(oversized_ids) > 0:
-            splits_dir = self.args.output_dir / "splits"
-            splits_dir.mkdir(exist_ok=True, parents=True)
-            pd.DataFrame({"id": oversized_ids}).to_csv(splits_dir / f"all_os_ids.csv", index=False)
+        self.args.dataset_class(ds, self.tokenizer, "all", self.args, save_os_id=True)
 
     def select_changes(self, row):
         pr_changes_cnt = len(row["prioritized_changes"])

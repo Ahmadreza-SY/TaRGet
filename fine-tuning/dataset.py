@@ -4,15 +4,17 @@ import pandas as pd
 
 # Since this class is pickled, only the data-related stuff is saved in self
 class ATRDataset(torch.utils.data.Dataset):
-    def __init__(self, ds, tokenizer, split, args):
+    def __init__(self, ds, tokenizer, split, args, save_os_id=False):
         self.initialize_tokens(tokenizer)
         self.data = []
         self.max_length = args.max_length
         valid_length_ind = set()
+        oversized_ids = []
         for i, row in ds.iterrows():
             input = self.get_input(row, tokenizer)
             output = self.get_output(row, tokenizer)
             if not self.has_valid_length(input, output):
+                oversized_ids.append(row["ID"])
                 continue
             self.data.append(self.create_item(input, output))
             valid_length_ind.add(i)
@@ -21,6 +23,8 @@ class ATRDataset(torch.utils.data.Dataset):
         ds_output_dir = args.output_dir / "splits"
         ds_output_dir.mkdir(exist_ok=True, parents=True)
         ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
+        if save_os_id and len(oversized_ids) > 0:
+            pd.DataFrame({"id": oversized_ids}).to_csv(ds_output_dir / f"{split}_os_ids.csv", index=False)
 
     def __len__(self):
         return len(self.data)
