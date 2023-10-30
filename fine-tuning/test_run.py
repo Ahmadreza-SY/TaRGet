@@ -11,7 +11,6 @@ from common_utils import decompose_full_method_name
 from config import Config
 import maven_parser as mvnp
 import git_api as gapi
-from encoders.preprocessing.editSequence import apply_edit_sequence
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -69,14 +68,15 @@ def main():
     Config.set("java_homes_path", args.java_homes)
     Config.set("m2_path", args.m2_path)
 
-    pred_file = args.output_path / "test_predictions.json"
-    pred_df = pd.read_json(pred_file)
-    test_rows = json.loads((args.output_path / "splits" / "test.json").read_text())
-    selected_test = test_rows[args.test_index]
-    pred_df = pred_df[pred_df["id"] == selected_test["ID"]].reset_index(drop=True)
+    test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
+    test_preds = json.loads((args.output_path / "test_predictions.json").read_text())
+    selected_test = test_ds[args.test_index]
+    selected_pred = next((pred for pred in test_preds if pred["ID"] == selected_test["ID"]), None)
 
-    logger.info(f"Starting to execute {len(pred_df)} candidate repair patches - test ID {selected_test['ID']}")
-    results = apply_and_run_preds(pred_df, selected_test, args)
+    logger.info(
+        f"Starting to execute {len(selected_pred['preds'])} candidate repair patches for test ID {selected_test['ID']}"
+    )
+    results = apply_and_run_preds(selected_pred, selected_test, args)
 
     verdict_df, _ = analyze_verdicts(results)
     if len(verdict_df) > 0:
@@ -103,36 +103,27 @@ def analyze_verdicts(verdicts):
     return verdict_df, plausible_rate
 
 
-def apply_patch(patch, test, test_file, edit_sequence=False):
+def apply_patch(patch, test, test_file):
     with open(test_file, "r") as orig_file:
         original_contents = orig_file.read()
     with open(test_file, "r") as orig_file:
         contents = orig_file.read()
 
-    if edit_sequence:
-        orig_test = test["bSource"]["code"]
-        updated_test = apply_edit_sequence(orig_test, patch)
-        if updated_test is None:
-            return None
-
-        contents = contents.replace(test["aSource"]["code"], "\n".join(updated_test))
-
+    if "targetChanges" in test["hunk"] and len(test["hunk"]["targetChanges"]) > 0:
+        contents = contents.split("\n")
+        target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
+        for tc in test["hunk"]["targetChanges"][::-1]:
+            del contents[tc["lineNo"] - 1]
+        contents.insert(target_line, patch)
+        contents = "\n".join(contents)
     else:
-        if "targetChanges" in test["hunk"] and len(test["hunk"]["targetChanges"]) > 0:
-            contents = contents.split("\n")
-            target_line = test["hunk"]["targetChanges"][0]["lineNo"] - 1
-            for tc in test["hunk"]["targetChanges"][::-1]:
-                del contents[tc["lineNo"] - 1]
-            contents.insert(target_line, patch)
-            contents = "\n".join(contents)
-        else:
-            test_method = test["bSource"]["code"].split("\n")
-            start_line = test["bSource"]["startLine"]
-            target_line = test["hunk"]["sourceChanges"][0]["lineNo"] - start_line
-            for tc in test["hunk"]["sourceChanges"][::-1]:
-                del test_method[tc["lineNo"] - start_line]
-            test_method.insert(target_line, patch)
-            contents = contents.replace(test["aSource"]["code"], "\n".join(test_method))
+        test_method = test["bSource"]["code"].split("\n")
+        start_line = test["bSource"]["startLine"]
+        target_line = test["hunk"]["sourceChanges"][0]["lineNo"] - start_line
+        for tc in test["hunk"]["sourceChanges"][::-1]:
+            del test_method[tc["lineNo"] - start_line]
+        test_method.insert(target_line, patch)
+        contents = contents.replace(test["aSource"]["code"], "\n".join(test_method))
 
     with open(test_file, "w") as orig_file:
         orig_file.write(contents)
@@ -140,49 +131,47 @@ def apply_patch(patch, test, test_file, edit_sequence=False):
     return original_contents
 
 
-def apply_and_run_preds(preds, test, args):
+def apply_and_run_preds(prediction, test, args):
     repo_name = test["ID"].split(":")[0]
     a_commit = test["aCommit"]
 
     worktree_path = gapi.copy_commit_code(repo_name, a_commit, test["ID"].split(":")[-1])
 
     verdicts = []
-    for i, pred in tqdm(
-        preds.iterrows(),
-        total=len(preds),
-        ascii=True,
-        desc="Executing tests",
-    ):
-        pred_code = pred["pred"]
-        target_code = pred["target"]
-        if pred_code == target_code:
+    verdict_cache = {}
+    preds = prediction["preds"]
+    target = prediction["target"]
+    for i, candidate in tqdm(enumerate(preds), ascii=True, total=len(preds), desc="Executing tests"):
+        rank = i + 1
+        candidate = candidate.strip()
+        if candidate == target:
             verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None).to_dict()
+        elif candidate in verdict_cache:
+            verdict = verdict_cache[candidate]
         else:
             test_rel_path = Path(test["aPath"])
             test_file = worktree_path / test_rel_path
-            original_contents = apply_patch(pred_code, test, test_file, args.edit_sequence)
-            if original_contents is None and args.edit_sequence:
-                verdict = mvnp.TestVerdict(mvnp.TestVerdict.INVALID_EDIT_SEQUENCE, None).to_dict()
-            else:
-                _, class_name, test_short_name = decompose_full_method_name(test["name"])
-                log_path = (
-                    args.output_path
-                    / "testLogs"
-                    / test["aCommit"]
-                    / class_name
-                    / test_short_name
-                    / test_rel_path.parent
-                    / str(pred["rank"])
-                )
-                timeout = 15 * 60 if i > 2 else 240 * 60
-                verdict = mvnp.compile_and_run_test(
-                    worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
-                )
-                verdict = verdict.to_dict()
-                with open(test_file, "w") as orig_file:
-                    orig_file.write(original_contents)
+            original_contents = apply_patch(candidate, test, test_file)
+            _, class_name, test_short_name = decompose_full_method_name(test["name"])
+            log_path = (
+                args.output_path
+                / "testLogs"
+                / test["aCommit"]
+                / class_name
+                / test_short_name
+                / test_rel_path.parent
+                / str(rank)
+            )
+            timeout = 15 * 60 if i > 2 else 240 * 60
+            verdict = mvnp.compile_and_run_test(
+                worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
+            )
+            verdict = verdict.to_dict()
+            verdict_cache[candidate] = verdict
+            with open(test_file, "w") as orig_file:
+                orig_file.write(original_contents)
 
-        verdicts.append((verdict, pred["id"], pred["rank"]))
+        verdicts.append((verdict, prediction["ID"], rank))
 
     gapi.remove_commit_code(repo_name, worktree_path)
 
