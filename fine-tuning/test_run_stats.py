@@ -33,7 +33,7 @@ def main():
         return
     test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
     if len(verdict_paths) != len(test_ds):
-        logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}! Aborting ...")
+        logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}!")
 
     logger.info(f"Analyzing {len(verdict_paths)} verdict files")
     verdicts = []
@@ -46,7 +46,6 @@ def main():
         verdicts.extend(json.loads(text))
     if empty_files > 0:
         logger.info(f"Found {empty_files} empty verdict files. Excluding them...")
-    verdicts = [(v["verdict"], v["id"], v["rank"]) for v in verdicts]
     verdict_df, plausible_rate = analyze_verdicts(verdicts)
     verdicts_file = args.output_path / "test_verdicts.json"
     verdict_df.to_json(verdicts_file, orient="records", indent=2)
