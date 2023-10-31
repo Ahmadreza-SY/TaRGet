@@ -3,7 +3,7 @@ import logging
 import json
 from pathlib import Path
 from test_run import analyze_verdicts
-import shutil
+import pandas as pd
 from tqdm import tqdm
 
 logging.basicConfig(
@@ -34,6 +34,8 @@ def main():
     test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
     if len(verdict_paths) != len(test_ds):
         logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}!")
+        missing_verdicts = list(set(range(len(test_ds))) - set([int(p.stem) for p in verdict_paths]))
+        pd.DataFrame({"ind": missing_verdicts}).to_csv(args.output_path / "missing_verdicts.csv", index=False)
 
     logger.info(f"Analyzing {len(verdict_paths)} verdict files")
     verdicts = []
