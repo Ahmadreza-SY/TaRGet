@@ -47,7 +47,7 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
         return repaired_code
 
     def get_target_change(self, row):
-        target_change = super(EditSequenceDataEncoder, self).create_output(row)
+        target_change = self.get_repaired_code(row)
         return target_change.strip()
 
     def create_inputs_and_outputs(self, ds):
