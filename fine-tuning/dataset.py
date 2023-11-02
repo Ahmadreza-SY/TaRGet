@@ -19,12 +19,14 @@ class ATRDataset(torch.utils.data.Dataset):
             self.data.append(self.create_item(input, output))
             valid_length_ind.add(i)
 
-        ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
         ds_output_dir = args.output_dir / "splits"
         ds_output_dir.mkdir(exist_ok=True, parents=True)
-        ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
-        if save_os_id and len(oversized_ids) > 0:
-            pd.DataFrame({"id": oversized_ids}).to_csv(ds_output_dir / f"{split}_os_ids.csv", index=False)
+        if save_os_id:
+            if len(oversized_ids) > 0:
+                pd.DataFrame({"id": oversized_ids}).to_csv(ds_output_dir / f"{split}_os_ids.csv", index=False)
+        else:
+            ds = ds.iloc[list(valid_length_ind)].reset_index(drop=True)
+            ds.to_json(ds_output_dir / f"{split}.json", orient="records", indent=2)
 
     def __len__(self):
         return len(self.data)
