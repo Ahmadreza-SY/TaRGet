@@ -398,6 +398,26 @@ def build_edit_sequence(source, target):
     return " ".join([e1 for e0 in edit_sequence for e1 in e0[0]]), all_replaces
 
 
+def substring_surrounded_by_spaces(full_string, start, end, change_type):
+    is_equal = change_type == "equal"
+
+    start_space = (
+        len(full_string) == 0
+        or start <= 0 or start >= len(full_string)
+        or (full_string[start].isspace() and is_equal)
+        or (full_string[start-1].isspace() and not is_equal)
+    )
+
+    end_space = (
+        len(full_string) == 0
+        or end >= len(full_string)
+        or (full_string[end-1].isspace() and is_equal)
+        or (full_string[end].isspace() and not is_equal)
+    )
+
+    return start_space and end_space, start_space, end_space
+
+
 def find_token_diffs(source, target):
     sm = difflib.SequenceMatcher(a=source, b=target)
     req_changes = sm.get_opcodes()
@@ -407,33 +427,8 @@ def find_token_diffs(source, target):
     while index < len(req_changes):
         change_type, source_start, source_end, target_start, target_end = req_changes[index]
 
-        source_start_space = (
-            source_start >= len(source)
-            or source_start <= 0
-            or source[source_start - 1].isspace()
-            or source[source_start].isspace()
-        )
-        source_end_space = (
-            source_end >= len(source)
-            or source_end <= 0
-            or (source[source_end - 1].isspace() and source_end != source_start)
-            or source[source_end].isspace()
-        )
-        source_surrounded_by_spaces = source_start_space and source_end_space
-
-        target_start_space = (
-            target_start >= len(target)
-            or target_start <= 0
-            or target[target_start - 1].isspace()
-            or target[target_start].isspace()
-        )
-        target_end_space = (
-            target_end >= len(target)
-            or target_end <= 0
-            or (target[target_end - 1].isspace() and target_start != target_end)
-            or target[target_end].isspace()
-        )
-        target_surrounded_by_spaces = target_start_space and target_end_space
+        source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
+        target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
 
         if index < len(req_changes) - 1:
             next_change = req_changes[index + 1]
@@ -442,23 +437,10 @@ def find_token_diffs(source, target):
 
         if change_type == "equal":
             while source_start < source_end < len(source) and (
-                not source_end_space or (next_change and next_change[0] == "insert" and not target_surrounded_by_spaces)
+                not source_surrounded_by_spaces or (next_change and next_change[0] == "insert" and not target_surrounded_by_spaces)
             ):
                 source_end -= 1
-                source_end_space = (
-                    source_end >= len(source)
-                    or source_end <= 0
-                    or (source[source_end - 1].isspace() and source_end != source_start)
-                    or source[source_end].isspace()
-                )
                 target_end -= 1
-                target_end_space = (
-                    target_end >= len(target)
-                    or target_end <= 0
-                    or (target[target_end - 1].isspace() and target_start != target_end)
-                    or target[target_end].isspace()
-                )
-                target_surrounded_by_spaces = target_start_space and target_end_space
 
                 if next_change:
                     next_change = (next_change[0], next_change[1] - 1, next_change[2], next_change[3] - 1, next_change[4])
@@ -472,39 +454,28 @@ def find_token_diffs(source, target):
                     or (change_type == "insert" and target_surrounded_by_spaces and source_start == source_end)
                 ):
                     source_end += 1
-                    source_end_space = (
-                        source_end >= len(source)
-                        or source_end <= 0
-                        or (source[source_end - 1].isspace() and source_end != source_start)
-                        or source[source_end].isspace()
-                    )
-                    source_surrounded_by_spaces = source_start_space and source_end_space
+                    source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
 
                     if change_type == "delete" and not target_changed:
                         target_end += 1
+                        target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
 
                     if next_change:
                         next_change = (
                             next_change[0],
-                            next_change[1] + 1,
+                            source_end,
                             next_change[2],
-                            next_change[3] + (1 if change_type == "delete" else 0),
+                            target_end,
                             next_change[4],
                         )
                         if next_change[1] >= next_change[2]:
                             target_end = next_change[4]
-                            target_end_space = (
-                                target_end >= len(target)
-                                or target_end <= 0
-                                or (target[target_end - 1].isspace() and target_start != target_end)
-                                or target[target_end].isspace()
-                            )
-                            target_surrounded_by_spaces = target_start_space and target_end_space
+                            target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
 
                             req_changes.pop(index + 1)
                             if index < len(req_changes) - 1:
                                 next_change = req_changes[index + 1]
-                                next_change = (next_change[0], next_change[1], next_change[2], target_end, next_change[4])
+                                next_change = (next_change[0], source_end, next_change[2], target_end, next_change[4])
                             else:
                                 next_change = None
                 check_source = False
@@ -514,40 +485,31 @@ def find_token_diffs(source, target):
                     or (change_type == "delete" and source_surrounded_by_spaces and target_start == target_end)
                 ):
                     target_end += 1
-                    target_end_space = (
-                        target_end >= len(target)
-                        or target_end <= 0
-                        or (target[target_end - 1].isspace() and target_start != target_end)
-                        or target[target_end].isspace()
-                    )
+                    target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(
+                        target, target_start, target_end, change_type)
                     target_changed = True
 
                     if change_type == "delete":
                         source_end += 1
+                        source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
 
                     if next_change:
                         next_change = (
                             next_change[0],
-                            next_change[1] + (1 if change_type == "insert" else 0),
+                            source_end,
                             next_change[2],
-                            next_change[3] + 1,
+                            target_end,
                             next_change[4],
                         )
                         if next_change[3] >= next_change[4]:
                             source_end = next_change[2]
-                            source_end_space = (
-                                source_end >= len(source)
-                                or source_end <= 0
-                                or (source[source_end - 1].isspace() and source_end != source_start)
-                                or source[source_end].isspace()
-                            )
-                            source_surrounded_by_spaces = source_start_space and source_end_space
+                            source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
                             check_source = True
 
                             req_changes.pop(index + 1)
                             if index < len(req_changes) - 1:
                                 next_change = req_changes[index + 1]
-                                next_change = (next_change[0], source_end, next_change[2], next_change[3], next_change[4])
+                                next_change = (next_change[0], source_end, next_change[2], target_end, next_change[4])
                             else:
                                 next_change = None
 
