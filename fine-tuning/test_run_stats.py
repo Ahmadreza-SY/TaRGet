@@ -3,7 +3,7 @@ import logging
 import json
 from pathlib import Path
 from test_run import analyze_verdicts
-import shutil
+import pandas as pd
 from tqdm import tqdm
 
 logging.basicConfig(
@@ -33,7 +33,14 @@ def main():
         return
     test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
     if len(verdict_paths) != len(test_ds):
-        logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}! Aborting ...")
+        logger.info(f"Expected {len(test_ds)} verdict files, found {len(verdict_paths)}!")
+        missing_verdicts = list(set(range(len(test_ds))) - set([int(p.stem) for p in verdict_paths]))
+        pd.DataFrame({"ind": missing_verdicts}).to_csv(args.output_path / "missing_verdicts.csv", index=False)
+    else:
+        logger.info(f"Test execution successful. All verdict files are present.")
+        mv_file = args.output_path / "missing_verdicts.csv"
+        if mv_file.exists():
+            mv_file.unlink()
 
     logger.info(f"Analyzing {len(verdict_paths)} verdict files")
     verdicts = []
@@ -46,7 +53,6 @@ def main():
         verdicts.extend(json.loads(text))
     if empty_files > 0:
         logger.info(f"Found {empty_files} empty verdict files. Excluding them...")
-    verdicts = [(v["verdict"], v["id"], v["rank"]) for v in verdicts]
     verdict_df, plausible_rate = analyze_verdicts(verdicts)
     verdicts_file = args.output_path / "test_verdicts.json"
     verdict_df.to_json(verdicts_file, orient="records", indent=2)

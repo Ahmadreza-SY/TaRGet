@@ -30,12 +30,6 @@ def get_java_diffs(commit, change_types=None):
     return diffs
 
 
-def no_covered_changes(repair):
-    class_hunks_cnt = sum([len(change["hunks"]) for change in repair["coveredClassChanges"]])
-    method_hunks_cnt = sum([len(change["hunks"]) for change in repair["coveredMethodChanges"]])
-    return (class_hunks_cnt + method_hunks_cnt) == 0
-
-
 def hunk_to_string(hunk):
     output = ""
     for l in hunk.get("sourceChanges", []):

@@ -8,16 +8,13 @@ from utils import (
     save_file,
     is_test_class,
     get_java_diffs,
-    no_covered_changes,
     hunk_to_string,
-    get_hunk_lines,
     get_short_hash,
 )
 import jparser
 import shutil
 import maven_parser as mvnp
-from config import Config
-from coverage_repository import ClassChangesRepository, MethodChangesRepository
+from coverage_repository import MethodChangesRepository
 import multiprocessing as mp
 from trivial_detector import TrivialDetector
 from error_stats import ErrorStats
@@ -313,70 +310,41 @@ class DataCollector:
         changed_sut_classes_path.write_text(json.dumps(changed_classes, indent=2, sort_keys=False))
 
     def label_changed_test_sources(self):
-        print("Labelling changed test sources...")
+        print("Labeling changed test sources...")
         sut_class_changes_path = self.output_path / "codeMining" / "sut_class_changes.json"
+        sut_method_changes_path = self.output_path / "codeMining" / "sut_method_changes.json"
         changed_test_classes_path = self.output_path / "codeMining" / "changed_test_classes.csv"
 
         changed_test_classes = pd.read_csv(changed_test_classes_path)
         test_classes = set(changed_test_classes["b_path"].values.tolist() + changed_test_classes["a_path"].values.tolist())
+
+        def is_test_source(b_path, a_path):
+            is_test_source = False
+            if b_path in test_classes or a_path in test_classes:
+                is_test_source = True
+            elif "src/test" in b_path or "src/test" in a_path:
+                is_test_source = True
+            return is_test_source
+
         sut_class_changes = json.loads(sut_class_changes_path.read_text())
         for commit_changes in sut_class_changes:
             for file_changes in commit_changes["changes"]:
-                file_changes["is_test_source"] = False
-                if file_changes["bPath"] in test_classes or file_changes["aPath"] in test_classes:
-                    file_changes["is_test_source"] = True
-                elif "src/test" in file_changes["bPath"] or "src/test" in file_changes["aPath"]:
-                    file_changes["is_test_source"] = True
-
+                file_changes["is_test_source"] = is_test_source(file_changes["bPath"], file_changes["aPath"])
         sut_class_changes_path.write_text(json.dumps(sut_class_changes, indent=2, sort_keys=False))
 
-    def remove_common_hunks(self, repair):
-        covered_class_changes = repair["coveredClassChanges"]
-        covered_method_changes = repair["coveredMethodChanges"]
-        if len(covered_method_changes) == 0:
-            return
-
-        result = []
-        for class_change in covered_class_changes:
-            common_hunks_i = set()
-            for method_change in covered_method_changes:
-                if class_change["bPath"] != method_change["bPath"] or len(method_change["hunks"]) == 0:
-                    continue
-                method_lines = [get_hunk_lines(h) for h in method_change["hunks"]]
-                method_source_lines = set.union(*[l[0] for l in method_lines])
-                method_target_lines = set.union(*[l[1] for l in method_lines])
-                class_hunk_lines = [get_hunk_lines(h) for h in class_change["hunks"]]
-                for i, lines in enumerate(class_hunk_lines):
-                    if (
-                        len(lines[0].intersection(method_source_lines)) > 0
-                        or len(lines[1].intersection(method_target_lines)) > 0
-                    ):
-                        common_hunks_i.add(i)
-
-            uncommon_hunks = [h for i, h in enumerate(class_change["hunks"]) if i not in common_hunks_i]
-            if len(uncommon_hunks) > 0:
-                class_change["hunks"] = uncommon_hunks
-                result.append(class_change)
-
-        repair["coveredClassChanges"] = result
+        sut_method_changes = json.loads(sut_method_changes_path.read_text())
+        for commit_changes in sut_method_changes:
+            for file_changes in commit_changes["changes"]:
+                file_changes["is_test_source"] = is_test_source(file_changes["bPath"], file_changes["aPath"])
+        sut_method_changes_path.write_text(json.dumps(sut_method_changes, indent=2, sort_keys=False))
 
     def make_dataset(self, repaired_tests):
-        class_change_repo = ClassChangesRepository(self.output_path)
         method_change_repo = MethodChangesRepository(self.output_path)
         trivial_detector = TrivialDetector(self.output_path)
-        zero_cov_cnt = 0
         dup_cnt = 0
         dataset = {}
         for i, repair in tqdm(enumerate(repaired_tests), total=len(repaired_tests), ascii=True, desc="Creating dataset"):
             _repair = copy.deepcopy(repair)
-
-            covered_class_changes = class_change_repo.get_covered_changes(_repair)
-            covered_method_changes = method_change_repo.get_covered_changes(_repair)
-            _repair["coveredClassChanges"] = covered_class_changes
-            _repair["coveredMethodChanges"] = covered_method_changes
-            self.remove_common_hunks(_repair)
-            if no_covered_changes(_repair):
-                zero_cov_cnt += 1
 
             _repair["aCommitTime"] = ghapi.get_commit_time(_repair["aCommit"], self.repo_name)
             _repair["ID"] = f"{self.repo_name}:{i}"
@@ -398,8 +366,6 @@ class DataCollector:
             if repair_key not in dataset or dataset[repair_key]["aCommitTime"] < _repair["aCommitTime"]:
                 dataset[repair_key] = _repair
 
-        zero_cov_per = round(100 * zero_cov_cnt / len(repaired_tests), 1)
-        print(f"Found {zero_cov_per}% ({zero_cov_cnt} / {len(repaired_tests)}) repairs with zero changed coverage.")
         dup_per = round(100 * dup_cnt / len(repaired_tests), 1)
         print(f"Removed {dup_per}% ({dup_cnt} / {len(repaired_tests)}) duplicate repairs.")
 

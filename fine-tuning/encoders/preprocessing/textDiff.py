@@ -52,15 +52,17 @@ def get_hunk_diffs(hunk):
     return get_word_diffs(source, target)
 
 
-def _remove_whitespace_hunks(sut_changes):
+def is_whitespace_hunk(hunk):
+    diffs = get_hunk_diffs(hunk)
+    change_cnt = sum([1 for type, _ in diffs if type in [diff_match_patch.DIFF_INSERT, diff_match_patch.DIFF_DELETE]])
+    return change_cnt == 0
+
+
+def remove_whitespace_hunks(sut_changes):
     for c in sut_changes:
         hunks = []
         for h in c["hunks"]:
-            diffs = get_hunk_diffs(h)
-            change_cnt = sum(
-                [1 for type, _ in diffs if type in [diff_match_patch.DIFF_INSERT, diff_match_patch.DIFF_DELETE]]
-            )
-            if change_cnt > 0:
+            if not is_whitespace_hunk(h):
                 hunks.append(h)
         c["hunks"] = hunks
     sut_changes = [c for c in sut_changes if len(c["hunks"]) > 0]

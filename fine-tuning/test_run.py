@@ -11,6 +11,7 @@ from common_utils import decompose_full_method_name
 from config import Config
 import maven_parser as mvnp
 import git_api as gapi
+import time
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s |   %(message)s",
@@ -68,16 +69,17 @@ def main():
     Config.set("java_homes_path", args.java_homes)
     Config.set("m2_path", args.m2_path)
 
-    pred_file = args.output_path / "test_predictions.json"
-    pred_df = pd.read_json(pred_file)
-    test_rows = json.loads((args.output_path / "splits" / "test.json").read_text())
-    selected_test = test_rows[args.test_index]
-    pred_df = pred_df[pred_df["id"] == selected_test["ID"]].reset_index(drop=True)
+    test_ds = json.loads((args.output_path / "splits" / "test.json").read_text())
+    test_preds = json.loads((args.output_path / "test_predictions.json").read_text())
+    selected_test = test_ds[args.test_index]
+    selected_pred = next((pred for pred in test_preds if pred["ID"] == selected_test["ID"]), None)
 
-    logger.info(f"Starting to execute {len(pred_df)} candidate repair patches - test ID {selected_test['ID']}")
-    results = apply_and_run_preds(pred_df, selected_test, args)
+    logger.info(
+        f"Starting to execute {len(selected_pred['preds'])} candidate repair patches for test ID {selected_test['ID']}"
+    )
+    verdicts = apply_and_run_preds(selected_pred, selected_test, args)
 
-    verdict_df, _ = analyze_verdicts(results)
+    verdict_df, _ = analyze_verdicts(verdicts)
     if len(verdict_df) > 0:
         verdicts_file = args.output_path / "test_verdicts" / f"{args.test_index}.json"
         verdicts_file.parent.mkdir(exist_ok=True, parents=True)
@@ -86,14 +88,12 @@ def main():
 
 
 def analyze_verdicts(verdicts):
-    vs_df = pd.DataFrame({"verdict": [r[0]["status"] for r in verdicts]})
+    vs_df = pd.DataFrame({"verdict": [r["verdict"]["status"] for r in verdicts]})
     logger.info("Verdict stats:")
     for v, cnt in vs_df["verdict"].value_counts().items():
         print(f"    {v} -> {round(100*cnt/len(vs_df), 1)}% ({cnt})")
 
-    verdict_df = pd.DataFrame(
-        {"verdict": [r[0] for r in verdicts], "id": [r[1] for r in verdicts], "rank": [r[2] for r in verdicts]}
-    )
+    verdict_df = pd.DataFrame(verdicts)
     verdict_df["success"] = verdict_df["verdict"].apply(lambda v: 1 if v["status"] == mvnp.TestVerdict.SUCCESS else 0)
     success_cnt = verdict_df.groupby("id").filter(lambda g: g["success"].sum() >= 1)["id"].nunique()
     plausible_rate = round(100 * success_cnt / verdict_df["id"].nunique(), 1)
@@ -130,27 +130,29 @@ def apply_patch(patch, test, test_file):
     return original_contents
 
 
-def apply_and_run_preds(preds, test, args):
+def apply_and_run_preds(prediction, test, args):
     repo_name = test["ID"].split(":")[0]
     a_commit = test["aCommit"]
 
     worktree_path = gapi.copy_commit_code(repo_name, a_commit, test["ID"].split(":")[-1])
 
     verdicts = []
-    for i, pred in tqdm(
-        preds.iterrows(),
-        total=len(preds),
-        ascii=True,
-        desc="Executing tests",
-    ):
-        pred_code = pred["pred"]
-        target_code = pred["target"]
-        if pred_code == target_code:
+    verdict_cache = {}
+    preds = prediction["preds"]
+    target = prediction["target"]
+    for i, candidate in tqdm(enumerate(preds), ascii=True, total=len(preds), desc="Executing tests"):
+        rank = i
+        candidate = candidate.strip()
+        exec_time = 0.0
+        start_time = time.time()
+        if candidate == target:
             verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None).to_dict()
+        elif candidate in verdict_cache:
+            verdict = verdict_cache[candidate]
         else:
             test_rel_path = Path(test["aPath"])
             test_file = worktree_path / test_rel_path
-            original_contents = apply_patch(pred_code, test, test_file)
+            original_contents = apply_patch(candidate, test, test_file)
             _, class_name, test_short_name = decompose_full_method_name(test["name"])
             log_path = (
                 args.output_path
@@ -159,17 +161,19 @@ def apply_and_run_preds(preds, test, args):
                 / class_name
                 / test_short_name
                 / test_rel_path.parent
-                / str(pred["rank"])
+                / str(rank)
             )
             timeout = 15 * 60 if i > 2 else 240 * 60
             verdict = mvnp.compile_and_run_test(
                 worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
             )
             verdict = verdict.to_dict()
+            verdict_cache[candidate] = verdict
             with open(test_file, "w") as orig_file:
                 orig_file.write(original_contents)
+            exec_time = time.time() - start_time
 
-        verdicts.append((verdict, pred["id"], pred["rank"]))
+        verdicts.append({"verdict": verdict, "id": prediction["ID"], "rank": rank, "exec_time": exec_time})
 
     gapi.remove_commit_code(repo_name, worktree_path)
 
