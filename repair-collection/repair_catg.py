@@ -16,10 +16,10 @@ DEL_LINE = "DEL_LINE"
 MOVE = "MOVE"
 OTHER = "OTHER"
 # Repair categories
-ORACLE_CHANGE = "ORACLE_CHANGE"
-INVOCATION_CHANGE = "INVOCATION_CHANGE"
-PARAM_OR_TYPE_CHANGE = "PARAM_OR_TYPE_CHANGE"
-UNKNOWN = "UNKNOWN"
+ORACLE_CHANGE = "ORACLE"
+INVOCATION_CHANGE = "INVOCATION"
+AGRUMENT_CHANGE = "ARGUMENT"
+OTHER = "OTHER"
 
 
 def get_action_text(action):
@@ -58,7 +58,7 @@ def get_action_categories(action, repair_hunk):
         if src_class_name != dst_class_name:
             categories.add(INVOCATION_CHANGE)
         else:
-            categories.add(PARAM_OR_TYPE_CHANGE)
+            categories.add(AGRUMENT_CHANGE)
 
         # If changing an exception type, assume it's oracle related
         # If the class name used in a line with 'assert', assume it's oracle related
@@ -105,7 +105,7 @@ def get_action_categories(action, repair_hunk):
                         or ("srcNode" in action and "Exception" in action["srcNode"]["label"])
                     )
                 ):
-                    new_cats.add(PARAM_OR_TYPE_CHANGE)
+                    new_cats.add(AGRUMENT_CHANGE)
 
                 # Categories for invocation change
                 elif key in [INSERT_LINE, DEL_LINE, MOD_MD_CALL]:
@@ -160,7 +160,7 @@ def get_repair_categories(test_repair):
         repair_categories.update(get_action_categories(action, test_repair["hunk"]))
     repair_categories = tuple(sorted(list(repair_categories)))
     if len(repair_categories) == 0:
-        repair_categories = (UNKNOWN,)
+        repair_categories = (OTHER,)
     return repair_categories
 
 
@@ -174,10 +174,14 @@ def main():
         dataset.extend(json.loads(project_ds_path.read_text()))
     print(f"Read {len(dataset)} test repairs")
 
-    repair_cat = {}
+    repair_cat = []
     for test_repair in dataset:
-        item = {"categories": get_repair_categories(test_repair), "astActions": len(test_repair["astActions"])}
-        repair_cat[test_repair["ID"]] = item
+        item = {
+            "ID": test_repair["ID"],
+            "categories": get_repair_categories(test_repair),
+            "astActions": len(test_repair["astActions"]),
+        }
+        repair_cat.append(item)
 
     (ds_path / "repair_categories.json").write_text(json.dumps(repair_cat, indent=2, sort_keys=False))
     print(f"Finished")
