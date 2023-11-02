@@ -1,10 +1,9 @@
 import re
 import json
-import random
-from tqdm import tqdm
 from pathlib import Path
+import sys
 
-# Repair categories
+# Repair actions
 ADD_PARAM = "ADD_PARAM"
 DEL_PARAM = "DEL_PARAM"
 CHANGE_TYPE = "CHANGE_TYPE"
@@ -16,12 +15,12 @@ INSERT_LINE = "INSERT_LINE"
 DEL_LINE = "DEL_LINE"
 MOVE = "MOVE"
 OTHER = "OTHER"
-
-
+# Repair categories
 ORACLE_CHANGE = "ORACLE_CHANGE"
 INVOCATION_CHANGE = "INVOCATION_CHANGE"
 PARAM_OR_TYPE_CHANGE = "PARAM_OR_TYPE_CHANGE"
 UNKNOWN = "UNKNOWN"
+
 
 def get_action_text(action):
     node_type = action["nodeType"]
@@ -49,7 +48,7 @@ def parse_constructor_signature(signature):
     return class_name, args_cnt
 
 
-def get_repair_categories(action, test_repair):
+def get_action_categories(action, repair_hunk):
     categories = set()
     action_text = get_action_text(action)
     match = re.search("Update-ConstructorCall-(.+)", action_text)
@@ -64,11 +63,22 @@ def get_repair_categories(action, test_repair):
         # If changing an exception type, assume it's oracle related
         # If the class name used in a line with 'assert', assume it's oracle related
         #       Only if actual class name (based on caps) to avoid hitting a var name (e.g. String vs string)
-        if "Exception" in src_class_name or "Exception" in dst_class_name or ('targetChanges' in test_repair['hunk'] and any(
-                ['assert' in h['line'].lower() and dst_class_name in h['line'] for h in
-                 test_repair['hunk']['targetChanges']])) or ('sourceChanges' in test_repair['hunk'] and any(
-                ['assert' in h['line'].lower() and src_class_name in h['line'] for h in
-                 test_repair['hunk']['sourceChanges']])):
+        if (
+            "Exception" in src_class_name
+            or "Exception" in dst_class_name
+            or (
+                "targetChanges" in repair_hunk
+                and any(
+                    ["assert" in h["line"].lower() and dst_class_name in h["line"] for h in repair_hunk["targetChanges"]]
+                )
+            )
+            or (
+                "sourceChanges" in repair_hunk
+                and any(
+                    ["assert" in h["line"].lower() and src_class_name in h["line"] for h in repair_hunk["sourceChanges"]]
+                )
+            )
+        ):
             categories.add(ORACLE_CHANGE)
     else:
         patterns = {
@@ -88,8 +98,13 @@ def get_repair_categories(action, test_repair):
             match = re.search(pattern, action_text)
             if match:
                 # Categories for param/type change if not changing an exception
-                if key in [ADD_PARAM, DEL_PARAM, MOD_PARAM, MOVE] or (key == CHANGE_TYPE and not (('dstNode' in action and "Exception" in action["dstNode"]["label"])
-                        or ('srcNode' in action and "Exception" in action["srcNode"]["label"]))):
+                if key in [ADD_PARAM, DEL_PARAM, MOD_PARAM, MOVE] or (
+                    key == CHANGE_TYPE
+                    and not (
+                        ("dstNode" in action and "Exception" in action["dstNode"]["label"])
+                        or ("srcNode" in action and "Exception" in action["srcNode"]["label"])
+                    )
+                ):
                     new_cats.add(PARAM_OR_TYPE_CHANGE)
 
                 # Categories for invocation change
@@ -97,74 +112,76 @@ def get_repair_categories(action, test_repair):
                     new_cats.add(INVOCATION_CHANGE)
 
                 # Categories for oracle change, or if the change is in a hunk with an assert statement, or changing the type of an exception
-                if key in [ADD_THROWS, DEL_THROWS] or ('srcNode' in action and 'sourceChanges' in test_repair['hunk'] and any(
-                        ['assert' in h['line'].lower() and action['srcNode']['label'] in h['line'] for h in
-                         test_repair['hunk']['sourceChanges']])) or ('dstNode' in action and 'targetChanges' in test_repair['hunk'] and any(
-                        ['assert' in h['line'].lower() and action['dstNode']['label'] in h['line'] for h in
-                         test_repair['hunk']['targetChanges']])) or (key == CHANGE_TYPE and (('dstNode' in action and "Exception" in action["dstNode"]["label"])
-                        or ('srcNode' in action and "Exception" in action["srcNode"]["label"]))):
+                if (
+                    key in [ADD_THROWS, DEL_THROWS]
+                    or (
+                        "srcNode" in action
+                        and "sourceChanges" in repair_hunk
+                        and any(
+                            [
+                                "assert" in h["line"].lower() and action["srcNode"]["label"] in h["line"]
+                                for h in repair_hunk["sourceChanges"]
+                            ]
+                        )
+                    )
+                    or (
+                        "dstNode" in action
+                        and "targetChanges" in repair_hunk
+                        and any(
+                            [
+                                "assert" in h["line"].lower() and action["dstNode"]["label"] in h["line"]
+                                for h in repair_hunk["targetChanges"]
+                            ]
+                        )
+                    )
+                    or (
+                        key == CHANGE_TYPE
+                        and (
+                            ("dstNode" in action and "Exception" in action["dstNode"]["label"])
+                            or ("srcNode" in action and "Exception" in action["srcNode"]["label"])
+                        )
+                    )
+                ):
                     # If changing which assert method is used then it's not an oracle change
-                    if key != MOD_MD_CALL or (('dstNode' in action and not "assert" in action['dstNode']['label']) and ('srcNode' in action and not "assert" in action['srcNode']['label'])):
-                        new_cats = {ORACLE_CHANGE,}
+                    if key != MOD_MD_CALL or (
+                        ("dstNode" in action and not "assert" in action["dstNode"]["label"])
+                        and ("srcNode" in action and not "assert" in action["srcNode"]["label"])
+                    ):
+                        new_cats = {
+                            ORACLE_CHANGE,
+                        }
         categories.update(new_cats)
     return sorted(list(categories))
 
 
-if __name__=="__main__":
-    dataset = []
-    # with open("./codegen-ah/splits/test.json", 'r') as f:
-    #     dataset.extend(json.load(f))
-    # with open("./codegen-ah/splits/train.json", 'r') as f:
-    #     dataset.extend(json.load(f))
-    # with open("./codegen-ah/splits/valid.json", 'r') as f:
-    #     dataset.extend(json.load(f))
-    ds_path = Path("../_default/data-candidates-v2")
+def get_repair_categories(test_repair):
+    repair_categories = set()
+    for action in test_repair["astActions"]:
+        repair_categories.update(get_action_categories(action, test_repair["hunk"]))
+    repair_categories = tuple(sorted(list(repair_categories)))
+    if len(repair_categories) == 0:
+        repair_categories = (UNKNOWN,)
+    return repair_categories
+
+
+def main():
+    if len(sys.argv) <= 1:
+        print("No arguments provided! Usage: python repair_catg.py [dataset_dir]")
+
+    ds_path = Path(sys.argv[1])
     dataset = []
     for project_ds_path in ds_path.rglob("dataset.json"):
-        with open(project_ds_path, 'r') as f:
-            dataset.extend(json.load(f))
+        dataset.extend(json.loads(project_ds_path.read_text()))
+    print(f"Read {len(dataset)} test repairs")
 
-    random.shuffle(dataset)
+    repair_cat = {}
+    for test_repair in dataset:
+        item = {"categories": get_repair_categories(test_repair), "astActions": len(test_repair["astActions"])}
+        repair_cat[test_repair["ID"]] = item
 
-    dist = dict()
-    to_check = dict()
-    print(f"Dataset size: {len(dataset)}")
-
-    for d in tqdm(dataset):
-        repair_categories = set()
-        for a in d["astActions"]:
-            repair_categories.update(get_repair_categories(a, d))
-        d["categories"] = sorted(list(repair_categories))
-
-        repair_categories = tuple(sorted(list(repair_categories)))
-        if len(repair_categories) == 0:
-            repair_categories = (UNKNOWN,)
-
-        if repair_categories in dist:
-            dist[repair_categories] += 1
-        else:
-            dist[repair_categories] = 0
-
-        if len(d["astActions"]) <= 5:
-            d = {"id": d["ID"], "numActions": len(d["astActions"]), "astActions": d["astActions"],
-                 "hunks": d["hunk"], "source": {"bSource": d["bSource"], "aSource": d["aSource"]},
-                 "categories": d["categories"]}
-            if repair_categories in to_check and len(to_check[repair_categories]) < 20:
-                to_check[repair_categories].append(d)
-            elif repair_categories not in to_check:
-                to_check[repair_categories] = [d]
+    (ds_path / "repair_categories.json").write_text(json.dumps(repair_cat, indent=2, sort_keys=False))
+    print(f"Finished")
 
 
-    for k, v in dist.items():
-        print(f'{k}:\t{v}')
-
-    #
-    # dataset = dataset[:100]
-    # for i in range(len(dataset)):
-    #     d = dataset[i]
-    #     d = {"id": d["ID"], "numActions": len(d["astActions"]), "astActions": d["astActions"], "hunks": d["hunk"], "source":{"bSource": d["bSource"], "aSource": d["aSource"]}, "categories": d["categories"]}
-    #     dataset[i] = d
-
-    for k, v in to_check.items():
-        with open(f'./toCheck/{"_".join(k)}.json', 'w') as f:
-            json.dump(v, f, indent=4)
+if __name__ == "__main__":
+    main()
