@@ -35,7 +35,6 @@ REPLACE_NEWS = [
 
 
 class EditSequenceDataEncoder(WordLevelDataEncoder):
-
     def get_special_tokens_class(self):
         return EditSeqTokens
 
@@ -45,12 +44,14 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
 
         edit_seq, success = build_edit_sequence(broken, repaired)
         applied = None
+        row["invalid_eseq"] = False
 
         if success:
             applied = apply_edit_sequence(broken, edit_seq)
 
         if not applied or applied != repaired:
             edit_seq = get_default_edit_sequence(broken, repaired)
+            row["invalid_eseq"] = True
 
         return edit_seq
 
@@ -61,7 +62,10 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
     def create_inputs_and_outputs(self, ds):
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
         ds["target_change"] = ds.apply(lambda r: self.get_target_change(r), axis=1)
-
+        invalid_cnt = len(ds[ds["invalid_eseq"]])
+        self.log(
+            f"{invalid_cnt} cases ({round(100 * invalid_cnt / len(ds), 2)} %) where edit sequence could not be generated or was not successfully applied."
+        )
         return ds
 
     @staticmethod
@@ -397,15 +401,16 @@ def substring_surrounded_by_spaces(full_string, start, end, change_type):
 
     start_space = (
         len(full_string) == 0
-        or start <= 0 or start >= len(full_string)
+        or start <= 0
+        or start >= len(full_string)
         or (full_string[start].isspace() and is_equal)
-        or (full_string[start-1].isspace() and not is_equal)
+        or (full_string[start - 1].isspace() and not is_equal)
     )
 
     end_space = (
         len(full_string) == 0
         or end >= len(full_string)
-        or (full_string[end-1].isspace() and is_equal)
+        or (full_string[end - 1].isspace() and is_equal)
         or (full_string[end].isspace() and not is_equal)
     )
 
@@ -421,8 +426,12 @@ def find_token_diffs(source, target):
     while index < len(req_changes):
         change_type, source_start, source_end, target_start, target_end = req_changes[index]
 
-        source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
-        target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
+        source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(
+            source, source_start, source_end, change_type
+        )
+        target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(
+            target, target_start, target_end, change_type
+        )
 
         if index < len(req_changes) - 1:
             next_change = req_changes[index + 1]
@@ -431,7 +440,8 @@ def find_token_diffs(source, target):
 
         if change_type == "equal":
             while source_start < source_end < len(source) and (
-                not source_surrounded_by_spaces or (next_change and next_change[0] == "insert" and not target_surrounded_by_spaces)
+                not source_surrounded_by_spaces
+                or (next_change and next_change[0] == "insert" and not target_surrounded_by_spaces)
             ):
                 source_end -= 1
                 target_end -= 1
@@ -448,11 +458,15 @@ def find_token_diffs(source, target):
                     or (change_type == "insert" and target_surrounded_by_spaces and source_start == source_end)
                 ):
                     source_end += 1
-                    source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
+                    source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(
+                        source, source_start, source_end, change_type
+                    )
 
                     if change_type == "delete" and not target_changed:
                         target_end += 1
-                        target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
+                        target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(
+                            target, target_start, target_end, change_type
+                        )
 
                     if next_change:
                         next_change = (
@@ -464,7 +478,11 @@ def find_token_diffs(source, target):
                         )
                         if next_change[1] >= next_change[2]:
                             target_end = next_change[4]
-                            target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
+                            (
+                                target_surrounded_by_spaces,
+                                target_start_space,
+                                target_end_space,
+                            ) = substring_surrounded_by_spaces(target, target_start, target_end, change_type)
 
                             req_changes.pop(index + 1)
                             if index < len(req_changes) - 1:
@@ -480,12 +498,15 @@ def find_token_diffs(source, target):
                 ):
                     target_end += 1
                     target_surrounded_by_spaces, target_start_space, target_end_space = substring_surrounded_by_spaces(
-                        target, target_start, target_end, change_type)
+                        target, target_start, target_end, change_type
+                    )
                     target_changed = True
 
                     if change_type == "delete":
                         source_end += 1
-                        source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
+                        source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(
+                            source, source_start, source_end, change_type
+                        )
 
                     if next_change:
                         next_change = (
@@ -497,7 +518,11 @@ def find_token_diffs(source, target):
                         )
                         if next_change[3] >= next_change[4]:
                             source_end = next_change[2]
-                            source_surrounded_by_spaces, source_start_space, source_end_space = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
+                            (
+                                source_surrounded_by_spaces,
+                                source_start_space,
+                                source_end_space,
+                            ) = substring_surrounded_by_spaces(source, source_start, source_end, change_type)
                             check_source = True
 
                             req_changes.pop(index + 1)
@@ -610,8 +635,4 @@ def get_replace_pairs(edit_seq):
 
 
 def get_default_edit_sequence(broken, repaired):
-    return " ".join([EditSeqTokens.REPLACE_OLD,
-                     broken,
-                     EditSeqTokens.REPLACE_NEW,
-                     repaired,
-                     EditSeqTokens.REPLACE_END])
+    return " ".join([EditSeqTokens.REPLACE_OLD, broken, EditSeqTokens.REPLACE_NEW, repaired, EditSeqTokens.REPLACE_END])
