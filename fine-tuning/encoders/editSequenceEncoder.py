@@ -35,16 +35,24 @@ REPLACE_NEWS = [
 
 
 class EditSequenceDataEncoder(WordLevelDataEncoder):
+
     def get_special_tokens_class(self):
         return EditSeqTokens
 
     def create_output(self, row):
-        repaired_code = ""
-        output, success = build_edit_sequence(self.get_broken_code(row), self.get_repaired_code(row))
-        if success:
-            repaired_code = output
+        repaired = self.get_repaired_code(row)
+        broken = self.get_broken_code(row)
 
-        return repaired_code
+        edit_seq, success = build_edit_sequence(broken, repaired)
+        applied = None
+
+        if success:
+            applied = apply_edit_sequence(broken, edit_seq)
+
+        if not applied or applied != repaired:
+            edit_seq = get_default_edit_sequence(broken, repaired)
+
+        return edit_seq
 
     def get_target_change(self, row):
         target_change = self.get_repaired_code(row)
@@ -53,20 +61,6 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
     def create_inputs_and_outputs(self, ds):
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
         ds["target_change"] = ds.apply(lambda r: self.get_target_change(r), axis=1)
-        num_without_output = len(ds[ds["output"].str.len() == 0].index)
-        self.log(
-            f"Removing {num_without_output} cases ({round(100 * num_without_output / len(ds.index), 2)} %) where edit sequence output could not be generated"
-        )
-        ds = ds[ds["output"].str.len() > 0].reset_index(drop=True)
-
-        padded_targets = ds.apply(lambda r: self.get_repaired_code(r), axis=1)
-        applied_seqs = ds.apply(lambda r: apply_edit_sequence(self.get_broken_code(r), r["output"]), axis=1)
-        applied_seqs = applied_seqs.apply(lambda r: add_padding_to_chars(r) if r else None)
-        applied_successes = padded_targets == applied_seqs
-        applied_failure_count = len(applied_successes) - applied_successes.sum()
-        self.log(
-            f"{applied_failure_count} cases ({round(100 * applied_failure_count / len(applied_successes), 2)} %) where the edit sequence was not successfully applied"
-        )
 
         return ds
 
@@ -613,3 +607,11 @@ def get_replace_pairs(edit_seq):
         pairs.append((orig, new))
 
     return pairs
+
+
+def get_default_edit_sequence(broken, repaired):
+    return " ".join([EditSeqTokens.REPLACE_OLD,
+                     broken,
+                     EditSeqTokens.REPLACE_NEW,
+                     repaired,
+                     EditSeqTokens.REPLACE_END])
