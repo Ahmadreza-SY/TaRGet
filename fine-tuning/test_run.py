@@ -140,6 +140,7 @@ def apply_and_run_preds(prediction, test, args):
     verdict_cache = {}
     preds = prediction["preds"]
     target = prediction["target"]
+    invalid_verdict_cnt = 0
     for i, candidate in tqdm(enumerate(preds), ascii=True, total=len(preds), desc="Executing tests"):
         rank = i
         candidate = candidate.strip()
@@ -167,6 +168,13 @@ def apply_and_run_preds(prediction, test, args):
             verdict = mvnp.compile_and_run_test(
                 worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
             )
+            if not verdict.is_valid():
+                invalid_verdict_cnt += 1
+            else:
+                invalid_verdict_cnt = 0
+            if invalid_verdict_cnt >= 5:
+                print(f"Stopping test execution due to {invalid_verdict_cnt} consecutive invalid verdicts.")
+                sys.exit(1)
             verdict = verdict.to_dict()
             verdict_cache[candidate] = verdict
             with open(test_file, "w") as orig_file:
