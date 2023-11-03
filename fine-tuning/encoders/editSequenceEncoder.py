@@ -44,7 +44,6 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
 
         edit_seq, success = build_edit_sequence(broken, repaired)
         applied = None
-        row["invalid_eseq"] = False
 
         if success:
             applied = apply_edit_sequence(broken, edit_seq)
@@ -60,11 +59,12 @@ class EditSequenceDataEncoder(WordLevelDataEncoder):
         return target_change.strip()
 
     def create_inputs_and_outputs(self, ds):
+        ds["invalid_eseq"] = False
         ds = super(EditSequenceDataEncoder, self).create_inputs_and_outputs(ds)
         ds["target_change"] = ds.apply(lambda r: self.get_target_change(r), axis=1)
         invalid_cnt = len(ds[ds["invalid_eseq"]])
         self.log(
-            f"{invalid_cnt} cases ({round(100 * invalid_cnt / len(ds), 2)} %) where edit sequence could not be generated or was not successfully applied."
+            f"Found {invalid_cnt} cases ({round(100 * invalid_cnt / len(ds), 2)} %) where edit sequence could not be generated or was not successfully applied."
         )
         return ds
 
