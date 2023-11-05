@@ -88,6 +88,8 @@ def main():
 
 
 def analyze_verdicts(verdicts):
+    if len(verdicts) == 0:
+        return pd.DataFrame({}), -1
     vs_df = pd.DataFrame({"verdict": [r["verdict"]["status"] for r in verdicts]})
     logger.info("Verdict stats:")
     for v, cnt in vs_df["verdict"].value_counts().items():
@@ -179,7 +181,8 @@ def apply_and_run_preds(prediction, test, args):
 
     gapi.remove_commit_code(repo_name, worktree_path)
 
-    if invalid_verdict_cnt / len(verdicts) >= 0.5:
+    if invalid_verdict_cnt / len(verdicts) >= 0.75:
+        analyze_verdicts(verdicts)
         print(f"Not saving test verdicts due to {invalid_verdict_cnt} invalid verdicts.")
         return []
 
