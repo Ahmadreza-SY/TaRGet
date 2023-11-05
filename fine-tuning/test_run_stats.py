@@ -49,6 +49,7 @@ def main():
         text = verdict_file.read_text()
         if len(text) == 0:
             empty_files += 1
+            verdict_file.unlink()
             continue
         verdicts.extend(json.loads(text))
     if empty_files > 0:
