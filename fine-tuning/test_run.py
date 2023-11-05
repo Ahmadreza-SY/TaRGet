@@ -147,7 +147,7 @@ def apply_and_run_preds(prediction, test, args):
         exec_time = 0.0
         start_time = time.time()
         if candidate == target:
-            verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None).to_dict()
+            verdict = mvnp.TestVerdict(mvnp.TestVerdict.SUCCESS, None)
         elif candidate in verdict_cache:
             verdict = verdict_cache[candidate]
         else:
@@ -168,22 +168,20 @@ def apply_and_run_preds(prediction, test, args):
             verdict = mvnp.compile_and_run_test(
                 worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
             )
-            if not verdict.is_valid():
-                invalid_verdict_cnt += 1
-            else:
-                invalid_verdict_cnt = 0
-            if invalid_verdict_cnt >= 5:
-                print(f"Stopping test execution due to {invalid_verdict_cnt} consecutive invalid verdicts.")
-                sys.exit(1)
-            verdict = verdict.to_dict()
             verdict_cache[candidate] = verdict
             with open(test_file, "w") as orig_file:
                 orig_file.write(original_contents)
             exec_time = time.time() - start_time
 
-        verdicts.append({"verdict": verdict, "id": prediction["ID"], "rank": rank, "exec_time": exec_time})
+        if not verdict.is_valid():
+            invalid_verdict_cnt += 1
+        verdicts.append({"verdict": verdict.to_dict(), "id": prediction["ID"], "rank": rank, "exec_time": exec_time})
 
     gapi.remove_commit_code(repo_name, worktree_path)
+
+    if invalid_verdict_cnt / len(verdicts) >= 0.5:
+        print(f"Not saving test verdicts due to {invalid_verdict_cnt} invalid verdicts.")
+        return []
 
     return verdicts
 
