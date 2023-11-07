@@ -175,7 +175,7 @@ def apply_and_run_preds(prediction, test, args):
                 orig_file.write(original_contents)
             exec_time = time.time() - start_time
 
-        if not verdict.is_valid():
+        if verdict.status in [mvnp.TestVerdict.TIMEOUT, mvnp.TestVerdict.DEPENDENCY_ERROR]:
             invalid_verdict_cnt += 1
         verdicts.append({"verdict": verdict.to_dict(), "id": prediction["ID"], "rank": rank, "exec_time": exec_time})
 
