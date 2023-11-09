@@ -4,11 +4,10 @@ import shlex
 import re
 from config import Config
 import os
-from common_utils import auto_str, find_parent_pom
+from common_utils import find_parent_pom
 from java_version_detector import JavaVersionDetector
 
 
-@auto_str
 class TestVerdict:
     # Valid results
     SUCCESS = "success"
@@ -26,9 +25,10 @@ class TestVerdict:
     INVALID_EDIT_SEQUENCE = "invalid_edit_sequence"
     UNKNOWN = "unknown"
 
-    def __init__(self, status, error_lines):
+    def __init__(self, status, error_lines, log=None):
         self.status = status
         self.error_lines = error_lines
+        self.log = log
 
     def is_valid(self):
         return self.status in [TestVerdict.SUCCESS, TestVerdict.FAILURE, TestVerdict.COMPILE_ERR]
@@ -45,6 +45,9 @@ class TestVerdict:
             "error_lines": sorted(list(self.error_lines)) if self.error_lines is not None else None,
         }
 
+    def __str__(self) -> str:
+        return f"TestVerdict(status={self.status})"
+
 
 def parse_compile_error(log, test_rel_path):
     if "COMPILATION ERROR" not in log and "Compilation failure:" not in log:
@@ -55,7 +58,7 @@ def parse_compile_error(log, test_rel_path):
         return None
 
     error_lines = set([int(m) for m in matches])
-    return TestVerdict(TestVerdict.COMPILE_ERR, error_lines)
+    return TestVerdict(TestVerdict.COMPILE_ERR, error_lines, log)
 
 
 def parse_test_failure(log, test_class, test_method):
@@ -75,29 +78,29 @@ def parse_test_failure(log, test_class, test_method):
         if match:
             failures, errors = int(match.group(2)), int(match.group(3))
             if failures > 0 or errors > 0:
-                return TestVerdict(TestVerdict.FAILURE, set())
+                return TestVerdict(TestVerdict.FAILURE, set(), log)
             runs, skips = int(match.group(1)), int(match.group(4))
             if runs == 0 or skips > 0:
-                return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
+                return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None, log)
         return None
 
     error_lines = set([int(m) for m in matches])
-    return TestVerdict(TestVerdict.FAILURE, error_lines)
+    return TestVerdict(TestVerdict.FAILURE, error_lines, log)
 
 
 def parse_invalid_execution(log):
     if "COMPILATION ERROR" in log or "Compilation failure:" in log:
-        return TestVerdict(TestVerdict.UNRELATED_COMPILE_ERR, None)
+        return TestVerdict(TestVerdict.UNRELATED_COMPILE_ERR, None, log)
     if "java.lang.AssertionError: Expected exception:" in log:
-        return TestVerdict(TestVerdict.EXPECTED_EXCEPTION_FAILURE, None)
+        return TestVerdict(TestVerdict.EXPECTED_EXCEPTION_FAILURE, None, log)
     if "java.lang.Exception: No tests found matching Method" in log:
-        return TestVerdict(TestVerdict.TEST_MATCH_FAILURE, None)
+        return TestVerdict(TestVerdict.TEST_MATCH_FAILURE, None, log)
     if "<<< ERROR!" in log:
-        return TestVerdict(TestVerdict.UNRELATED_FAILURE, None)
+        return TestVerdict(TestVerdict.UNRELATED_FAILURE, None, log)
     if "Could not resolve dependencies" in log or "Non-resolvable parent POM" in log:
-        return TestVerdict(TestVerdict.DEPENDENCY_ERROR, None)
+        return TestVerdict(TestVerdict.DEPENDENCY_ERROR, None, log)
 
-    return TestVerdict(TestVerdict.UNKNOWN, None)
+    return TestVerdict(TestVerdict.UNKNOWN, None, log)
 
 
 def parse_successful_execution(log):
@@ -107,8 +110,8 @@ def parse_successful_execution(log):
     for match in matches:
         runs, failures, errors, skips = (int(n) for n in match)
         if runs == 1 and failures == 0 and errors == 0 and skips == 0:
-            return TestVerdict(TestVerdict.SUCCESS, None)
-    return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None)
+            return TestVerdict(TestVerdict.SUCCESS, None, log)
+    return TestVerdict(TestVerdict.TEST_NOT_EXECUTED, None, log)
 
 
 def run_cmd(cmd, timeout, java_home=None):
@@ -175,7 +178,9 @@ MVN_SKIPS = [
 ]
 
 
-def compile_and_run_test(project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[], timeout=15 * 60):
+def compile_and_run_test(
+    project_path, test_rel_path, test_method, log_path, save_logs=True, mvn_args=[], timeout=15 * 60, java_version=None
+):
     log_file = log_path / "test.log"
     test_path = project_path / test_rel_path
     if not test_path.exists():
@@ -207,22 +212,23 @@ def compile_and_run_test(project_path, test_rel_path, test_method, log_path, sav
         if m2_path is not None:
             cmd.append(f"-Dmaven.repo.local={m2_path}")
         jvd = JavaVersionDetector(project_path / "pom.xml")
-        java_home = jvd.get_java_home()
+        java_home = jvd.get_java_home(java_version)
         remove_unnecessary_plugins(project_path / "pom.xml")
         remove_unnecessary_plugins(pom_path)
         original_cwd = os.getcwd()
         os.chdir(str(project_path.absolute()))
         returncode, log = run_cmd(cmd, timeout=timeout, java_home=java_home)
         os.chdir(original_cwd)
+        log = "\n".join([str(returncode), " ".join(cmd), f"JAVA_HOME={java_home}", log])
         if save_logs:
             log_path.mkdir(parents=True, exist_ok=True)
-            log_file.write_text("\n".join([str(returncode), " ".join(cmd), f"JAVA_HOME={java_home}", log]))
+            log_file.write_text(log)
 
     if returncode == 0:
         return parse_successful_execution(log)
 
     if returncode == 124:
-        return TestVerdict(TestVerdict.TIMEOUT, None)
+        return TestVerdict(TestVerdict.TIMEOUT, None, log)
 
     compile_error = parse_compile_error(log, test_rel_path)
     if compile_error is not None:

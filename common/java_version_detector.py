@@ -100,7 +100,9 @@ class JavaVersionDetector:
 
         return [v.strip() for v in versions]
 
-    def get_java_home(self):
+    def get_java_home(self, version=None):
+        if version and version in self.java_homes:
+            return self.java_homes[version]
         java_versions = self.detect_java_versions()
         if len(java_versions) == 0:
             return self.java_homes[JavaVersionDetector.default_home]

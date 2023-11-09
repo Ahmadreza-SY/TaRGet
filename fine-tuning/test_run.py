@@ -166,10 +166,26 @@ def apply_and_run_preds(prediction, test, args):
                 / test_rel_path.parent
                 / str(rank)
             )
-            timeout = 15 * 60 if i > 2 else 240 * 60
+            timeout = 30 * 60 if i > 2 else 240 * 60
             verdict = mvnp.compile_and_run_test(
                 worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
             )
+            if not verdict.is_valid() and verdict.log is not None:
+                java_version = verdict.log.splitlines()[2].split("=")[1].split("/")[-1].split(".")[0]
+                if java_version != "11":
+                    print(f"Got {verdict} with Java {java_version}, re-executing with Java 11")
+                    log_file = log_path / "test.log"
+                    if log_file.exists():
+                        log_file.unlink()
+                    verdict = mvnp.compile_and_run_test(
+                        worktree_path,
+                        test_rel_path,
+                        test_short_name,
+                        log_path,
+                        not args.discard_logs,
+                        timeout=timeout,
+                        java_version="11",
+                    )
             verdict_cache[candidate] = verdict
             with open(test_file, "w") as orig_file:
                 orig_file.write(original_contents)
