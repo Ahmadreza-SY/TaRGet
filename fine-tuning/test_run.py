@@ -166,7 +166,7 @@ def apply_and_run_preds(prediction, test, args):
                 / test_rel_path.parent
                 / str(rank)
             )
-            timeout = 30 * 60 if i > 2 else 240 * 60
+            timeout = 30 * 60
             verdict = mvnp.compile_and_run_test(
                 worktree_path, test_rel_path, test_short_name, log_path, not args.discard_logs, timeout=timeout
             )
