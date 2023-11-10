@@ -196,6 +196,7 @@ def compile_and_run_test(
         cmd = [
             "mvn",
             "test",
+            "-nsu",
             f"-pl {str(pom_path.relative_to(project_path))}",
             "--also-make",
             "-Dsurefire.failIfNoSpecifiedTests=false",
