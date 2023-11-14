@@ -8,7 +8,6 @@ import logging
 import pickle
 from encoders.preprocessing.commentRemoval import line_is_comment
 from encoders.preprocessing.codeFormatter import add_padding_to_chars
-from encoders.preprocessing.processors import Processors
 from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from encoders.repositories.changeRepo import ChangeRepository
