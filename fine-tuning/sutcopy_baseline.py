@@ -12,15 +12,16 @@ from datetime import datetime
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--test_file", required=True, type=str)
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
     parser.add_argument("-o", "--output_dir", required=True, type=str)
     args = parser.parse_args()
+    args.output_dir = Path(args.output_dir)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
     ade = AbstractDataEncoder(None)
     change_repo = ChangeRepository(args=args)
 
-    with open(args.test_file, "r") as f:
+    with open(str(args.output_dir / "splits/test.json"), "r") as f:
         test_set = json.load(f)
 
     start = datetime.now()
@@ -63,9 +64,6 @@ if __name__ == "__main__":
                 broken = broken.replace(d[0], d[1])
 
         preds.append({"ID": t["ID"], "target": target, "preds": [broken]})
-
-    args.output_dir = Path(args.output_dir)
-    args.output_dir.mkdir(parents=True, exist_ok=True)
 
     pred_df = pd.DataFrame(preds)
     bleu_score, code_bleu_score, em = compute_scores(pred_df)
