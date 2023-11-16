@@ -39,6 +39,7 @@ def main():
     encode_parser.add_argument("-de", "--data_encoder", required=True, type=str)
     encode_parser.add_argument("-ts", "--train_size", default=0.8, type=float)
     encode_parser.add_argument("-tf", "--train_fraction", default=1.0, type=float)
+    encode_parser.add_argument("-mpr", "--mask_projects", default=None, type=lambda s: s.split(","))
 
     finetune_parser.set_defaults(func=train)
     add_common_arguments(finetune_parser)

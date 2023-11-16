@@ -262,19 +262,23 @@ class AbstractDataEncoder:
         return train_ds
 
     def adjust_training_set(self, train_ds):
-        if self.args.train_fraction == 1.0:
-            return train_ds
-
-        len_before = len(train_ds)
-        discard_fraction = 1 - self.args.train_fraction
-        train_ds = (
-            train_ds.groupby("project")
-            .apply(lambda g: g.sort_values("aCommitTime").iloc[int(len(g) * discard_fraction) :])
-            .reset_index(drop=True)
-        )
-        self.log(
-            f"Discarded {len_before - len(train_ds)}/{len_before} training samples as train_fraction={self.args.train_fraction}"
-        )
+        if self.args.train_fraction < 1.0:
+            len_before = len(train_ds)
+            discard_fraction = 1 - self.args.train_fraction
+            train_ds = (
+                train_ds.groupby("project")
+                .apply(lambda g: g.sort_values("aCommitTime").iloc[int(len(g) * discard_fraction) :])
+                .reset_index(drop=True)
+            )
+            self.log(
+                f"Discarded {len_before - len(train_ds)}/{len_before} training samples as train_fraction={self.args.train_fraction}"
+            )
+        if self.args.mask_projects:
+            len_before = len(train_ds)
+            train_ds = train_ds[~train_ds["project"].isin(self.args.mask_projects)].reset_index(drop=True)
+            self.log(
+                f"Discarded {len_before - len(train_ds)}/{len_before} training samples as mask_projects={self.args.mask_projects}"
+            )
         return train_ds
 
     def read_data(self):
@@ -331,8 +335,7 @@ class AbstractDataEncoder:
 
             train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
 
-            if self.args.train_fraction < 1.0:
-                train_ds = self.adjust_training_set(train_ds)
+            train_ds = self.adjust_training_set(train_ds)
 
             self.log("Creating datasets")
             og_ds_s = len(train_ds) + len(valid_ds) + len(test_ds)
