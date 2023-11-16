@@ -10,7 +10,7 @@ import pandas as pd
 from eval import compute_scores
 from datetime import datetime
 
-if __name__=="__main__":
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--test_file", required=True, type=str)
     parser.add_argument("-d", "--dataset_dir", required=True, type=str)
@@ -20,7 +20,7 @@ if __name__=="__main__":
     ade = AbstractDataEncoder(None)
     change_repo = ChangeRepository(args=args)
 
-    with open(args.test_file, 'r') as f:
+    with open(args.test_file, "r") as f:
         test_set = json.load(f)
 
     start = datetime.now()
@@ -30,7 +30,7 @@ if __name__=="__main__":
         broken = ade.get_broken_code(t)
         target = ade.get_repaired_code(t)
 
-        sut_changes = change_repo.get_commit_changes(t['project'], t["aCommit"])
+        sut_changes = change_repo.get_commit_changes(t["project"], t["aCommit"])
 
         all_diff_pairs = []
         for c in sut_changes:
@@ -44,7 +44,7 @@ if __name__=="__main__":
                         curr_diff = diffs[i]
                         next_diff = None
                         if i < len(diffs) - 1:
-                            next_diff = diffs[i+1]
+                            next_diff = diffs[i + 1]
 
                         if curr_diff[0] == dmp.DIFF_DELETE:
                             rem = curr_diff[1]
@@ -62,9 +62,7 @@ if __name__=="__main__":
             if broken.count(d[0]) == 1:
                 broken = broken.replace(d[0], d[1])
 
-        preds.append({"ID": t["ID"],
-                "target": target,
-                "preds": [broken]})
+        preds.append({"ID": t["ID"], "target": target, "preds": [broken]})
 
     args.output_dir = Path(args.output_dir)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -72,7 +70,7 @@ if __name__=="__main__":
     pred_df = pd.DataFrame(preds)
     bleu_score, code_bleu_score, em = compute_scores(pred_df)
     print(f"* BLEU: {bleu_score} ; CodeBLEU: {code_bleu_score} ; EM: {em} ; Eval took: {datetime.now() - start}")
-    stats = {'testset_size': len(test_set), 'test_results': {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}}
-    
-    (args.output_dir / 'stats.json').write_text(json.dumps(stats, indent=2, sort_keys=False))
-    pred_df.to_json(args.output_dir / 'test_predictions.json', orient="records", indent=2)
+    stats = {"testset_size": len(test_set), "test_results": {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}}
+
+    (args.output_dir / "stats.json").write_text(json.dumps(stats, indent=2, sort_keys=False))
+    pred_df.to_json(args.output_dir / "test_predictions.json", orient="records", indent=2)
