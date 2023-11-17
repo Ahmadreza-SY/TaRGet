@@ -197,7 +197,7 @@ def apply_and_run_preds(prediction, test, args):
 
     gapi.remove_commit_code(repo_name, worktree_path)
 
-    if invalid_verdict_cnt / len(verdicts) >= 0.75:
+    if len(verdicts) > 1 and invalid_verdict_cnt / len(verdicts) >= 0.75:
         analyze_verdicts(verdicts)
         print(f"Not saving test verdicts due to {invalid_verdict_cnt} invalid verdicts.")
         return []
