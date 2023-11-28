@@ -262,16 +262,18 @@ class AbstractDataEncoder:
         return train_ds
 
     def adjust_training_set(self, train_ds):
-        if self.args.train_fraction < 1.0:
+        tf = self.args.train_fraction
+        if tf < 1.0:
             len_before = len(train_ds)
-            discard_fraction = 1 - self.args.train_fraction
+            discard_fraction = 1 - abs(tf)
+            discard_old = tf > 0.0
             train_ds = (
                 train_ds.groupby("project")
-                .apply(lambda g: g.sort_values("aCommitTime").iloc[int(len(g) * discard_fraction) :])
+                .apply(lambda g: g.sort_values("aCommitTime", ascending=discard_old).iloc[int(len(g) * discard_fraction) :])
                 .reset_index(drop=True)
             )
             self.log(
-                f"Discarded {len_before - len(train_ds)}/{len_before} training samples as train_fraction={self.args.train_fraction}"
+                f"Discarded {len_before - len(train_ds)}/{len_before} training samples as train_fraction={tf} and discard_old={discard_old}"
             )
         if self.args.mask_projects:
             len_before = len(train_ds)

@@ -8,3 +8,4 @@ results
 repair-collection/assets
 *.sh
 configs/
+.ipynb_checkpoints
