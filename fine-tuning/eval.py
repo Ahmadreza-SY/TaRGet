@@ -26,9 +26,12 @@ def test(args):
         logger.info("No stats.json found, creating a new one.")
         args.stats = {}
 
-    args.valid_dataset = pd.read_json(args.output_dir / "splits" / f"valid.json")
-    args.test_dataset = pd.read_json(args.output_dir / "splits" / f"test.json")
-    args.stats["test_set_size"] = len(args.test_dataset)
+    args.valid_ds = pd.read_json(args.output_dir / "splits" / f"valid.json")
+    args.test_ds = pd.read_json(args.output_dir / "splits" / f"test.json")
+    if args.mask_projects is not None:
+        args.valid_ds = args.valid_ds[args.valid_ds["project"].isin(args.mask_projects)].reset_index(drop=True)
+        args.test_ds = args.test_ds[args.test_ds["project"].isin(args.mask_projects)].reset_index(drop=True)
+    args.stats["test_set_size"] = len(args.test_ds)
 
     args.tokenizer = args.model_tokenizer_class.from_pretrained(args.output_dir / "tokenizer")
 
@@ -36,11 +39,11 @@ def test(args):
     model = args.model_class.from_pretrained(best_checkpoint_path, trust_remote_code=True)
     model = args.accelerator.prepare(model)
 
-    logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_dataset)}")
+    logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_ds)}")
     bleu_score, code_bleu_score, em = eval(model, "valid", args, best_checkpoint_path)
     args.stats["valid_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}
 
-    logger.info(f"Testing with best checkpoint on Test set set with size {len(args.test_dataset)}")
+    logger.info(f"Testing with best checkpoint on Test set set with size {len(args.test_ds)}")
     bleu_score, code_bleu_score, em = eval(model, "test", args, args.output_dir)
     args.stats["test_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}
 
@@ -50,9 +53,9 @@ def test(args):
 def eval(model, split, args, save_dir):
     logger = get_logger("MAIN", log_level=args.log_level)
     if split == "valid":
-        dataset = args.valid_dataset
+        dataset = args.valid_ds
     elif split == "test":
-        dataset = args.test_dataset
+        dataset = args.test_ds
 
     start = datetime.now()
 

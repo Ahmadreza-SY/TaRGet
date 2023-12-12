@@ -54,6 +54,7 @@ def main():
     add_common_arguments(test_parser)
     test_parser.add_argument("-de", "--data_encoder", required=True, type=str)
     test_parser.add_argument("-bs", "--beam_size", default=5, type=int)
+    test_parser.add_argument("-mpr", "--mask_projects", default=None, type=lambda s: s.split(","))
 
     args = parser.parse_args()
     args.random_seed = 1234
