@@ -1,4 +1,4 @@
-# Automatic Broken Test Case Repair using Large Language Models
+# TaRGet: Automated Test Case Repair Using Large Language Models
 
 
 ## Table of Contents
@@ -7,16 +7,18 @@
 - [Study Replication Instructions](#study-replication-instructions)
 - [Data Collection Instructions](#data-collection-instructions)
 
-
 ## Introduction
-TODO: Define ATR and our contributions
+In this work, we introduce TaRGet and TaRBench, both of which are elaborated on in the subsequent sections.
 
-### Publication
-TODO: Add arxiv preprint
+### TaRGet
+Ensuring the quality of software systems through testing is a critical aspect of software development. However, the maintenance of test cases presents significant challenges, both in terms of complexity and cost. The constant need for updates to align with evolving systems under test can result in broken test cases, leading to a deterioration in test suite quality and disruptions in the software development process. To address these challenges, we introduce TaRGet (Test Repair GEneraTor), an approach that leverages pre-trained code language models for automated test case repair. TaRGet treats test repair as a language translation task and employs a two-step process to fine-tune a language model using essential context data that characterizes test breakages.
+
+<!-- ### Publication
+TODO: Add once published -->
 
 
-## Dataset Overview
-We will publicly publish the dataset of this work once its paper is accepted.
+### TaRBench
+TaRBench is a comprehensive benchmark that we developed to evaluate the effectiveness of TaRGet in automated test case repair. The benchmark encompasses 45,373 broken test repairs across 59 open-source projects, providing a diverse and extensive dataset for assessing the capabilities of TaRGet. TaRBench data and detailed information can be accessed at: https://figshare.com/s/77598ce966e625c75f5a
 
 
 ## Study Replication Instructions
