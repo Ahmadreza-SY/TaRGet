@@ -32,8 +32,8 @@ pip install -r requirements.txt
 
 To run each fine-tuning experiment, three commands should be executed sequentially: `encode`, `finetune`, and `test`. First, the data is encoded, preparing it for the language model. Then, the fine-tuning is executed, and finally, the fine-tuned model is tested against the evaluation set to generate repairs. All three commands share the following arguments:
 
-Argument       | Description
--------------- | ---
+&nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; | Description &nbsp;
+--- | ---
 `--model`      | The name of the CLM, with possible values being `plbart`, `codegen`, or `codet5p`.
 `--model_path` | The path to the CLM, which can be either a Hugging Face model name (e.g., `Salesforce/codet5p-770m`) or a path in the local machine (e.g., `/home/ahmad/CodeT5plus`).
 `--output_dir` | The output directory to store both data and results.
@@ -44,7 +44,7 @@ Argument       | Description
 ### The `encode` Command
 The `encode` command uses TaRBench or a similar benchmark to create and encode inputs and outputs for a specified language model. The input and output formattings (IOs) are defined in our paper. Upon successful execution, this commands creates multiple files in the specified output directory under the `splits` folder. This files include `train.pkl`, `valid.pkl`, and `test.pkl`, along with their corresponding `.json` formats. The `.pkl` files are Python pickles containing the encoded data, while the `.json` files present the inputs and outputs in text format. This command takes the following arguments:
 
-Argument | Description
+&nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
 --- | ---
 `--dataset_dir` | The path to TaRBench or a similar benchmark.
 `--data_encoder` | The data encoder type, defining the IO during encoding. Possible values include: `Base`, `SimOrder`, `WordLevel`, `EditSeq`, and `NoContext`. Refer to our paper for detailed definitions.
@@ -53,8 +53,11 @@ Argument | Description
 `--mask_projects` | A comma-separated list of project names to exclude from the training data. The default value is `None`. This argument is relevant to addressing specific research questions.
 
 Example of the `encode` command:
-```bash
-python main.py encode --model codet5p --model_path Salesforce/codet5p-770m --output_dir ./results/codet5p-770m_SimOrder --dataset_dir ./TaRBench/projects --data_encoder SimOrder --max_length 512
+```consle
+python main.py encode \
+  --model codet5p --model_path Salesforce/codet5p-770m \
+  --output_dir ./results/codet5p-770m_SimOrder --dataset_dir ./TaRBench/projects \
+  --data_encoder SimOrder --max_length 512
 ```
 
 ### The `finetune` Command
@@ -69,13 +72,16 @@ Argument | Description
 
 Example of the `finetune` command:
 ```bash
-python main.py finetune --model codet5p --model_path Salesforce/codet5p-770m --output_dir ./results/codet5p-770m_SimOrder --max_length 512 --batch_size 1 --epochs 4 --learning_rate 1e-5 --early_stop 1
+python main.py finetune \
+  --model codet5p --model_path Salesforce/codet5p-770m \
+  --output_dir ./results/codet5p-770m_SimOrder --max_length 512 \
+  --batch_size 1 --epochs 4 --learning_rate 1e-5 --early_stop 1
 ```
 
 ### The `test` Command
 The `test` command loads the best model checkpoint from the fine-tuning process and uses it to generate test repair candidates for the evaluation dataset, including both the test and validation sets. As a result, it saves the predictions in the `test_predictions.json` and `checkpoint-best/valid_predictions.json` files. This command takes the following arguments:
 
-Argument | Description
+&nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
 --- | ---
 `--data_encoder` | The data encoder type, defining the IO during encoding. Possible values include: `Base`, `SimOrder`, `WordLevel`, `EditSeq`, and `NoContext`. Refer to our paper for detailed definitions.
 `--beam_size` | The number of test repair candidates to generate for each test repair instance, using the beam search strategy.
@@ -83,7 +89,9 @@ Argument | Description
 
 Example of the `test` command:
 ```bash
-python main.py test --model codet5p --model_path salesforce/codet5p-770m --output_dir ./results/rqs/codet5p-770m_SimOrder --max_length 512 --beam_size 40 --data_encoder SimOrder
+python main.py test --model codet5p --model_path salesforce/codet5p-770m \
+--output_dir ./results/rqs/codet5p-770m_SimOrder --max_length 512 \
+--beam_size 40 --data_encoder SimOrder
 ```
 
 TODO: For each RQ, provide general instructions on how to run corresponding experiments.
