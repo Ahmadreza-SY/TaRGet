@@ -44,7 +44,7 @@ To run each fine-tuning experiment, three commands should be executed sequential
 ### The `encode` Command
 The `encode` command uses TaRBench or a similar benchmark to create and encode inputs and outputs for a specified language model. The input and output formattings (IOs) are defined in our paper. Upon successful execution, this commands creates multiple files in the specified output directory under the `splits` folder. This files include `train.pkl`, `valid.pkl`, and `test.pkl`, along with their corresponding `.json` formats. The `.pkl` files are Python pickles containing the encoded data, while the `.json` files present the inputs and outputs in text format. This command takes the following arguments:
 
-&nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
+&nbsp; &nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
 --- | ---
 `--dataset_dir` | The path to TaRBench or a similar benchmark.
 `--data_encoder` | The data encoder type, defining the IO during encoding. Possible values include: `Base`, `SimOrder`, `WordLevel`, `EditSeq`, and `NoContext`. Refer to our paper for detailed definitions.
@@ -63,7 +63,7 @@ python main.py encode \
 ### The `finetune` Command
 The `finetune` command reads the encoded data from the `.pkl` files and performs fine-tuning on the CLM for the test repair task. Upon completion, it stores the best checkpoint of the fine-tuned model in the `checkpoint-best` directory within the specified output directory. This command takes the following arguments:
 
-Argument | Description
+&nbsp; Argument &nbsp; &nbsp; &nbsp; | Description
 --- | ---
 `--batch_size` | Batch size for both training and validation.
 `--epochs` | The number of epochs for the fine-tuning process.
@@ -81,7 +81,7 @@ python main.py finetune \
 ### The `test` Command
 The `test` command loads the best model checkpoint from the fine-tuning process and uses it to generate test repair candidates for the evaluation dataset, including both the test and validation sets. As a result, it saves the predictions in the `test_predictions.json` and `checkpoint-best/valid_predictions.json` files. This command takes the following arguments:
 
-&nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
+&nbsp; &nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
 --- | ---
 `--data_encoder` | The data encoder type, defining the IO during encoding. Possible values include: `Base`, `SimOrder`, `WordLevel`, `EditSeq`, and `NoContext`. Refer to our paper for detailed definitions.
 `--beam_size` | The number of test repair candidates to generate for each test repair instance, using the beam search strategy.
