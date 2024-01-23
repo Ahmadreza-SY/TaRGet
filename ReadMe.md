@@ -113,8 +113,45 @@ The `test` command loads the best model checkpoint from the fine-tuning process 
 Example of the `test` command:
 ```
 python main.py test --model codet5p --model_path salesforce/codet5p-770m \
---output_dir ./results/rqs/codet5p-770m_SimOrder --max_length 512 \
+--output_dir ./results/codet5p-770m_SimOrder --max_length 512 \
 --beam_size 40 --data_encoder SimOrder
+```
+
+### Executing Repair Candidates
+To determine the plausible repair accuracy (PR) in our study, we execute the repair candidates using the `test_run.py` and `test_run_stats.py` files. For each test repair instance identified by a unique ID in the `test_predictions.json` file, run the `test_run.py` with the following arguments:
+```console
+--output-path    Directory where all the outputs are stored.
+
+--repo-path      Repository directory where tests will be executed.
+
+--java-homes     Path to a JSON file containing Java homes for various 
+                 Java versions.
+
+--test-index     Index of the row to execute from the test set.
+
+--m2-path        Custom path for Maven local repository.
+```
+
+Example of the Java homes file:
+```json
+{
+    "8": "/var/lib/.sdkman/candidates/java/8.0.302-open",
+    "11": "/var/lib/.sdkman/candidates/java/11.0.12-open",
+    "17": "/var/lib/.sdkman/candidates/java/17.0.7-tem",
+}
+```
+
+Example of running the `test_run.py` file:
+```
+python test_run.py --test-index 0 \
+    --output_path ./results/codet5p-770m_SimOrder \
+    --repo-path ./repo/apache/druid --m2-path /home/ahmad/.m2 \
+    -j /home/ahmad/java_homes.json
+```
+
+Finally, execute the `test_run_stats.py` to aggregate the results from all `test_run.py` executions. The aggregated results will be stored in the `test_verdicts.json` file:
+```
+python test_run_stats.py --output-path ./results/codet5p-770m_SimOrder
 ```
 
 TODO: For each RQ, provide general instructions on how to run corresponding experiments.
