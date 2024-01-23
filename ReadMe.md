@@ -1,6 +1,5 @@
 # TaRGet: Automated Test Case Repair Using Large Language Models
 
-
 ## Table of Contents
 - [Introduction](#introduction)
 - [Dataset Overview](#dataset-overview)
@@ -26,34 +25,49 @@ TaRBench is a comprehensive benchmark that we developed to evaluate the effectiv
 We conducted our experiments using Python 3.8. Also, Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2, was utilized for executing test cases. The specific JDK version depended on the compiler version specified in the project's pom.xml file.
 
 To begin, install the required Python packages using the following command:
-```bash
+```
 pip install -r requirements.txt
 ```
 
 To run each fine-tuning experiment, three commands should be executed sequentially: `encode`, `finetune`, and `test`. First, the data is encoded, preparing it for the language model. Then, the fine-tuning is executed, and finally, the fine-tuned model is tested against the evaluation set to generate repairs. All three commands share the following arguments:
+```console
+--model        The name of the CLM, with possible values being 'plbart', 
+               'codegen', or 'codet5p'.
 
-&nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; | Description &nbsp;
---- | ---
-`--model`      | The name of the CLM, with possible values being `plbart`, `codegen`, or `codet5p`.
-`--model_path` | The path to the CLM, which can be either a Hugging Face model name (e.g., `Salesforce/codet5p-770m`) or a path in the local machine (e.g., `/home/ahmad/CodeT5plus`).
-`--output_dir` | The output directory to store both data and results.
-`--max_length` | The maximum token length used for encoding inputs and outputs for the CLM; in our experiments, it is consistently set to 512.
+--model_path   The path to the CLM, which can be either a Hugging Face model 
+               name (e.g., 'Salesforce/codet5p-770m') or a path on the local 
+               machine (e.g., '/home/ahmad/CodeT5plus').
+
+--output_dir   The output directory to store both data and results.
+
+--max_length   The maximum token length used for encoding inputs and outputs
+               for the CLM; in our experiments, it is always set to 512.
+```
 
 **Ensure that all commands are executed within the `fine-tuning` directory for proper functionality.** The details for each command are outlined below.
 
 ### The `encode` Command
 The `encode` command uses TaRBench or a similar benchmark to create and encode inputs and outputs for a specified language model. The input and output formattings (IOs) are defined in our paper. Upon successful execution, this commands creates multiple files in the specified output directory under the `splits` folder. This files include `train.pkl`, `valid.pkl`, and `test.pkl`, along with their corresponding `.json` formats. The `.pkl` files are Python pickles containing the encoded data, while the `.json` files present the inputs and outputs in text format. This command takes the following arguments:
+```console
+--dataset_dir     The path to TaRBench or a similar benchmark.
 
-&nbsp; &nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
---- | ---
-`--dataset_dir` | The path to TaRBench or a similar benchmark.
-`--data_encoder` | The data encoder type, defining the IO during encoding. Possible values include: `Base`, `SimOrder`, `WordLevel`, `EditSeq`, and `NoContext`. Refer to our paper for detailed definitions.
-`--train_size` | The ratio of the training data; Always set to 0.8 in our experiments.
-`--train_fraction` | The fraction of training data to use for fine-tuning, with a default value of 1.0. This argument is relevant to addressing specific research questions.
-`--mask_projects` | A comma-separated list of project names to exclude from the training data. The default value is `None`. This argument is relevant to addressing specific research questions.
+--data_encoder    The data encoder type, defining the IO during encoding. 
+                  Possible values include: 'Base', 'SimOrder', 'WordLevel', 
+                  'EditSeq', and 'NoContext'. Refer to our paper for detailed definitions.
+
+--train_size      The ratio of the training data; Always set to 0.8 in our experiments.
+
+--train_fraction  The fraction of training data to use for fine-tuning, with a 
+                  default value of 1.0. This argument is relevant to addressing 
+                  specific research questions.
+
+--mask_projects   A comma-separated list of project names to exclude from the 
+                  training data. The default value is 'None'. This argument is 
+                  relevant to addressing specific research questions.
+```
 
 Example of the `encode` command:
-```consle
+```
 python main.py encode \
   --model codet5p --model_path Salesforce/codet5p-770m \
   --output_dir ./results/codet5p-770m_SimOrder --dataset_dir ./TaRBench/projects \
@@ -62,16 +76,19 @@ python main.py encode \
 
 ### The `finetune` Command
 The `finetune` command reads the encoded data from the `.pkl` files and performs fine-tuning on the CLM for the test repair task. Upon completion, it stores the best checkpoint of the fine-tuned model in the `checkpoint-best` directory within the specified output directory. This command takes the following arguments:
+```console
+--batch_size      Batch size for both training and validation.
 
-&nbsp; Argument &nbsp; &nbsp; &nbsp; | Description
---- | ---
-`--batch_size` | Batch size for both training and validation.
-`--epochs` | The number of epochs for the fine-tuning process.
-`--learning_rate` | The value for the learning rate during fine-tuning.
-`--early_stop` | The number of epochs to continues training while the validation loss does not show improvement.
+--epochs          The number of epochs for the fine-tuning process.
+
+--learning_rate   The value for the learning rate during fine-tuning.
+
+--early_stop      The number of epochs to continue training while the validation 
+                  loss does not show improvement.
+```
 
 Example of the `finetune` command:
-```bash
+```
 python main.py finetune \
   --model codet5p --model_path Salesforce/codet5p-770m \
   --output_dir ./results/codet5p-770m_SimOrder --max_length 512 \
@@ -80,15 +97,21 @@ python main.py finetune \
 
 ### The `test` Command
 The `test` command loads the best model checkpoint from the fine-tuning process and uses it to generate test repair candidates for the evaluation dataset, including both the test and validation sets. As a result, it saves the predictions in the `test_predictions.json` and `checkpoint-best/valid_predictions.json` files. This command takes the following arguments:
+```console
+--data_encoder    The data encoder type, defining the IO during encoding. 
+                  Possible values include: 'Base', 'SimOrder', 'WordLevel', 
+                  'EditSeq', and 'NoContext'. Refer to our paper for detailed definitions.
 
-&nbsp; &nbsp; &nbsp; &nbsp; Argument &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description
---- | ---
-`--data_encoder` | The data encoder type, defining the IO during encoding. Possible values include: `Base`, `SimOrder`, `WordLevel`, `EditSeq`, and `NoContext`. Refer to our paper for detailed definitions.
-`--beam_size` | The number of test repair candidates to generate for each test repair instance, using the beam search strategy.
-`--mask_projects` | A comma-separated list of project names to exclude from the evaluation data. The default value is None. This argument is relevant to addressing specific research questions.
+--beam_size       The number of test repair candidates to generate for each test 
+                  repair instance, using the beam search strategy.
+
+--mask_projects   A comma-separated list of project names to exclude from the 
+                  evaluation data. The default value is 'None'. This argument is 
+                  relevant to addressing specific research questions.
+```
 
 Example of the `test` command:
-```bash
+```
 python main.py test --model codet5p --model_path salesforce/codet5p-770m \
 --output_dir ./results/rqs/codet5p-770m_SimOrder --max_length 512 \
 --beam_size 40 --data_encoder SimOrder
