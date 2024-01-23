@@ -1,0 +1,4 @@
+python main.py encode --model codet5p --model_path salesforce/codet5p-770m --output_dir ./results/codet5p-770m_SimOrder_0.2 --dataset_dir ./TaRBench/projects --data_encoder SimOrder --max_length 512 --train_fraction 0.2
+python main.py encode --model codet5p --model_path salesforce/codet5p-770m --output_dir ./results/codet5p-770m_SimOrder_0.4 --dataset_dir ./TaRBench/projects --data_encoder SimOrder --max_length 512 --train_fraction 0.4
+python main.py encode --model codet5p --model_path salesforce/codet5p-770m --output_dir ./results/codet5p-770m_SimOrder_0.6 --dataset_dir ./TaRBench/projects --data_encoder SimOrder --max_length 512 --train_fraction 0.6
+python main.py encode --model codet5p --model_path salesforce/codet5p-770m --output_dir ./results/codet5p-770m_SimOrder_0.8 --dataset_dir ./TaRBench/projects --data_encoder SimOrder --max_length 512 --train_fraction 0.8

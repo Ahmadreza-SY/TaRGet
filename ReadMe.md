@@ -41,7 +41,7 @@ To run each fine-tuning experiment, three commands should be executed sequential
 --output_dir   The output directory to store both data and results.
 
 --max_length   The maximum token length used for encoding inputs and outputs
-               for the CLM; in our experiments, it is always set to 512.
+               for the CLM.
 ```
 
 **Ensure that all commands are executed within the `fine-tuning` directory for proper functionality.** The details for each command are outlined below.
@@ -53,9 +53,9 @@ The `encode` command uses TaRBench or a similar benchmark to create and encode i
 
 --data_encoder    The data encoder type, defining the IO during encoding. 
                   Possible values include: 'Base', 'SimOrder', 'WordLevel', 
-                  'EditSeq', and 'NoContext'. Refer to our paper for detailed definitions.
+                  'EditSequence', and 'NoContext'. Refer to our paper for detailed definitions.
 
---train_size      The ratio of the training data; Always set to 0.8 in our experiments.
+--train_size      The ratio of the training data.
 
 --train_fraction  The fraction of training data to use for fine-tuning, with a 
                   default value of 1.0. This argument is relevant to addressing 
@@ -100,7 +100,7 @@ The `test` command loads the best model checkpoint from the fine-tuning process 
 ```console
 --data_encoder    The data encoder type, defining the IO during encoding. 
                   Possible values include: 'Base', 'SimOrder', 'WordLevel', 
-                  'EditSeq', and 'NoContext'. Refer to our paper for detailed definitions.
+                  'EditSequence', and 'NoContext'. Refer to our paper for detailed definitions.
 
 --beam_size       The number of test repair candidates to generate for each test 
                   repair instance, using the beam search strategy.
@@ -117,8 +117,13 @@ python main.py test --model codet5p --model_path salesforce/codet5p-770m \
 --beam_size 40 --data_encoder SimOrder
 ```
 
+### Reproduction
+To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the `reproduction` folder. For each RQ, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. The scripts cover RQ1, RQ3.1, and RQ3.2. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
+
+It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's Accelerate library to perform multi-GPU training, with the configuration specified in the `reproduction/accel_config.yaml` file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
+
 ### Executing Repair Candidates
-To determine the plausible repair accuracy (PR) in our study, we execute the repair candidates using the `test_run.py` and `test_run_stats.py` files. For each test repair instance identified by a unique ID in the `test_predictions.json` file, run the `test_run.py` with the following arguments:
+To determine the plausible repair accuracy (PR) in our study, we executed the repair candidates using the `test_run.py` and `test_run_stats.py` files. For each test repair instance identified by a unique ID in the `test_predictions.json` file, run the `test_run.py` with the following arguments:
 ```console
 --output-path    Directory where all the outputs are stored.
 
@@ -153,9 +158,6 @@ Finally, execute the `test_run_stats.py` to aggregate the results from all `test
 ```
 python test_run_stats.py --output-path ./results/codet5p-770m_SimOrder
 ```
-
-TODO: For each RQ, provide general instructions on how to run corresponding experiments.
-
 
 ## Data Collection Instructions
 Run this command to build `jparser` (required to run the python scripts):
