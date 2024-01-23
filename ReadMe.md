@@ -151,7 +151,7 @@ Example of running the `test_run.py` file:
 python test_run.py --test-index 0 \
     --output_path ./results/codet5p-770m_SimOrder \
     --repo-path ./repo/apache/druid --m2-path /home/ahmad/.m2 \
-    -j /home/ahmad/java_homes.json
+    --java-homes /home/ahmad/java_homes.json
 ```
 
 Finally, execute the `test_run_stats.py` to aggregate the results from all `test_run.py` executions. The aggregated results will be stored in the `test_verdicts.json` file:
@@ -159,19 +159,31 @@ Finally, execute the `test_run_stats.py` to aggregate the results from all `test
 python test_run_stats.py --output-path ./results/codet5p-770m_SimOrder
 ```
 
-## Data Collection Instructions
-Run this command to build `jparser` (required to run the python scripts):
-```bash
+## Test Case Repair Collection
+In this repository, we provide the code used to collect test repairs and create TaRBench, our test case repair benchmark. The relevant code is located in the `repair-collection` folder. Below, we guide you on utilizing this tool to collect test case repair data from open-source Java Maven projects on GitHub.
+
+Our data collection tool includes both Python scripts and Java code. Specifically, we use Python 3.8, Java 11.0.16, and Maven 3.6.3. Before running the main data collection script, run the following command in the `repair-collection` folder to build `jparser`—the essential Java component of our tool:
+```
 mvn clean package assembly:single -f jparser
 ```
 
-First, run the following command to collect the repository's required raw data from GitHub:
-```bash
-python -u main.py gh_tags -r <repo> -o <output_path>
-```
-where the `<repo>` is the repository's (`<username>/<reponame>`, for example: `apache/spark`) and the `<output_path>` points to the path that the data is saved.
+Once the `jparser.jar` is created, run the `main.py` command to collect test case repairs using the following arguments:
+```console
+--repository       Login and name of the GitHub repository seperated by '/'.
 
-Then, the following command processes the raw data and creates the test case repair dataset (use the same `<repo>` and `<output_path>` as the previous command):
-```bash
-python -u main.py dataset -r <repo> -o <output_path>
+--output-path      The directory to save the resulting data.
+
+--java-homes       Path to a JSON file containing Java homes for various 
+                   Java versions (similar to test_run.py).
+
+--m2-path          Custom path for maven local repository.
 ```
+
+Example for collecting data for the `apache/druid` project:
+```
+python main.py --repository apached/druid \
+    --output_path ./benchmark/apache/druid \
+    --m2-path /home/ahmad/.m2 \
+    --java-homes /home/ahmad/java_homes.json
+```
+The provided command automatically clones the repository, analyzes the commit history, identifies potential test case repairs, executes test cases to validate the repairs, and mines the changes in the repair commits. For a more in-depth understanding of the data collection procedure, please refer to our paper.
