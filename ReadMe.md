@@ -32,14 +32,14 @@ pip install -r requirements.txt
 
 To run each fine-tuning experiment, three commands should be executed sequentially: `encode`, `finetune`, and `test`. First, the data is encoded, preparing it for the language model. Then, the fine-tuning is executed, and finally, the fine-tuned model is tested against the evaluation set to generate repairs. All three commands share the following arguments:
 
-Argument | Description
---- | ---
-`--model` | The name of the CLM, with possible values being `plbart`, `codegen`, or `codet5p`.
+Argument       | Description
+-------------- | ---
+`--model`      | The name of the CLM, with possible values being `plbart`, `codegen`, or `codet5p`.
 `--model_path` | The path to the CLM, which can be either a Hugging Face model name (e.g., `Salesforce/codet5p-770m`) or a path in the local machine (e.g., `/home/ahmad/CodeT5plus`).
 `--output_dir` | The output directory to store both data and results.
 `--max_length` | The maximum token length used for encoding inputs and outputs for the CLM; in our experiments, it is consistently set to 512.
 
-**Ensure that all commands are executed within the `fine-tuning` for proper functionality.** The details for each command are outlined below.
+**Ensure that all commands are executed within the `fine-tuning` directory for proper functionality.** The details for each command are outlined below.
 
 ### The `encode` Command
 The `encode` command uses TaRBench or a similar benchmark to create and encode inputs and outputs for a specified language model. The input and output formattings (IOs) are defined in our paper. Upon successful execution, this commands creates multiple files in the specified output directory under the `splits` folder. This files include `train.pkl`, `valid.pkl`, and `test.pkl`, along with their corresponding `.json` formats. The `.pkl` files are Python pickles containing the encoded data, while the `.json` files present the inputs and outputs in text format. This command takes the following arguments:
