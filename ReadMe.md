@@ -1,4 +1,4 @@
-# TaRGet: Automated Test Case Repair Using Large Language Models
+# TaRGet: Automated Test Case Repair Using Language Models
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -7,6 +7,7 @@
     - [The `finetune` Command](#the-finetune-command)
     - [The `test` Command](#the-test-command)
     - [Study Reproduction](#study-reproduction)
+    - [Executing Repair Candidates](#executing-repair-candidates)
 - [Test Case Repair Data Collection](#test-case-repair-data-collection)
 
 ## Introduction
