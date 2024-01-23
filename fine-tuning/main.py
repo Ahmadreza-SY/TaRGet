@@ -5,8 +5,6 @@ from pathlib import Path
 from transformers import (
     PLBartForConditionalGeneration,
     PLBartTokenizer,
-    RobertaTokenizerFast,
-    T5ForConditionalGeneration,
     AutoTokenizer,
     CodeGenForCausalLM,
     AutoModelForSeq2SeqLM,
@@ -60,11 +58,7 @@ def main():
     args.random_seed = 1234
     args.output_dir = Path(args.output_dir)
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
-    if args.model == "codet5":
-        args.model_class = T5ForConditionalGeneration
-        args.model_tokenizer_class = RobertaTokenizerFast
-        args.dataset_class = EncDecDataset
-    elif args.model == "plbart":
+    if args.model == "plbart":
         args.model_class = PLBartForConditionalGeneration
         args.model_tokenizer_class = PLBartTokenizer
         args.dataset_class = PLBARTDataset
@@ -81,7 +75,7 @@ def main():
 
 
 def add_common_arguments(sub_parser):
-    sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codet5", "codegen", "codet5p"])
+    sub_parser.add_argument("-m", "--model", required=True, type=str, choices=["plbart", "codegen", "codet5p"])
     sub_parser.add_argument("-mp", "--model_path", type=str)
     sub_parser.add_argument(
         "-o", "--output_dir", required=True, type=str, help="output directory to save models and predictions"
