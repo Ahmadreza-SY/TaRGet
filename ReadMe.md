@@ -2,9 +2,12 @@
 
 ## Table of Contents
 - [Introduction](#introduction)
-- [Dataset Overview](#dataset-overview)
-- [Study Replication Instructions](#study-replication-instructions)
-- [Data Collection Instructions](#data-collection-instructions)
+- [Experiment Execution](#experiment-execution)
+    - [The `encode` Command](#the-encode-command)
+    - [The `finetune` Command](#the-finetune-command)
+    - [The `test` Command](#the-test-command)
+    - [Study Reproduction](#study-reproduction)
+- [Test Case Repair Data Collection](#test-case-repair-data-collection)
 
 ## Introduction
 In this work, we introduce TaRGet and TaRBench, both of which are elaborated on in the subsequent sections.
@@ -20,7 +23,7 @@ TODO: Add once published -->
 TaRBench is a comprehensive benchmark that we developed to evaluate the effectiveness of TaRGet in automated test case repair. The benchmark encompasses 45,373 broken test repairs across 59 open-source projects, providing a diverse and extensive dataset for assessing the capabilities of TaRGet. TaRBench data and detailed information can be accessed at: https://figshare.com/s/77598ce966e625c75f5a
 
 
-## Study Replication Instructions
+## Experiment Execution
 
 We conducted our experiments using Python 3.8. Also, Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2, was utilized for executing test cases. The specific JDK version depended on the compiler version specified in the project's pom.xml file.
 
@@ -117,7 +120,7 @@ python main.py test --model codet5p --model_path salesforce/codet5p-770m \
 --beam_size 40 --data_encoder SimOrder
 ```
 
-### Reproduction
+### Study Reproduction
 To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the `reproduction` folder. For each RQ, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. The scripts cover RQ1, RQ3.1, and RQ3.2. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
 
 It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's Accelerate library to perform multi-GPU training, with the configuration specified in the `reproduction/accel_config.yaml` file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
@@ -159,7 +162,7 @@ Finally, execute the `test_run_stats.py` to aggregate the results from all `test
 python test_run_stats.py --output-path ./results/codet5p-770m_SimOrder
 ```
 
-## Test Case Repair Collection
+## Test Case Repair Data Collection
 In this repository, we provide the code used to collect test repairs and create TaRBench, our test case repair benchmark. The relevant code is located in the `repair-collection` folder. Below, we guide you on utilizing this tool to collect test case repair data from open-source Java Maven projects on GitHub.
 
 Our data collection tool includes both Python scripts and Java code. Specifically, we use Python 3.8, Java 11.0.16, and Maven 3.6.3. Before running the main data collection script, run the following command in the `repair-collection` folder to build `jparser`—the essential Java component of our tool:
