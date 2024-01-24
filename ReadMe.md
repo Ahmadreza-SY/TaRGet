@@ -121,9 +121,9 @@ python main.py test --model codet5p --model_path salesforce/codet5p-770m \
 ```
 
 ### Study Reproduction
-To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the [`reproduction`](./reproduction) folder. For each RQ, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. The scripts cover RQ1, RQ3.1, and RQ3.2. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
+To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the [`reproduction`](./reproduction) folder. For RQ1, RQ3.1, and RQ3.2, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
 
-It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's Accelerate library to perform multi-GPU training, with the configuration specified in the [`accel_config.yaml`](./reproduction/accel_config.yaml) file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
+It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's [Accelerate](https://github.com/huggingface/accelerate) library to perform multi-GPU training, with the configuration specified in the [`accel_config.yaml`](./reproduction/accel_config.yaml) file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
 
 ### Executing Repair Candidates
 To determine the plausible repair accuracy (PR) in our study, we executed the repair candidates using the [`test_run.py`](./fine-tuning/test_run.py) and [`test_run_stats.py`](./fine-tuning/test_run_stats.py) files. For each test repair instance identified by a unique ID in the `test_predictions.json` file, run the `test_run.py` with the following arguments:
