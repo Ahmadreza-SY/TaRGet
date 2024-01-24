@@ -14,7 +14,7 @@
 In this work, we introduce TaRGet and TaRBench, both of which are elaborated on in the subsequent sections.
 
 ### TaRGet
-Ensuring the quality of software systems through testing is a critical aspect of software development. However, the maintenance of test cases presents significant challenges, both in terms of complexity and cost. The constant need for updates to align with evolving systems under test can result in broken test cases, leading to a deterioration in test suite quality and disruptions in the software development process. To address these challenges, we introduce TaRGet (Test Repair GEneraTor), an approach that leverages pre-trained code language models (CLMs) for automated test case repair. TaRGet treats test repair as a language translation task and employs a two-step process to fine-tune a language model using essential context data that characterizes test breakages.
+Ensuring the quality of software systems through testing is a critical aspect of software development. However, the maintenance of test cases presents significant challenges, both in terms of complexity and cost. The constant need for updates to align with evolving systems under test can result in broken test cases, leading to a reduction in test suite quality and disruptions in the software development process. To address these challenges, we introduce TaRGet (Test Repair GEneraTor), an approach that leverages pre-trained code language models (CLMs) for automated test case repair. TaRGet treats test repair as a language translation task and employs a two-step process to fine-tune a language model using essential context data that characterizes test breakages.
 
 <!-- ### Publication
 TODO: Add once published -->
@@ -25,10 +25,7 @@ TaRBench is a comprehensive benchmark that we developed to evaluate the effectiv
 
 
 ## Experiment Execution
-
-We conducted our experiments using Python 3.8. Also, Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2, was utilized for executing test cases. The specific JDK version depended on the compiler version specified in the project's pom.xml file.
-
-To begin, install the required Python packages using the following command:
+We conducted our experiments using Python 3.8. To begin, install the required Python packages using the following command:
 ```
 pip install -r requirements.txt
 ```
@@ -48,16 +45,17 @@ To run each fine-tuning experiment, three commands should be executed sequential
                for the CLM.
 ```
 
-**Ensure that all commands are executed within the `fine-tuning` directory for proper functionality.** The details for each command are outlined below.
+**Ensure that all commands are executed within the [`fine-tuning`](./fine-tuning) directory for proper functionality.** The details for each command are outlined below.
 
 ### The `encode` Command
-The `encode` command uses TaRBench or a similar benchmark to create and encode inputs and outputs for a specified language model. The input and output formattings (IOs) are defined in our paper. Upon successful execution, this commands creates multiple files in the specified output directory under the `splits` folder. This files include `train.pkl`, `valid.pkl`, and `test.pkl`, along with their corresponding `.json` formats. The `.pkl` files are Python pickles containing the encoded data, while the `.json` files present the inputs and outputs in text format. This command takes the following arguments:
+The `encode` command uses TaRBench or a similar benchmark to create and encode inputs and outputs for a specified language model. The input and output formattings (IOs) are defined in our paper. Upon successful execution, this command creates multiple files in the specified output directory under the `splits` folder. These files include `train.pkl`, `valid.pkl`, and `test.pkl`, along with their corresponding `.json` formats. The `.pkl` files are Python pickles containing the encoded data, while the `.json` files present the inputs and outputs in text format. This command takes the following arguments:
 ```console
 --dataset_dir     The path to TaRBench or a similar benchmark.
 
 --data_encoder    The data encoder type, defining the IO during encoding. 
                   Possible values include: 'Base', 'SimOrder', 'WordLevel', 
-                  'EditSequence', and 'NoContext'. Refer to our paper for detailed definitions.
+                  'EditSequence', and 'NoContext'. Refer to our paper for 
+                  detailed definitions.
 
 --train_size      The ratio of the training data.
 
@@ -87,8 +85,8 @@ The `finetune` command reads the encoded data from the `.pkl` files and performs
 
 --learning_rate   The value for the learning rate during fine-tuning.
 
---early_stop      The number of epochs to continue training while the validation 
-                  loss does not show improvement.
+--early_stop      The number of epochs to continue training while the 
+                  validation loss does not show improvement.
 ```
 
 Example of the `finetune` command:
@@ -104,7 +102,8 @@ The `test` command loads the best model checkpoint from the fine-tuning process 
 ```console
 --data_encoder    The data encoder type, defining the IO during encoding. 
                   Possible values include: 'Base', 'SimOrder', 'WordLevel', 
-                  'EditSequence', and 'NoContext'. Refer to our paper for detailed definitions.
+                  'EditSequence', and 'NoContext'. Refer to our paper for 
+                  detailed definitions.
 
 --beam_size       The number of test repair candidates to generate for each test 
                   repair instance, using the beam search strategy.
@@ -122,12 +121,12 @@ python main.py test --model codet5p --model_path salesforce/codet5p-770m \
 ```
 
 ### Study Reproduction
-To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the `reproduction` folder. For each RQ, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. The scripts cover RQ1, RQ3.1, and RQ3.2. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
+To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the [`reproduction`](./reproduction) folder. For each RQ, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. The scripts cover RQ1, RQ3.1, and RQ3.2. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
 
-It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's Accelerate library to perform multi-GPU training, with the configuration specified in the `reproduction/accel_config.yaml` file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
+It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's Accelerate library to perform multi-GPU training, with the configuration specified in the [`accel_config.yaml`](./reproduction/accel_config.yaml) file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
 
 ### Executing Repair Candidates
-To determine the plausible repair accuracy (PR) in our study, we executed the repair candidates using the `test_run.py` and `test_run_stats.py` files. For each test repair instance identified by a unique ID in the `test_predictions.json` file, run the `test_run.py` with the following arguments:
+To determine the plausible repair accuracy (PR) in our study, we executed the repair candidates using the [`test_run.py`](./fine-tuning/test_run.py) and [`test_run_stats.py`](./fine-tuning/test_run_stats.py) files. For each test repair instance identified by a unique ID in the `test_predictions.json` file, run the `test_run.py` with the following arguments:
 ```console
 --output-path    Directory where all the outputs are stored.
 
@@ -141,7 +140,7 @@ To determine the plausible repair accuracy (PR) in our study, we executed the re
 --m2-path        Custom path for Maven local repository.
 ```
 
-Example of the Java homes file:
+We used Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2 for executing test cases. The specific JDK version depended on the compiler version specified in the project's pom.xml file. Example of the Java homes file:
 ```json
 {
     "8": "/var/lib/.sdkman/candidates/java/8.0.302-open",
@@ -164,14 +163,14 @@ python test_run_stats.py --output-path ./results/codet5p-770m_SimOrder
 ```
 
 ## Test Case Repair Data Collection
-In this repository, we provide the code used to collect test repairs and create TaRBench, our test case repair benchmark. The relevant code is located in the `repair-collection` folder. Below, we guide you on utilizing this tool to collect test case repair data from open-source Java Maven projects on GitHub.
+In this repository, we provide the code used to collect test repairs and create TaRBench, our test case repair benchmark. The relevant code is located in the [`repair-collection`](./repair-collection) folder. Below, we guide you on utilizing this tool to collect test case repair data from open-source Java Maven projects on GitHub.
 
 Our data collection tool includes both Python scripts and Java code. Specifically, we use Python 3.8, Java 11.0.16, and Maven 3.6.3. Before running the main data collection script, run the following command in the `repair-collection` folder to build `jparser`—the essential Java component of our tool:
 ```
 mvn clean package assembly:single -f jparser
 ```
 
-Once the `jparser.jar` is created, run the `main.py` command to collect test case repairs using the following arguments:
+Once the `jparser.jar` is created, run the [`main.py`](./repair-collection/main.py) command to collect test case repairs using the following arguments:
 ```console
 --repository       Login and name of the GitHub repository seperated by '/'.
 
