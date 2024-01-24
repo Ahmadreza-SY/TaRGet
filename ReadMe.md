@@ -21,7 +21,7 @@ TODO: Add once published -->
 
 
 ### TaRBench
-TaRBench is a comprehensive benchmark that we developed to evaluate the effectiveness of TaRGet in automated test case repair. The benchmark encompasses 45,373 broken test repairs across 59 open-source projects, providing a diverse and extensive dataset for assessing the capabilities of TaRGet. TaRBench data and detailed information can be accessed at: https://figshare.com/s/77598ce966e625c75f5a
+TaRBench is a comprehensive benchmark that we developed to evaluate the effectiveness of TaRGet in automated test case repair. The benchmark encompasses 45,373 broken test repairs across 59 open-source projects, providing a diverse and extensive dataset for assessing the capabilities of TaRGet. TaRBench data and detailed information can be accessed at: [https://figshare.com/s/77598ce966e625c75f5a](https://figshare.com/s/77598ce966e625c75f5a)
 
 
 ## Experiment Execution
@@ -121,7 +121,7 @@ python main.py test --model codet5p --model_path salesforce/codet5p-770m \
 ```
 
 ### Study Reproduction
-To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the [`reproduction`](./reproduction) folder. For RQ1, RQ3.1, and RQ3.2, exclusive bash script files contain the `encode`, `finetune`, and `test` commands. RQ2.1 and RQ2.2 are analytical and exclude fine-tuning experiments. Refer to our paper for more details. 
+To reproduce the results of our research questions (RQs), execute the provided commands located in the scripts within the [`reproduction`](./reproduction) folder. We provide bash scripts for RQ1, RQ3.1, and RQ3.2 containing the `encode`, `finetune`, and `test` commands. However, RQ2.1 and RQ2.2 include analysis of the results, hence no fine-tuning commands are available for them. Further details regarding these RQs can be found in our paper.
 
 It is essential to note that the fine-tuning commands begin with `accelerate`. We used Hugging Face's [Accelerate](https://github.com/huggingface/accelerate) library to perform multi-GPU training, with the configuration specified in the [`accel_config.yaml`](./reproduction/accel_config.yaml) file. Our fine-tuning experiments were conducted using two Nvidia Quadro RTX 6000 GPUs, each equipped with 24GB of GPU memory.
 
