@@ -25,7 +25,15 @@ TaRBench is a comprehensive benchmark that we developed to evaluate the effectiv
 
 
 ## Experiment Execution
-We conducted our experiments using Python 3.8. To begin, install the required Python packages using the following command:
+We conducted our experiments using Python 3.8.
+
+Before beginning, it is recommended to create and activate a virtual environment, to avoid conflicts with previously installed Python packages. The following steps are suitable for a Bash terminal, for other types of terminals please refer to the offical documentation: [https://docs.python.org/3/library/venv.html](https://docs.python.org/3/library/venv.html)
+```
+python -m venv /path/to/new/virtual/environment
+source /path/to/new/virtual/environment/bin/activate
+```
+
+To begin, install the required Python packages using the following command:
 ```
 pip install -r requirements.txt
 ```
