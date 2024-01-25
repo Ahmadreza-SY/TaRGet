@@ -140,7 +140,7 @@ To determine the plausible repair accuracy (PR) in our study, we executed the re
 --m2-path        Custom path for Maven local repository.
 ```
 
-We used Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2 for executing test cases. The specific JDK version depended on the compiler version specified in the project's pom.xml file. Example of the Java homes file:
+We used Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2 for executing test cases. The specific JDK version depends on the compiler version specified in the project's pom.xml file. Example of the Java homes file:
 ```json
 {
     "8": "/var/lib/.sdkman/candidates/java/8.0.302-open",
