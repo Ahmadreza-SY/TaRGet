@@ -160,7 +160,7 @@ We used Maven 3.6.3, along with JDK versions 1.8.0_192, 11.0.16_8, or 17.0.2 for
 Example of running the `test_run.py` file:
 ```
 python test_run.py --test-index 0 \
-    --output_path ./results/codet5p-770m_SimOrder \
+    --output-path ./results/codet5p-770m_SimOrder \
     --repo-path ./repo/apache/druid --m2-path /home/ahmad/.m2 \
     --java-homes /home/ahmad/java_homes.json
 ```
@@ -192,8 +192,8 @@ Once the `jparser.jar` is created, run the [`main.py`](./repair-collection/main.
 
 Example for collecting data for the `apache/druid` project:
 ```
-python main.py --repository apached/druid \
-    --output_path ./benchmark/apache/druid \
+python main.py --repository apache/druid \
+    --output-path ./benchmark/apache/druid \
     --m2-path /home/ahmad/.m2 \
     --java-homes /home/ahmad/java_homes.json
 ```
