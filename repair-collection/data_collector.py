@@ -373,3 +373,60 @@ class DataCollector:
         dataset_l.sort(key=lambda r: r["aCommitTime"], reverse=True)
         (self.output_path / "dataset.json").write_text(json.dumps(dataset_l, indent=2, sort_keys=False))
         print(f"Done! Saved {len(dataset)} test repairs.")
+
+
+class CEPROTDataCollector(DataCollector):
+    def __init__(self, repo_name, output_path, ceprot_path):
+        self.repo_name = repo_name
+        self.output_path = Path(output_path)
+        self.ceprot_df = pd.read_csv(ceprot_path)
+        ghapi.get_repo(repo_name)
+
+    def collect_test_repairs(self):
+        print("Phase #1: Identifying changed tests and extracting their changes")
+        self.identify_changed_test_classes()
+        jparser.compare_test_classes(self.output_path)
+        # TODO match changed_tests.json with CEPROT
+        print()
+
+        # print("Phase #2: Detecting broken tests by executing them")
+        # repaired_tests = self.detect_repaired_tests()
+        # if len(repaired_tests) == 0:
+        #     print("No repaired tests found")
+        #     return
+        # print()
+
+        # print("Phase #3: Identifying and extracting covered changes")
+        # repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
+        # self.find_changed_sut_classes(repair_commits)
+        # jparser.extract_covered_changes_info(self.output_path)
+        # self.label_changed_test_sources()
+        # ghapi.cleanup_worktrees(self.repo_name)
+        # print()
+
+        # self.make_dataset(repaired_tests)
+
+        # ErrorStats.report()
+
+    def identify_changed_test_classes(self):
+        changed_test_classes_path = self.output_path / "codeMining" / "changed_test_classes.csv"
+        if changed_test_classes_path.exists():
+            print("Changed tests classes already exists, skipping ...")
+            return
+
+        cerport_df = self.ceprot_df[self.ceprot_df["project"] == self.repo_name]
+        commits_sha = cerport_df["commit"].values.tolist()
+
+        changed_test_classes = []
+        with mp.Pool(initializer=pool_init, initargs=(mp.Lock(),)) as pool:
+            for commit_changed_test_classes in tqdm(
+                pool.imap_unordered(self.get_commit_changed_test_classes, commits_sha),
+                total=len(commits_sha),
+                ascii=True,
+                desc="Identifying changed test classes",
+            ):
+                changed_test_classes.extend(commit_changed_test_classes)
+
+        changed_test_classes = pd.DataFrame(changed_test_classes)
+        changed_test_classes = changed_test_classes[changed_test_classes["b_path"].isin(cerport_df["path"].values.tolist())]
+        changed_test_classes.to_csv(changed_test_classes_path, index=False)

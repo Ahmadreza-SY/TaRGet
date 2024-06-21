@@ -3,11 +3,11 @@ import sys
 sys.path.append("../common")
 from config import Config
 import argparse
-from data_collector import DataCollector
+from data_collector import CEPROTDataCollector
 
 
 def collect_test_repairs(args):
-    collector = DataCollector(args.repository, args.output_path)
+    collector = CEPROTDataCollector(args.repository, args.output_path, args.ceprot_path)
     collector.collect_test_repairs()
 
 
@@ -28,6 +28,13 @@ def main():
         "-o",
         "--output-path",
         help="The directory to save resulting information and data",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "-c",
+        "--ceprot-path",
+        help="The path to CEPROT's test db",
         type=str,
         required=True,
     )
