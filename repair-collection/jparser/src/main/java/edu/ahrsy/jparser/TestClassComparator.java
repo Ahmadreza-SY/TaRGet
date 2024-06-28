@@ -96,7 +96,8 @@ public class TestClassComparator {
     var changedTests = getChangedTests();
     if (changedTests.isEmpty()) return Collections.emptyList();
     // TODO this condition can be removed
-    if (!onlyTestsChanged()) return Collections.emptyList();
+    var onlyTestsChanged = onlyTestsChanged();
+//    if (!onlyTestsChanged()) return Collections.emptyList();
 
     Map<String, List<RefactoringType>> refactorings = RefactoringMinerAPI.mineMethodRefactorings(bSpoon.srcPath,
         aSpoon.srcPath);
@@ -105,28 +106,18 @@ public class TestClassComparator {
       var testName = Spoon.getUniqueName(test.getLeft());
       var change = new Change(testClass.beforePath, testClass.afterPath, testName);
       change.extractHunks(test.getLeft(), test.getRight());
-      if (change.getHunks().size() == 1) {
-        var singleHunkChange = new SingleHunkTestChange(testName,
-            getBeforeTestSource(testName),
-            getAfterTestSource(testName),
-            testClass.beforePath,
-            testClass.afterPath,
-            testClass.beforeCommit,
-            testClass.afterCommit,
-            change.getHunks().get(0),
-            GumTreeUtils.getASTActions(test.getLeft(), test.getRight()),
-            refactorings.getOrDefault(testName, Collections.emptyList()));
-        testChanges.add(singleHunkChange);
-        var brokenPatch = replaceChangedTestWithOriginal(test.getLeft(), test.getRight());
-        var outputFile = Path.of(outputPath,
-            "codeMining",
-            "brokenPatches",
-            testClass.afterCommit,
-            test.getLeft().getTopLevelType().getSimpleName(),
-            test.getLeft().getSimpleName(),
-            testClass.afterPath);
-        IOUtils.saveFile(outputFile, brokenPatch);
-      }
+      var singleHunkChange = new SingleHunkTestChange(testName,
+          getBeforeTestSource(testName),
+          getAfterTestSource(testName),
+          testClass.beforePath,
+          testClass.afterPath,
+          testClass.beforeCommit,
+          testClass.afterCommit,
+          change.getHunks(),
+          GumTreeUtils.getASTActions(test.getLeft(), test.getRight()),
+          refactorings.getOrDefault(testName, Collections.emptyList()),
+          onlyTestsChanged);
+      testChanges.add(singleHunkChange);
     }
     return testChanges;
   }

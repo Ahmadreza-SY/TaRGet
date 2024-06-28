@@ -113,4 +113,7 @@ def get_commit_time(commit, repo_name):
 
 def get_commit(commit_sha, repo_name):
     repo = get_repo(repo_name)
-    return repo.commit(commit_sha)
+    try:
+        return repo.commit(commit_sha)
+    except:
+        return None

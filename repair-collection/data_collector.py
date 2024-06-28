@@ -18,6 +18,7 @@ from coverage_repository import MethodChangesRepository
 import multiprocessing as mp
 from trivial_detector import TrivialDetector
 from error_stats import ErrorStats
+import sys
 
 
 def pool_init(_lock):
@@ -57,6 +58,9 @@ class DataCollector:
 
     def get_commit_changed_test_classes(self, commit_sha):
         commit = ghapi.get_commit(commit_sha, self.repo_name)
+        if commit is None:
+            (self.output_path / "codeMining" / "missing_commits.csv").open("a").write(commit_sha + "\n")
+            return []
         if len(commit.parents) == 0:
             return []
 
@@ -65,8 +69,8 @@ class DataCollector:
         for diff in diffs:
             before, after = ghapi.get_file_versions(diff, commit, self.repo_name)
             if is_test_class(before) and before != after:
-                b_commit = ghapi.get_short_commit(commit.parents[0], self.repo_name)
-                a_commit = ghapi.get_short_commit(commit, self.repo_name)
+                b_commit = commit.parents[0].hexsha
+                a_commit = commit.hexsha
                 commit_changed_test_classes.append(
                     {"b_path": diff.b_path, "a_path": diff.a_path, "b_commit": b_commit, "a_commit": a_commit}
                 )
@@ -380,10 +384,15 @@ class CEPROTDataCollector(DataCollector):
         self.repo_name = repo_name
         self.output_path = Path(output_path)
         self.ceprot_df = pd.read_csv(ceprot_path)
-        ghapi.get_repo(repo_name)
+        try:
+            ghapi.get_repo(repo_name)
+        except:
+            (self.output_path / "missing_repo.csv").open("a").write(repo_name + "\n")
+            print(f"Repo missing from GitHub")
+            sys.exit()
 
     def collect_test_repairs(self):
-        print("Phase #1: Identifying changed tests and extracting their changes")
+        print(f"Phase #1: Identifying changed tests and extracting their changes: {self.repo_name}")
         self.identify_changed_test_classes()
         jparser.compare_test_classes(self.output_path)
         # TODO match changed_tests.json with CEPROT
@@ -428,5 +437,8 @@ class CEPROTDataCollector(DataCollector):
                 changed_test_classes.extend(commit_changed_test_classes)
 
         changed_test_classes = pd.DataFrame(changed_test_classes)
-        changed_test_classes = changed_test_classes[changed_test_classes["b_path"].isin(cerport_df["path"].values.tolist())]
+        if len(changed_test_classes) > 0:
+            changed_test_classes = changed_test_classes[
+                changed_test_classes["b_path"].isin(cerport_df["path"].values.tolist())
+            ]
         changed_test_classes.to_csv(changed_test_classes_path, index=False)

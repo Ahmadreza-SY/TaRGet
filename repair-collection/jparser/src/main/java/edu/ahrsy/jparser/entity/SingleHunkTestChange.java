@@ -13,20 +13,22 @@ public class SingleHunkTestChange {
   public String aPath;
   public String bCommit;
   public String aCommit;
-  public Hunk hunk;
+  public List<Hunk> hunks;
   public List<Action> astActions;
   public List<RefactoringType> refactorings;
+  public Boolean onlyTestsChanged;
 
   public SingleHunkTestChange(String name,
-      TestSource bSource,
-      TestSource aSource,
-      String bPath,
-      String aPath,
-      String bCommit,
-      String aCommit,
-      Hunk hunk,
-      List<Action> astActions,
-      List<RefactoringType> refactorings) {
+                              TestSource bSource,
+                              TestSource aSource,
+                              String bPath,
+                              String aPath,
+                              String bCommit,
+                              String aCommit,
+                              List<Hunk> hunks,
+                              List<Action> astActions,
+                              List<RefactoringType> refactorings,
+                              Boolean onlyTestsChanged) {
     this.name = name;
     this.bSource = bSource;
     this.aSource = aSource;
@@ -34,8 +36,9 @@ public class SingleHunkTestChange {
     this.aPath = aPath;
     this.bCommit = bCommit;
     this.aCommit = aCommit;
-    this.hunk = hunk;
+    this.hunks = hunks;
     this.astActions = astActions;
     this.refactorings = refactorings;
+    this.onlyTestsChanged = onlyTestsChanged;
   }
 }

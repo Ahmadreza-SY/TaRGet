@@ -73,13 +73,10 @@ public class Spoon {
   public List<CtMethod<?>> getTests() {
     if (!buildSucceeded) return Collections.emptyList();
     if (this.testMethods != null) return this.testMethods;
-
-    var refs = Stream.of("org.junit.Test", "org.junit.jupiter.api.Test")
-        .map(refName -> spoon.getFactory().Type().createReference(refName))
-        .toArray(CtTypeReference[]::new);
     this.testMethods = new ArrayList<>();
-    for (var type : spoon.getModel().getAllTypes()) {
-      this.testMethods.addAll(type.getMethodsAnnotatedWith(refs));
+    for (var type : spoon.getModel().getElements(new TypeFilter<>(CtMethod.class))) {
+      if (getOriginalSourceCode(type).contains("@Test") || type.getSimpleName().toLowerCase().contains("test"))
+        this.testMethods.add(type);
     }
     return this.testMethods;
   }

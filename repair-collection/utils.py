@@ -11,8 +11,11 @@ def save_file(content, file_path):
 
 def is_test_class(file_content):
     junit_import = r"import\s+org\.junit\.(Test|\*|jupiter\.api\.(\*|Test))"
-    test_annotation = r"@Test"
-    return bool(re.search(junit_import, file_content)) and bool(re.search(test_annotation, file_content))
+    old_junit_import = r"junit\.framework\.(TestCase|\*)"
+    testng_import = r"import\s+org\.testng\.annotations\.Test"
+    test_annotation = r"@Test|extends (TestCase|junit\.framework\.TestCase)"
+    import_match = any([bool(re.search(pattern, file_content)) for pattern in [junit_import, testng_import, old_junit_import]])
+    return import_match and bool(re.search(test_annotation, file_content))
 
 
 def get_hunk_lines(hunk):
