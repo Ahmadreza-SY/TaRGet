@@ -398,16 +398,18 @@ class CEPROTDataCollector(DataCollector):
             print("No Changed Tests Found!")
             return []
 
+        changed_tests.drop_duplicates(["aCommit", "aPath", "name"], inplace=True)
         changed_tests["test_method_name"] = changed_tests["name"].apply(lambda n: n.split(".")[-1].replace("()", ""))
         repaired_tests = pd.merge(
             self.cerport_df,
             changed_tests,
-            how="left",
+            how="inner",
             left_on=["commit", "path", "tgt_name"],
             right_on=["aCommit", "aPath", "test_method_name"],
         )
+        print(f"Matched {len(repaired_tests)} / {len(self.cerport_df)} repaired tests with CEPROT")
         repaired_tests = repaired_tests[repaired_tests["status"] == "OK"].reset_index(drop=True)
-        print(f"Matched {len(repaired_tests)} repaired tests with CEPROT")
+        print(f"{len(repaired_tests)} are OK!")
         repaired_tests.rename(columns={"id": "CID"}, inplace=True)
         hunk_col = []
         for _, row in repaired_tests.iterrows():
