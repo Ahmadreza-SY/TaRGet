@@ -383,7 +383,8 @@ class CEPROTDataCollector(DataCollector):
     def __init__(self, repo_name, output_path, ceprot_path):
         self.repo_name = repo_name
         self.output_path = Path(output_path)
-        self.ceprot_df = pd.read_csv(ceprot_path)
+        ceprot_df = pd.read_csv(ceprot_path)
+        self.cerport_df = ceprot_df[ceprot_df["project"] == self.repo_name].reset_index(drop=True)
         try:
             ghapi.get_repo(repo_name)
         except:
@@ -391,31 +392,86 @@ class CEPROTDataCollector(DataCollector):
             print(f"Repo missing from GitHub")
             sys.exit()
 
+    def detect_repaired_tests(self):
+        changed_tests = pd.read_json(self.output_path / "codeMining" / "changed_tests.json")
+        if changed_tests.empty:
+            print("No Changed Tests Found!")
+            return []
+
+        changed_tests["test_method_name"] = changed_tests["name"].apply(lambda n: n.split(".")[-1].replace("()", ""))
+        repaired_tests = pd.merge(
+            self.cerport_df,
+            changed_tests,
+            how="left",
+            left_on=["commit", "path", "tgt_name"],
+            right_on=["aCommit", "aPath", "test_method_name"],
+        )
+        repaired_tests = repaired_tests[repaired_tests["status"] == "OK"].reset_index(drop=True)
+        print(f"Matched {len(repaired_tests)} repaired tests with CEPROT")
+        repaired_tests.rename(columns={"id": "CID"}, inplace=True)
+        hunk_col = []
+        for _, row in repaired_tests.iterrows():
+            if len(row["hunks"]) > 1:
+                print(f"Multi hunks found: {row['id']}")
+            hunk_col.append(row["hunks"][0])
+        repaired_tests["hunk"] = hunk_col
+        repaired_tests.drop(
+            columns=["commit", "path", "src_name", "tgt_name", "eq_src_tgt", "test_method_name", "hunks"], inplace=True
+        )
+        repaired_tests.to_json(self.output_path / "codeMining" / "repaired_tests.json", orient="records", indent=2)
+        return repaired_tests.to_dict(orient="records")
+
+    def make_dataset(self, repaired_tests):
+        method_change_repo = MethodChangesRepository(self.output_path)
+        trivial_detector = TrivialDetector(self.output_path)
+        dataset_l = []
+        for i, repair in tqdm(enumerate(repaired_tests), total=len(repaired_tests), ascii=True, desc="Creating dataset"):
+            _repair = copy.deepcopy(repair)
+            _repair = {
+                "ID": f"{self.repo_name}:{i}",
+                "CID": _repair["CID"],
+                "project": _repair["project"],
+                "aCommit": _repair["aCommit"],
+                "aCommitTime": ghapi.get_commit_time(_repair["aCommit"], self.repo_name),
+                "bCommit": _repair["bCommit"],
+                "aPath": _repair["aPath"],
+                "bPath": _repair["bPath"],
+                "name": _repair["name"],
+                "status": _repair["status"],
+                "hunk": method_change_repo.get_test_hunk(_repair),
+                **_repair,
+                "trivial": trivial_detector.detect_trivial_repair(_repair["name"], _repair["aCommit"], _repair["bCommit"]),
+            }
+            dataset_l.append(_repair)
+
+        dataset_l.sort(key=lambda r: r["aCommitTime"], reverse=True)
+        (self.output_path / "dataset.json").write_text(json.dumps(dataset_l, indent=2, sort_keys=False))
+        print(f"Done! Saved {len(dataset_l)} test repairs.")
+
     def collect_test_repairs(self):
         print(f"Phase #1: Identifying changed tests and extracting their changes: {self.repo_name}")
         self.identify_changed_test_classes()
         jparser.compare_test_classes(self.output_path)
-        # TODO match changed_tests.json with CEPROT
         print()
 
-        # print("Phase #2: Detecting broken tests by executing them")
-        # repaired_tests = self.detect_repaired_tests()
-        # if len(repaired_tests) == 0:
-        #     print("No repaired tests found")
-        #     return
-        # print()
+        print("Phase #2: Matching changed_test.json with CEPROT's test db")
+        repaired_tests = self.detect_repaired_tests()
+        if len(repaired_tests) == 0:
+            print("No repaired tests found")
+            return
+        print()
 
-        # print("Phase #3: Identifying and extracting covered changes")
-        # repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
-        # self.find_changed_sut_classes(repair_commits)
-        # jparser.extract_covered_changes_info(self.output_path)
-        # self.label_changed_test_sources()
-        # ghapi.cleanup_worktrees(self.repo_name)
-        # print()
+        print("Phase #3: Identifying and extracting covered changes")
+        repair_commits = set([(r["bCommit"], r["aCommit"]) for r in repaired_tests])
+        self.find_changed_sut_classes(repair_commits)
+        jparser.extract_covered_changes_info(self.output_path)
+        self.label_changed_test_sources()
+        ghapi.cleanup_worktrees(self.repo_name)
+        print()
 
-        # self.make_dataset(repaired_tests)
+        self.make_dataset(repaired_tests)
 
-        # ErrorStats.report()
+        ErrorStats.report()
 
     def identify_changed_test_classes(self):
         changed_test_classes_path = self.output_path / "codeMining" / "changed_test_classes.csv"
@@ -423,8 +479,7 @@ class CEPROTDataCollector(DataCollector):
             print("Changed tests classes already exists, skipping ...")
             return
 
-        cerport_df = self.ceprot_df[self.ceprot_df["project"] == self.repo_name]
-        commits_sha = cerport_df["commit"].values.tolist()
+        commits_sha = self.cerport_df["commit"].values.tolist()
 
         changed_test_classes = []
         with mp.Pool(initializer=pool_init, initargs=(mp.Lock(),)) as pool:
@@ -439,6 +494,6 @@ class CEPROTDataCollector(DataCollector):
         changed_test_classes = pd.DataFrame(changed_test_classes)
         if len(changed_test_classes) > 0:
             changed_test_classes = changed_test_classes[
-                changed_test_classes["b_path"].isin(cerport_df["path"].values.tolist())
+                changed_test_classes["b_path"].isin(self.cerport_df["path"].values.tolist())
             ]
         changed_test_classes.to_csv(changed_test_classes_path, index=False)
