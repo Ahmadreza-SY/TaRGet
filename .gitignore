@@ -6,6 +6,7 @@ __pycache__
 results
 *.log
 repair-collection/assets
+baseline
 *.sh
 configs/
 .ipynb_checkpoints

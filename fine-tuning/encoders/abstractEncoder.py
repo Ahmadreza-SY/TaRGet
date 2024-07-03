@@ -309,52 +309,22 @@ class AbstractDataEncoder:
         self.create_tokenizer()
 
         ds_output_dir = self.args.output_dir / "splits"
-        train_file = ds_output_dir / "train.pkl"
-        valid_file = ds_output_dir / "valid.pkl"
         test_file = ds_output_dir / "test.pkl"
 
-        if train_file.exists() and valid_file.exists() and test_file.exists():
-            self.log("Loading train, valid, and test datasets from disk...")
-            train_ds = pickle.load(open(str(train_file), "rb"))
-            valid_ds = pickle.load(open(str(valid_file), "rb"))
-            test_ds = pickle.load(open(str(test_file), "rb"))
-        else:
-            original_ds = self.read_data()
-            self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
+        original_ds = self.read_data()
+        self.log(f"Read {len(original_ds)} samples from {original_ds['project'].nunique()} projects")
 
-            ds = self.preprocess(original_ds)
-            self.log(f"Got {len(ds)} samples after preprocessing")
-            if len(ds) == 0:
-                self.log(f"Aborting ...")
-                sys.exit()
+        ds = self.preprocess(original_ds)
+        self.log(f"Got {len(ds)} samples after preprocessing")
+        if len(ds) == 0:
+            self.log(f"Aborting ...")
+            sys.exit()
 
-            ds = self.create_inputs_and_outputs(ds)
+        ds = self.create_inputs_and_outputs(ds)
+        self.log("Creating datasets")
+        test_ds = self.args.dataset_class(ds, self.tokenizer, "test", self.args)
+        self.log(f"{len(test_ds)}/{len(ds)} samples had less than max_length ({self.args.max_length}) tokens.")
+        self.log("Pickling datasets")
+        pickle.dump(test_ds, open(str(test_file), "wb"))
 
-            trivial_ds = ds[~ds["trivial"].isna()].reset_index(drop=True)
-            ds = self.apply_processor(Processors.remove_trivial_repairs, ds)
-
-            train_ds, valid_ds, test_ds = self.split_by_commit(ds)
-
-            train_ds = self.merge_train_with_trivial(train_ds, trivial_ds)
-
-            train_ds = self.adjust_training_set(train_ds)
-
-            self.log("Creating datasets")
-            og_ds_s = len(train_ds) + len(valid_ds) + len(test_ds)
-            train_ds = self.args.dataset_class(train_ds, self.tokenizer, "train", self.args)
-            valid_ds = self.args.dataset_class(valid_ds, self.tokenizer, "valid", self.args)
-            test_ds = self.args.dataset_class(test_ds, self.tokenizer, "test", self.args)
-            new_ds_s = len(train_ds) + len(valid_ds) + len(test_ds)
-            valid_per = round(100 * new_ds_s / og_ds_s, 1)
-            self.log(
-                f"{valid_per} % ({new_ds_s}/{og_ds_s}) samples had less than max_length ({self.args.max_length}) tokens."
-            )
-            self.log("Pickling datasets")
-            pickle.dump(train_ds, open(str(train_file), "wb"))
-            pickle.dump(valid_ds, open(str(valid_file), "wb"))
-            pickle.dump(test_ds, open(str(test_file), "wb"))
-
-        ds_len = len(train_ds) + len(valid_ds) + len(test_ds)
-        self.log(f"Train: {len(train_ds)} ({round(100 * len(train_ds) / ds_len, 1)} %)")
-        self.log(f"Valid: {len(valid_ds)} ({round(100 * len(valid_ds) / ds_len, 1)} %)")
-        self.log(f"Test: {len(test_ds)} ({round(100 * len(test_ds) / ds_len, 1)} %)")
+        self.log(f"Test: {len(test_ds)}")

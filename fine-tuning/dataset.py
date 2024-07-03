@@ -15,7 +15,7 @@ class ATRDataset(torch.utils.data.Dataset):
             output = self.get_output(row, tokenizer)
             if not self.has_valid_length(input, output):
                 oversized_ids.append(row["ID"])
-                continue
+                input = self.get_input(row, tokenizer, trc=True)
             self.data.append(self.create_item(input, output))
             valid_length_ind.add(i)
 
@@ -71,9 +71,9 @@ class EncDecDataset(ATRDataset):
         super().initialize_tokens(tokenizer)
         self.pad_id = tokenizer.convert_tokens_to_ids(tokenizer.special_tokens_map["pad_token"])
 
-    def get_input(self, row, tokenizer):
+    def get_input(self, row, tokenizer, trc=False):
         input = row["input"]
-        return tokenizer.encode(input, return_tensors="pt")
+        return tokenizer.encode(input, return_tensors="pt", truncation=trc, max_length=self.max_length)
 
     def get_output(self, row, tokenizer):
         output = row["output"]

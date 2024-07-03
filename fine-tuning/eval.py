@@ -26,10 +26,8 @@ def test(args):
         logger.info("No stats.json found, creating a new one.")
         args.stats = {}
 
-    args.valid_ds = pd.read_json(args.output_dir / "splits" / f"valid.json")
     args.test_ds = pd.read_json(args.output_dir / "splits" / f"test.json")
     if args.mask_projects is not None:
-        args.valid_ds = args.valid_ds[args.valid_ds["project"].isin(args.mask_projects)].reset_index(drop=True)
         args.test_ds = args.test_ds[args.test_ds["project"].isin(args.mask_projects)].reset_index(drop=True)
     args.stats["test_set_size"] = len(args.test_ds)
 
@@ -38,10 +36,6 @@ def test(args):
     best_checkpoint_path = args.output_dir / f"checkpoint-best"
     model = args.model_class.from_pretrained(best_checkpoint_path, trust_remote_code=True)
     model = args.accelerator.prepare(model)
-
-    logger.info(f"Testing with best checkpoint on Valid set with size {len(args.valid_ds)}")
-    bleu_score, code_bleu_score, em = eval(model, "valid", args, best_checkpoint_path)
-    args.stats["valid_results"] = {"bleu": bleu_score, "code_bleu": code_bleu_score, "em": em}
 
     logger.info(f"Testing with best checkpoint on Test set set with size {len(args.test_ds)}")
     bleu_score, code_bleu_score, em = eval(model, "test", args, args.output_dir)
@@ -61,7 +55,7 @@ def eval(model, split, args, save_dir):
 
     data_encoder_class = get_data_encoder_class(args.data_encoder)
     tokenizer = args.tokenizer
-    dataset_obj = pickle.load(open(str(args.output_dir / "splits" / f"valid.pkl"), "rb"))
+    dataset_obj = pickle.load(open(str(args.output_dir / "splits" / f"{split}.pkl"), "rb"))
     pad_id, eos_id = dataset_obj.get_pad_eos_for_generation(tokenizer)
     decoder_sid = dataset_obj.get_decoder_start_token_id(tokenizer)
     model.eval()
