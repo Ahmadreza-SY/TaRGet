@@ -174,7 +174,7 @@ class AbstractDataEncoder:
                 selected_changes = new_selected_changes
                 row["prioritized_changes"][i]["selected"] = True
 
-        if len(selected_changes) == 0:
+        if len(selected_changes) == 0 and pr_changes_cnt > 0:
             selected_changes = [row["prioritized_changes"][0]]
         return (self.create_input(test_context, selected_changes), selected_changes)
 
@@ -211,7 +211,7 @@ class AbstractDataEncoder:
 
     def preprocess(self, ds):
         processors = [
-            Processors.remove_empty_changes,
+            # Processors.remove_empty_changes,
             Processors.remove_comment_repairs,
             Processors.remove_no_source_changes,
             Processors.remove_out_of_range,
@@ -223,7 +223,7 @@ class AbstractDataEncoder:
 
         self.log("Prioritizing changes")
         ds["prioritized_changes"] = ds.apply(lambda r: self.prioritize_changed_documents(r), axis=1)
-        ds = self.apply_processor(Processors.remove_empty_prioritized_changes, ds)
+        # ds = self.apply_processor(Processors.remove_empty_prioritized_changes, ds)
         ds = ds.drop(columns=["commitChanges"])
         return ds
 

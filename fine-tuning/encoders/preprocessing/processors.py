@@ -27,6 +27,7 @@ class Processors:
     @staticmethod
     def remove_no_source_changes(ds, args):
         ds["has_source_changes"] = ds["hunk"].apply(lambda h: "sourceChanges" in h and len(h["sourceChanges"]) > 0)
+        print("Empty source changes' CIDs:", ds[~ds["has_source_changes"]]["CID"].values.tolist())
         ds = ds[ds["has_source_changes"]].drop(columns=["has_source_changes"]).reset_index(drop=True)
         return ds
 
