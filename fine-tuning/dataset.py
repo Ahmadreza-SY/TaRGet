@@ -74,6 +74,9 @@ class EncDecDataset(ATRDataset):
     def get_input(self, row, tokenizer, trc=False):
         input = row["input"]
         return tokenizer.encode(input, return_tensors="pt", truncation=trc, max_length=self.max_length)
+    
+    def get_inference_input(self, row, tokenizer):
+        return self.get_input(row, tokenizer, True)
 
     def get_output(self, row, tokenizer):
         output = row["output"]
