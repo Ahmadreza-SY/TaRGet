@@ -6,6 +6,7 @@ import CodeBLEU.bleu as bleu
 import CodeBLEU.weighted_ngram_match as weighted_ngram_match
 import CodeBLEU.syntax_match as syntax_match
 import CodeBLEU.dataflow_match as dataflow_match
+from pathlib import Path
 
 
 def calc_code_bleu(refs, hyp, lang="java", params="0.25,0.25,0.25,0.25"):
@@ -33,7 +34,7 @@ def calc_code_bleu(refs, hyp, lang="java", params="0.25,0.25,0.25,0.25"):
     ngram_match_score = bleu.corpus_bleu(tokenized_refs, tokenized_hyps)
 
     # calculate weighted ngram match
-    keywords = [x.strip() for x in open("CodeBLEU/keywords/" + lang + ".txt", "r", encoding="utf-8").readlines()]
+    keywords = [x.strip() for x in open(str(Path(__file__).parent) + "/keywords/" + lang + ".txt", "r", encoding="utf-8").readlines()]
 
     def make_weights(reference_tokens, key_word_list):
         return {token: 1 if token in key_word_list else 0.2 for token in reference_tokens}
