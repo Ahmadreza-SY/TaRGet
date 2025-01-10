@@ -10,3 +10,4 @@ repair-collection/assets
 configs/
 .ipynb_checkpoints
 !reproduction/*/*.sh
+baseline/

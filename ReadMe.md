@@ -16,12 +16,22 @@ In this work, we introduce TaRGet and TaRBench, both of which are elaborated on 
 ### TaRGet
 Ensuring the quality of software systems through testing is a critical aspect of software development. However, the maintenance of test cases presents significant challenges, both in terms of complexity and cost. The constant need for updates to align with evolving systems under test can result in broken test cases, leading to a reduction in test suite quality and disruptions in the software development process. To address these challenges, we introduce TaRGet (Test Repair GEneraTor), an approach that leverages pre-trained code language models (CLMs) for automated test case repair. TaRGet treats test repair as a language translation task and employs a two-step process to fine-tune a language model using essential context data that characterizes test breakages.
 
-<!-- ### Publication
-TODO: Add once published -->
-
-
 ### TaRBench
-TaRBench is a comprehensive benchmark that we developed to evaluate the effectiveness of TaRGet in automated test case repair. The benchmark encompasses 45,373 broken test repairs across 59 open-source projects, providing a diverse and extensive dataset for assessing the capabilities of TaRGet. TaRBench data and detailed information can be accessed at: [https://figshare.com/s/77598ce966e625c75f5a](https://figshare.com/s/77598ce966e625c75f5a)
+TaRBench is a comprehensive benchmark that we developed to evaluate the effectiveness of TaRGet in automated test case repair. The benchmark encompasses 45,373 broken test repairs across 59 open-source projects, providing a diverse and extensive dataset for assessing the capabilities of TaRGet. TaRBench plus TaRGet's best results and generations can be accessed at: [![DOI](https://zenodo.org/badge/DOI/10.6084/m9.figshare.25008893.svg)](https://doi.org/10.6084/m9.figshare.25008893)
+
+
+### Publication
+This repository is a supplement to our paper which can be found on [arXiv/2401.06765](https://arxiv.org/abs/2401.06765). Please refer to the paper for details on definitions, experiments, and results. If you find this repository useful, please don't forget to ⭐ it and cite our paper:
+```
+@article{saboor2024target,
+      title={Automated Test Case Repair Using Language Models}, 
+      author={Ahmadreza Saboor Yaraghi and Darren Holden and Nafiseh Kahani and Lionel Briand},
+      year={2024},
+      eprint={2401.06765},
+      archivePrefix={arXiv},
+      url={https://arxiv.org/abs/2401.06765}, 
+}
+```
 
 
 ## Experiment Execution
