@@ -11,3 +11,4 @@ baseline
 configs/
 .ipynb_checkpoints
 !reproduction/*/*.sh
+baseline/
