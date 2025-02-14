@@ -21,16 +21,15 @@ TaRBench is a comprehensive benchmark that we developed to evaluate the effectiv
 
 
 ### Publication
-This repository is a supplement to our paper which can be found on [arXiv/2401.06765](https://arxiv.org/abs/2401.06765). Please refer to the paper for details on definitions, experiments, and results. If you find this repository useful, please don't forget to ⭐ it and cite our paper:
+This repository is a supplement to our paper (accepted at IEEE TSE) which can be found on [TSE.2025.3541166](https://doi.org/10.1109/TSE.2025.3541166). Please refer to the paper for details on definitions, experiments, and results. If you find this repository useful, please don't forget to ⭐ it and cite our paper:
 ```
-@article{saboor2024target,
-      title={Automated Test Case Repair Using Language Models}, 
-      author={Ahmadreza Saboor Yaraghi and Darren Holden and Nafiseh Kahani and Lionel Briand},
-      year={2024},
-      eprint={2401.06765},
-      archivePrefix={arXiv},
-      url={https://arxiv.org/abs/2401.06765}, 
-}
+@ARTICLE{saboor2025target,
+  author={Saboor Yaraghi, Ahmadreza and Holden, Darren and Kahani, Nafiseh and Briand, Lionel},
+  journal={IEEE Transactions on Software Engineering}, 
+  title={Automated Test Case Repair Using Language Models}, 
+  year={2025},
+  pages={1-31},
+  doi={10.1109/TSE.2025.3541166}}
 ```
 
 
